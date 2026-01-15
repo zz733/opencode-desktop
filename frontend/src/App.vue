@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar.vue'
 import ChatPanel from './components/ChatPanel.vue'
 import TerminalPanel from './components/TerminalPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
+import StatusBar from './components/StatusBar.vue'
 import { useOpenCode } from './composables/useOpenCode'
 
 const { t } = useI18n()
@@ -226,6 +227,14 @@ const handleTabChange = (tab) => {
         />
       </div>
     </div>
+    
+    <!-- 状态栏 -->
+    <StatusBar 
+      :connected="connected"
+      :connecting="connecting"
+      :currentModel="currentModel"
+      :sessionTitle="currentSession?.title"
+    />
   </div>
 </template>
 

@@ -77,7 +77,6 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M6 9l6 6 6-6"/>
         </svg>
-        
         <div v-if="showSessionList" class="session-dropdown" @click.stop>
           <div class="dropdown-header">
             <span>{{ t('chat.sessions') }}</span>
@@ -95,11 +94,6 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
             <div v-if="!sessions.length" class="empty">{{ t('chat.noSessions') }}</div>
           </div>
         </div>
-      </div>
-      
-      <!-- 连接状态指示器 -->
-      <div class="status-indicator" :title="connected ? '已连接' : (connecting ? '连接中...' : '未连接')">
-        <span :class="['status-dot', { connected, connecting }]"></span>
       </div>
     </header>
     
@@ -202,34 +196,7 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   padding: 0 12px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   border-bottom: 1px solid #28242e;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ff8080;
-}
-
-.status-dot.connecting {
-  background: #ffcf99;
-  animation: pulse 1s infinite;
-}
-
-.status-dot.connected {
-  background: #80ffb5;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
 }
 
 .session-selector {
