@@ -60,6 +60,16 @@ function addEdit(path, oldContent, newContent) {
   if (oldContent === newContent) return null
   
   const filename = path.split('/').pop()
+  
+  // 检查是否已有该文件的未撤销记录，如果有则更新
+  const existing = fileEdits.value.find(e => e.path === path && !e.reverted)
+  if (existing) {
+    // 更新新内容，保留最初的 oldContent
+    existing.newContent = newContent
+    existing.timestamp = Date.now()
+    return existing
+  }
+  
   const edit = {
     id: ++editId,
     path,
