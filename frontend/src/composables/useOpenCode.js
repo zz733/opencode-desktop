@@ -2,7 +2,8 @@ import { ref } from 'vue'
 import { 
   GetServerURL, SetServerURL, CheckConnection,
   GetSessions, CreateSession, SendMessage, SendMessageWithModel, 
-  SubscribeEvents, GetOpenCodeStatus, AutoStartOpenCode, InstallOpenCode
+  SubscribeEvents, GetOpenCodeStatus, AutoStartOpenCode, InstallOpenCode,
+  CancelSession
 } from '../../wailsjs/go/main/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 
@@ -12,7 +13,8 @@ const sessions = ref([])
 const currentSession = ref(null)
 const messages = ref([])
 const sending = ref(false)
-const currentModel = ref('opencode/claude-opus-4-5')
+// 从 localStorage 读取上次选择的模型
+const currentModel = ref(localStorage.getItem('selectedModel') || 'opencode/claude-opus-4-5')
 const openCodeStatus = ref(null) // 'not-installed', 'installing', 'starting', 'connected'
 
 const models = [
@@ -209,11 +211,15 @@ function handleEvent(event) {
       last.reasoning = part.text
     } else if (part.type === 'tool') {
       if (!last.tools) last.tools = {}
-      last.tools[part.id] = {
+      // 提取工具信息，包括输入参数
+      const toolInfo = {
         id: part.id,
         name: part.tool,
-        status: part.state?.status || 'pending'
+        status: part.state?.status || 'pending',
+        input: part.state?.input || part.input || null,
+        output: part.state?.output || null
       }
+      last.tools[part.id] = toolInfo
     }
   }
   
@@ -223,6 +229,26 @@ function handleEvent(event) {
     if (info?.time?.completed || info?.finish || status === 'idle') {
       sending.value = false
     }
+  }
+}
+
+// 设置模型并保存到 localStorage
+function setModel(modelId) {
+  currentModel.value = modelId
+  localStorage.setItem('selectedModel', modelId)
+}
+
+// 取消当前请求
+async function cancelMessage() {
+  if (!sending.value || !currentSession.value) return
+  
+  try {
+    await CancelSession(currentSession.value.id)
+    sending.value = false
+  } catch (e) {
+    console.error('取消失败:', e)
+    // 即使取消失败也停止 sending 状态
+    sending.value = false
   }
 }
 
@@ -244,6 +270,8 @@ export function useOpenCode() {
     installOpenCode,
     selectSession,
     createSession,
-    sendMessage
+    sendMessage,
+    setModel,
+    cancelMessage
   }
 }

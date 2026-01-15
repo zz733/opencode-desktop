@@ -6,6 +6,10 @@ export function AutoStartOpenCode() {
   return window['go']['main']['App']['AutoStartOpenCode']();
 }
 
+export function CancelSession(arg1) {
+  return window['go']['main']['App']['CancelSession'](arg1);
+}
+
 export function CheckConnection() {
   return window['go']['main']['App']['CheckConnection']();
 }

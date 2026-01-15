@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function AutoStartOpenCode():Promise<void>;
 
+export function CancelSession(arg1:string):Promise<void>;
+
 export function CheckConnection():Promise<boolean>;
 
 export function CloseTerminal(arg1:number):Promise<void>;

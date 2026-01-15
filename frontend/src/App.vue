@@ -32,7 +32,9 @@ const {
   autoConnect,
   selectSession,
   createSession,
-  sendMessage
+  sendMessage,
+  setModel,
+  cancelMessage
 } = useOpenCode()
 
 onMounted(() => {
@@ -49,6 +51,14 @@ const handleSelectSession = async (session) => {
 
 const handleSend = (text) => {
   sendMessage(text)
+}
+
+const handleCancel = () => {
+  cancelMessage()
+}
+
+const handleModelChange = (modelId) => {
+  setModel(modelId)
 }
 
 // 拖动侧边栏
@@ -213,7 +223,8 @@ const handleTabChange = (tab) => {
           :models="models"
           @selectSession="handleSelectSession"
           @send="handleSend"
-          @update:currentModel="currentModel = $event"
+          @cancel="handleCancel"
+          @update:currentModel="handleModelChange"
         />
       </div>
     </div>

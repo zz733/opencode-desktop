@@ -9,25 +9,60 @@ const props = defineProps({
   isLoading: Boolean
 })
 
-// 工具图标映射
-const toolIcons = {
-  'Read file': '📄',
-  'Read file(s)': '📄',
-  'Write file': '✏️',
-  'Command': '⌨️',
-  'Search': '🔍',
-  'Grep': '🔍',
-  'List': '📁',
-  'default': '🔧'
+// 工具图标映射 - 根据状态返回不同图标
+const getToolIcon = (tool) => {
+  if (tool.status === 'running' || tool.status === 'pending') {
+    return 'spinner' // 转圈
+  }
+  if (tool.status === 'completed') {
+    return 'check' // 勾选
+  }
+  if (tool.status === 'error') {
+    return 'error' // 错误
+  }
+  return 'default'
 }
 
-const getToolIcon = (name) => {
-  for (const key in toolIcons) {
-    if (name?.toLowerCase().includes(key.toLowerCase())) {
-      return toolIcons[key]
-    }
+// 工具类型图标
+const getToolTypeIcon = (name) => {
+  const n = name?.toLowerCase() || ''
+  if (n.includes('bash') || n.includes('command') || n.includes('shell')) {
+    return 'terminal'
   }
-  return toolIcons.default
+  if (n.includes('edit') || n.includes('write') || n.includes('create')) {
+    return 'edit'
+  }
+  if (n.includes('read') || n.includes('file')) {
+    return 'file'
+  }
+  if (n.includes('search') || n.includes('grep') || n.includes('find')) {
+    return 'search'
+  }
+  if (n.includes('list') || n.includes('dir')) {
+    return 'folder'
+  }
+  return 'tool'
+}
+
+// 工具显示名称
+const getToolDisplayName = (name) => {
+  const n = name?.toLowerCase() || ''
+  if (n.includes('bash') || n.includes('command') || n.includes('shell')) {
+    return 'Command'
+  }
+  if (n.includes('edit') || n.includes('write') || n.includes('str_replace')) {
+    return 'Editing'
+  }
+  if (n.includes('read')) {
+    return 'Read file(s)'
+  }
+  if (n.includes('search') || n.includes('grep')) {
+    return 'Search'
+  }
+  if (n.includes('list')) {
+    return 'List directory'
+  }
+  return name
 }
 
 // 展开/折叠工具详情
@@ -37,12 +72,10 @@ const toggleTool = (id) => {
   expandedTools.value[id] = !expandedTools.value[id]
 }
 
-// 格式化工具参数显示
-const formatToolArgs = (tool) => {
-  if (tool.args) {
-    return JSON.stringify(tool.args, null, 2)
-  }
-  return ''
+// 格式化工具输入显示
+const formatToolInput = (tool) => {
+  if (!tool.input) return ''
+  return JSON.stringify(tool.input, null, 2)
 }
 </script>
 
@@ -64,16 +97,47 @@ const formatToolArgs = (tool) => {
           class="tool-card"
         >
           <div class="tool-header" @click="toggleTool(tool.id)">
-            <span class="tool-icon">{{ getToolIcon(tool.name) }}</span>
-            <span class="tool-name">{{ tool.name }}</span>
-            <span :class="['tool-status', tool.status]">
-              <template v-if="tool.status === 'running'">
-                <span class="working-dots">working</span>
-              </template>
-              <template v-else>
-                {{ tool.status }}
-              </template>
+            <!-- 状态图标 -->
+            <span :class="['status-icon', tool.status]">
+              <!-- 转圈 -->
+              <svg v-if="getToolIcon(tool) === 'spinner'" class="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+              <!-- 勾选 -->
+              <svg v-else-if="getToolIcon(tool) === 'check'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 6L9 17l-5-5"/>
+              </svg>
+              <!-- 错误 -->
+              <svg v-else-if="getToolIcon(tool) === 'error'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>
+              </svg>
+              <!-- 默认 -->
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
             </span>
+            
+            <!-- 工具类型图标 -->
+            <span class="type-icon">
+              <svg v-if="getToolTypeIcon(tool.name) === 'terminal'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+              </svg>
+              <svg v-else-if="getToolTypeIcon(tool.name) === 'edit'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              <svg v-else-if="getToolTypeIcon(tool.name) === 'file'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+              </svg>
+              <svg v-else-if="getToolTypeIcon(tool.name) === 'search'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+              </svg>
+            </span>
+            
+            <span class="tool-name">{{ getToolDisplayName(tool.name) }}</span>
+            
             <svg 
               :class="['expand-icon', { expanded: expandedTools[tool.id] }]"
               width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -82,9 +146,25 @@ const formatToolArgs = (tool) => {
             </svg>
           </div>
           
-          <!-- 工具详情 -->
-          <div v-if="expandedTools[tool.id] && tool.args" class="tool-details">
-            <pre>{{ formatToolArgs(tool) }}</pre>
+          <!-- 工具内容 - 默认展开显示命令 -->
+          <div class="tool-content" v-if="tool.input">
+            <!-- 命令显示 -->
+            <div v-if="tool.input.command" class="command-line">
+              <code>{{ tool.input.command }}</code>
+            </div>
+            <!-- 文件路径 -->
+            <div v-else-if="tool.input.path" class="file-path">
+              <code>{{ tool.input.path }}</code>
+            </div>
+            <!-- 搜索查询 -->
+            <div v-else-if="tool.input.query" class="search-query">
+              <code>{{ tool.input.query }}</code>
+            </div>
+          </div>
+          
+          <!-- 展开的详细输出 -->
+          <div v-if="expandedTools[tool.id] && tool.output" class="tool-output">
+            <pre>{{ tool.output }}</pre>
           </div>
         </div>
       </div>
@@ -160,7 +240,7 @@ const formatToolArgs = (tool) => {
 .tools {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 12px;
 }
 
@@ -184,42 +264,47 @@ const formatToolArgs = (tool) => {
   background: var(--bg-hover);
 }
 
-.tool-icon {
-  font-size: 14px;
+.status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.status-icon.running svg,
+.status-icon.pending svg {
+  color: var(--accent-primary);
+}
+
+.status-icon.completed svg {
+  color: var(--green);
+}
+
+.status-icon.error svg {
+  color: #f87171;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.type-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
 }
 
 .tool-name {
-  flex: 1;
   font-size: 13px;
   color: var(--text-primary);
   font-weight: 500;
-}
-
-.tool-status {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.tool-status.pending { 
-  background: rgba(250, 204, 21, 0.15); 
-  color: #fcd34d; 
-}
-
-.tool-status.running { 
-  background: rgba(96, 165, 250, 0.15); 
-  color: #93c5fd; 
-}
-
-.tool-status.completed { 
-  background: rgba(74, 222, 128, 0.15); 
-  color: #86efac; 
-}
-
-.tool-status.error { 
-  background: rgba(248, 113, 113, 0.15); 
-  color: #fca5a5; 
+  flex: 1;
 }
 
 .expand-icon {
@@ -231,13 +316,40 @@ const formatToolArgs = (tool) => {
   transform: rotate(180deg);
 }
 
-.tool-details {
+/* 工具内容 */
+.tool-content {
+  padding: 0 12px 10px;
+}
+
+.command-line,
+.file-path,
+.search-query {
+  background: var(--bg-base);
+  border-radius: 4px;
+  padding: 8px 10px;
+  overflow-x: auto;
+}
+
+.command-line code,
+.file-path code,
+.search-query code {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 工具输出 */
+.tool-output {
   border-top: 1px solid var(--border-default);
   padding: 10px 12px;
   background: var(--bg-base);
+  max-height: 200px;
+  overflow-y: auto;
 }
 
-.tool-details pre {
+.tool-output pre {
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   font-size: 11px;
   color: var(--text-secondary);

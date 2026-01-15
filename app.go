@@ -262,6 +262,27 @@ func (a *App) SendMessageWithModel(sessionID, content, model string) error {
 	return nil
 }
 
+// CancelSession 取消会话中正在进行的请求
+func (a *App) CancelSession(sessionID string) error {
+	url := fmt.Sprintf("%s/session/%s/cancel", a.serverURL, sessionID)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %v", err)
+	}
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("取消失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 204 && resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("取消失败 %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
+}
+
 // CreateTerminal 创建新终端
 func (a *App) CreateTerminal() (int, error) {
 	return a.termMgr.CreateTerminal()
