@@ -1,12 +1,12 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted, shallowRef } from 'vue'
+import { ref, watch, onMounted, onUnmounted, shallowRef, computed } from 'vue'
 import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
-import { ReadFileContent, WriteFileContent, WatchFile, UnwatchFile, CodeCompletion } from '../../wailsjs/go/main/App'
+import { ReadFileContent, WriteFileContent, WatchFile, UnwatchFile, CodeCompletion, RunFile, WriteTerminal, CreateTerminal } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
 import { useFileEdits } from '../composables/useFileEdits'
 
@@ -25,7 +25,7 @@ const props = defineProps({
   file: Object,
   sessionId: String
 })
-const emit = defineEmits(['close', 'save'])
+const emit = defineEmits(['close', 'save', 'run'])
 
 const { addEdit } = useFileEdits()
 
@@ -36,6 +36,7 @@ const originalContent = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const modified = ref(false)
+const running = ref(false)
 
 // AI 补全状态
 const completing = ref(false)
@@ -116,6 +117,44 @@ const saveFile = async () => {
     alert('保存失败: ' + e)
   } finally {
     saving.value = false
+  }
+}
+
+// 可运行的文件类型
+const runnableExtensions = ['py', 'go', 'js', 'ts', 'java', 'rs', 'rb', 'php', 'sh', 'html', 'htm']
+
+const canRun = computed(() => {
+  if (!props.file?.name) return false
+  const ext = props.file.name.split('.').pop()?.toLowerCase()
+  return runnableExtensions.includes(ext)
+})
+
+// 运行文件
+const runFile = async () => {
+  if (!props.file?.path || running.value) return
+  
+  // 先保存
+  if (modified.value) {
+    await saveFile()
+  }
+  
+  running.value = true
+  try {
+    const result = await RunFile(props.file.path)
+    
+    if (result.startsWith('OPEN_BROWSER:')) {
+      // HTML 文件，打开浏览器
+      const filePath = result.replace('OPEN_BROWSER:', '')
+      // 使用简单的 HTTP 服务器或直接打开文件
+      window.open('file://' + filePath)
+    } else {
+      // 在终端执行命令
+      emit('run', result)
+    }
+  } catch (e) {
+    alert('运行失败: ' + e)
+  } finally {
+    running.value = false
   }
 }
 
@@ -401,7 +440,14 @@ defineExpose({ reloadFile })
       <span>{{ lineCount() }} 行</span>
       <span v-if="modified" class="status-modified">已修改</span>
       <span v-if="saving" class="status-saving">保存中...</span>
+      <span v-if="running" class="status-running">运行中...</span>
       <span class="shortcut">自动保存</span>
+      <button v-if="canRun" class="btn-run" @click="runFile" :disabled="running" title="运行 (F5)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+        运行
+      </button>
     </div>
   </div>
 </template>
@@ -415,5 +461,23 @@ defineExpose({ reloadFile })
 .status-modified { color: var(--accent-primary); }
 .status-saving { color: var(--green); }
 .status-completing { color: var(--blue); }
+.status-running { color: var(--yellow); }
 .shortcut { margin-left: auto; }
+.btn-run {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  margin-left: 8px;
+  background: var(--green);
+  border: none;
+  border-radius: 4px;
+  color: var(--bg-base);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-run:hover { background: #60d090; }
+.btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

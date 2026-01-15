@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -620,6 +622,140 @@ func (a *App) WatchFile(path string) error {
 // UnwatchFile 取消监听文件
 func (a *App) UnwatchFile(path string) {
 	a.fileMgr.UnwatchFile(path)
+}
+
+// RunFile 运行文件
+func (a *App) RunFile(filePath string) (string, error) {
+	if filePath == "" {
+		return "", fmt.Errorf("文件路径为空")
+	}
+
+	// 获取文件扩展名和目录
+	ext := strings.ToLower(filepath.Ext(filePath))
+	dir := filepath.Dir(filePath)
+	fileName := filepath.Base(filePath)
+	fileNameNoExt := strings.TrimSuffix(fileName, ext)
+
+	var cmd string
+	var args []string
+
+	switch ext {
+	case ".py":
+		cmd = "python3"
+		args = []string{filePath}
+	case ".go":
+		cmd = "go"
+		args = []string{"run", filePath}
+	case ".js":
+		cmd = "node"
+		args = []string{filePath}
+	case ".ts":
+		cmd = "npx"
+		args = []string{"ts-node", filePath}
+	case ".java":
+		// 检测是否是 Maven 项目
+		if a.isMavenProject(dir) {
+			cmd = "mvn"
+			args = []string{"-f", a.findPomXml(dir), "compile", "exec:java", "-Dexec.mainClass=" + a.getJavaMainClass(filePath)}
+		} else if a.isGradleProject(dir) {
+			cmd = "gradle"
+			args = []string{"-p", a.findGradleProject(dir), "run"}
+		} else {
+			// 单文件编译运行
+			cmd = "sh"
+			args = []string{"-c", fmt.Sprintf("cd %s && javac %s && java %s", dir, fileName, fileNameNoExt)}
+		}
+	case ".rs":
+		cmd = "cargo"
+		args = []string{"run", "--manifest-path", a.findCargoToml(dir)}
+	case ".rb":
+		cmd = "ruby"
+		args = []string{filePath}
+	case ".php":
+		cmd = "php"
+		args = []string{filePath}
+	case ".sh":
+		cmd = "bash"
+		args = []string{filePath}
+	case ".html", ".htm":
+		// 返回特殊标记，前端处理打开浏览器
+		return "OPEN_BROWSER:" + filePath, nil
+	default:
+		return "", fmt.Errorf("不支持运行 %s 文件", ext)
+	}
+
+	// 返回命令让前端在终端中执行
+	fullCmd := cmd + " " + strings.Join(args, " ")
+	return fullCmd, nil
+}
+
+// 检测是否是 Maven 项目
+func (a *App) isMavenProject(dir string) bool {
+	return a.findPomXml(dir) != ""
+}
+
+// 查找 pom.xml
+func (a *App) findPomXml(dir string) string {
+	// 向上查找 pom.xml
+	for {
+		pomPath := filepath.Join(dir, "pom.xml")
+		if _, err := os.Stat(pomPath); err == nil {
+			return pomPath
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
+// 检测是否是 Gradle 项目
+func (a *App) isGradleProject(dir string) bool {
+	return a.findGradleProject(dir) != ""
+}
+
+// 查找 Gradle 项目目录
+func (a *App) findGradleProject(dir string) string {
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "build.gradle")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, "build.gradle.kts")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
+// 查找 Cargo.toml
+func (a *App) findCargoToml(dir string) string {
+	for {
+		cargoPath := filepath.Join(dir, "Cargo.toml")
+		if _, err := os.Stat(cargoPath); err == nil {
+			return cargoPath
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return filepath.Join(dir, "Cargo.toml")
+}
+
+// 获取 Java 主类名
+func (a *App) getJavaMainClass(filePath string) string {
+	// 简单实现：从文件路径推断类名
+	// 实际应该解析 package 声明
+	fileName := filepath.Base(filePath)
+	return strings.TrimSuffix(fileName, ".java")
 }
 
 // OpenFolder 打开文件夹选择对话框并设置为工作目录

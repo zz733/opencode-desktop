@@ -43,8 +43,14 @@ export default {
   },
   editor: {
     openFile: 'ファイルを開いて編集を開始',
+    openFolder: 'フォルダを開く',
     showTerminal: 'ターミナルを表示',
     hideTerminal: 'ターミナルを非表示',
+    close: '閉じる',
+    closeLeft: '左側を閉じる',
+    closeRight: '右側を閉じる',
+    closeOthers: '他を閉じる',
+    closeAll: 'すべて閉じる',
   },
   settings: {
     title: '設定',

@@ -120,6 +120,26 @@ const handleEditorMaximize = (maximized) => {
   editorMaximized.value = maximized
 }
 
+// 终端引用
+const terminalRef = ref(null)
+
+// 运行命令
+const handleRunCommand = async (command) => {
+  // 确保终端可见
+  showTerminal.value = true
+  // 如果编辑器最大化，退出最大化
+  if (editorMaximized.value) {
+    editorMaximized.value = false
+  }
+  // 发送命令到终端
+  // 通过事件通知终端执行命令
+  setTimeout(() => {
+    if (terminalRef.value) {
+      terminalRef.value.executeCommand(command)
+    }
+  }, 100)
+}
+
 // 拖动处理
 const startDrag = (type) => (e) => {
   isDragging.value = true
@@ -178,12 +198,13 @@ const startDrag = (type) => (e) => {
           @update:workDir="handleWorkDirChange"
           @activeFileChange="handleActiveFileChange"
           @toggleMaximize="handleEditorMaximize"
+          @runCommand="handleRunCommand"
         />
         
         <template v-if="!editorMaximized">
           <div v-if="showTerminal" class="resize-handle-h" @mousedown="startDrag('terminal')"></div>
           <div v-if="showTerminal" class="terminal-wrapper" :style="{ height: terminalHeight + 'px' }">
-            <TerminalPanel :visible="showTerminal" />
+            <TerminalPanel ref="terminalRef" :visible="showTerminal" />
           </div>
         </template>
       </div>

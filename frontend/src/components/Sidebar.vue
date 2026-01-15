@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ListDir, OpenFolder } from '../../wailsjs/go/main/App'
+import FileTreeItem from './FileTreeItem.vue'
 
 const { t } = useI18n()
 
@@ -68,10 +69,14 @@ const toggleFolder = async (item) => {
       item.children = await loadDir(path)
     }
   }
+  // 触发响应式更新
+  expandedFolders.value = new Set(expandedFolders.value)
 }
 
 const openFile = (item) => {
-  if (item.type === 'file') emit('openFile', item)
+  if (item.type === 'file') {
+    emit('openFile', item)
+  }
 }
 
 const selectFolder = async () => {
@@ -84,18 +89,10 @@ const selectFolder = async () => {
   }
 }
 
-const getFileIconColor = (name) => {
-  const ext = name.split('.').pop()?.toLowerCase()
-  const colors = { 'go': '#00ADD8', 'js': '#F7DF1E', 'ts': '#3178C6', 'vue': '#42B883', 'html': '#E34F26', 'css': '#1572B6', 'json': '#F5A623', 'md': '#083FA1', 'py': '#3776AB', 'rs': '#DEA584' }
-  return colors[ext] || '#75beff'
-}
-
 const getDirName = () => {
   if (!localWorkDir.value) return ''
   return localWorkDir.value.split('/').pop() || localWorkDir.value.split('\\').pop() || 'ROOT'
 }
-
-const isExpanded = (path) => expandedFolders.value.has(path)
 </script>
 
 <template>
@@ -126,35 +123,15 @@ const isExpanded = (path) => expandedFolders.value.has(path)
         </div>
       
         <div class="tree-items" v-if="files.length">
-          <template v-for="item in files" :key="item.path">
-            <div :class="['tree-item', { folder: item.type === 'folder' }]" @click="toggleFolder(item)" @dblclick="openFile(item)">
-              <svg v-if="item.type === 'folder'" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: isExpanded(item.path) }"><path d="M9 18l6-6-6-6"/></svg>
-              <span v-else class="spacer"></span>
-              <svg v-if="item.type === 'folder'" width="16" height="16" viewBox="0 0 24 24" fill="#e8a838"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" :stroke="getFileIconColor(item.name)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-              <span class="name">{{ item.name }}</span>
-            </div>
-            <template v-if="item.type === 'folder' && isExpanded(item.path) && item.children">
-              <div v-for="child in item.children" :key="child.path" :class="['tree-item', 'nested', { folder: child.type === 'folder' }]" @click="toggleFolder(child)" @dblclick="openFile(child)">
-                <svg v-if="child.type === 'folder'" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: isExpanded(child.path) }"><path d="M9 18l6-6-6-6"/></svg>
-                <span v-else class="spacer"></span>
-                <svg v-if="child.type === 'folder'" width="16" height="16" viewBox="0 0 24 24" fill="#e8a838"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" :stroke="getFileIconColor(child.name)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                <span class="name">{{ child.name }}</span>
-              </div>
-              <template v-for="child in item.children" :key="'sub-' + child.path">
-                <template v-if="child.type === 'folder' && isExpanded(child.path) && child.children">
-                  <div v-for="gc in child.children" :key="gc.path" class="tree-item nested-2" @click="toggleFolder(gc)" @dblclick="openFile(gc)">
-                    <svg v-if="gc.type === 'folder'" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: isExpanded(gc.path) }"><path d="M9 18l6-6-6-6"/></svg>
-                    <span v-else class="spacer"></span>
-                    <svg v-if="gc.type === 'folder'" width="16" height="16" viewBox="0 0 24 24" fill="#e8a838"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" :stroke="getFileIconColor(gc.name)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                    <span class="name">{{ gc.name }}</span>
-                  </div>
-                </template>
-              </template>
-            </template>
-          </template>
+          <FileTreeItem
+            v-for="item in files"
+            :key="item.path"
+            :item="item"
+            :depth="0"
+            :expandedFolders="expandedFolders"
+            @openFile="openFile"
+            @toggleFolder="toggleFolder"
+          />
         </div>
         <div v-else-if="!loading" class="empty-files"><p>{{ t('sidebar.emptyFolder') }}</p></div>
       </div>
@@ -173,13 +150,6 @@ const isExpanded = (path) => expandedFolders.value.has(path)
 .btn-open-folder { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 2px; border-radius: 4px; }
 .btn-open-folder:hover { background: var(--bg-active); color: var(--text-primary); }
 .tree-items { padding-left: 8px; flex: 1; overflow-y: auto; }
-.tree-item { display: flex; align-items: center; gap: 4px; padding: 2px 8px 2px 16px; cursor: pointer; user-select: none; }
-.tree-item:hover { background: var(--bg-hover); }
-.tree-item.nested { padding-left: 32px; }
-.tree-item.nested-2 { padding-left: 48px; }
-.tree-item svg.rotated { transform: rotate(90deg); }
-.spacer { width: 12px; }
-.name { font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .empty-tree { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; color: var(--text-muted); font-size: 13px; }
 .empty-tree svg { opacity: 0.3; margin-bottom: 12px; }
 .empty-tree button { margin-top: 12px; padding: 6px 12px; background: var(--accent-primary); border: none; border-radius: 4px; color: white; font-size: 12px; cursor: pointer; }

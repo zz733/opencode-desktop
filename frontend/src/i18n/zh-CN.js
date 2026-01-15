@@ -48,6 +48,11 @@ export default {
     openFolder: '打开目录',
     showTerminal: '显示终端',
     hideTerminal: '隐藏终端',
+    close: '关闭',
+    closeLeft: '关闭左侧',
+    closeRight: '关闭右侧',
+    closeOthers: '关闭其他',
+    closeAll: '关闭全部',
   },
   settings: {
     title: '设置',

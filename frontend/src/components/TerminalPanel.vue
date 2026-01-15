@@ -241,6 +241,29 @@ watch(activePanel, async (panel) => {
     }
   }
 })
+
+// 执行命令（供外部调用）
+const executeCommand = async (command) => {
+  // 切换到终端面板
+  activePanel.value = 'terminal'
+  
+  // 确保有终端
+  if (terminals.value.length === 0) {
+    await addTerminal()
+  }
+  
+  await nextTick()
+  
+  // 获取当前终端
+  const termData = terminals.value.find(t => t.id === activeTerminalId.value)
+  if (termData) {
+    // 发送命令到终端
+    WriteTerminal(termData.id, command + '\n')
+    termData.term?.focus()
+  }
+}
+
+defineExpose({ executeCommand })
 </script>
 
 <template>

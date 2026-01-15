@@ -48,6 +48,11 @@ export default {
     openFolder: 'Open Folder',
     showTerminal: 'Show Terminal',
     hideTerminal: 'Hide Terminal',
+    close: 'Close',
+    closeLeft: 'Close to the Left',
+    closeRight: 'Close to the Right',
+    closeOthers: 'Close Others',
+    closeAll: 'Close All',
   },
   settings: {
     title: 'Settings',

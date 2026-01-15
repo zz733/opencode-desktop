@@ -42,6 +42,8 @@ export function ReadFileContent(arg1:string):Promise<string>;
 
 export function ResizeTerminal(arg1:number,arg2:number,arg3:number):Promise<void>;
 
+export function RunFile(arg1:string):Promise<string>;
+
 export function SendMessage(arg1:string,arg2:string):Promise<void>;
 
 export function SendMessageWithModel(arg1:string,arg2:string,arg3:string):Promise<void>;
