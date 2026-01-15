@@ -22,6 +22,7 @@ export default {
     askAnything: 'コーディングについて何でも聞いてください',
     you: 'あなた',
     assistant: 'Kiro',
+    cancel: 'キャンセル',
   },
   model: {
     select: 'モデルを選択',

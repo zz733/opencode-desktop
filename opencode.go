@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -146,6 +148,7 @@ func (m *OpenCodeManager) Start() error {
 	if m.CheckConnection() {
 		m.running = true
 		wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "connected")
+		wailsRuntime.EventsEmit(m.app.ctx, "output-log", "OpenCode 服务已在运行")
 		return nil
 	}
 
@@ -155,24 +158,47 @@ func (m *OpenCodeManager) Start() error {
 		return fmt.Errorf("OpenCode 未安装")
 	}
 
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("正在启动 OpenCode: %s serve --port 4096", path))
+
 	// 后台启动 opencode serve (headless 模式)，指定端口 4096
-	m.cmd = exec.Command(path, "serve", "--port", "4096")
+	m.cmd = exec.Command(path, "serve", "--port", "4096", "--print-logs")
 	m.cmd.Env = os.Environ()
+
+	// 捕获输出
+	stdout, _ := m.cmd.StdoutPipe()
+	stderr, _ := m.cmd.StderrPipe()
 
 	// 不显示窗口（静默运行）
 	m.setupHiddenProcess(m.cmd)
 
 	err := m.cmd.Start()
 	if err != nil {
+		wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("启动失败: %v", err))
 		return fmt.Errorf("启动失败: %v", err)
 	}
 
 	m.running = true
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", "OpenCode 进程已启动，等待服务就绪...")
+
+	// 读取输出并发送到前端
+	go m.readOutput(stdout)
+	go m.readOutput(stderr)
 
 	// 等待服务就绪
 	go m.waitForReady()
 
 	return nil
+}
+
+// readOutput 读取进程输出并发送到前端
+func (m *OpenCodeManager) readOutput(r io.Reader) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line != "" {
+			wailsRuntime.EventsEmit(m.app.ctx, "output-log", line)
+		}
+	}
 }
 
 // waitForReady 等待服务就绪
@@ -181,10 +207,15 @@ func (m *OpenCodeManager) waitForReady() {
 	for i := 0; i < maxRetries; i++ {
 		time.Sleep(1 * time.Second)
 		if m.CheckConnection() {
+			wailsRuntime.EventsEmit(m.app.ctx, "output-log", "OpenCode 服务已就绪，连接成功！")
 			wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "connected")
 			return
 		}
+		if i > 0 && i%5 == 0 {
+			wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("等待服务就绪... (%d秒)", i))
+		}
 	}
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", "连接超时，请检查 OpenCode 是否正常运行")
 	wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "timeout")
 }
 

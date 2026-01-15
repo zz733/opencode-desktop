@@ -22,6 +22,7 @@ export default {
     askAnything: '问我任何关于编程的问题',
     you: '你',
     assistant: 'Kiro',
+    cancel: '取消',
   },
   model: {
     select: '选择模型',

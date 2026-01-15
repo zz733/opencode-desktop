@@ -109,12 +109,14 @@ async function installOpenCode() {
 
 // 连接成功后的处理
 async function onConnected() {
+  if (connected.value) return // 防止重复调用
   connected.value = true
   connecting.value = false
   openCodeStatus.value = 'connected'
   await loadSessions()
   setupEventListeners()
   await SubscribeEvents()
+  console.log('OpenCode 连接成功，已订阅事件')
 }
 
 // 监听 OpenCode 状态事件
@@ -182,14 +184,19 @@ async function sendMessage(text) {
 
 function setupEventListeners() {
   EventsOn('server-event', (data) => {
+    console.log('收到 server-event:', data)
     try {
       const event = JSON.parse(data)
       handleEvent(event)
-    } catch (e) {}
+    } catch (e) {
+      console.error('解析事件失败:', e, data)
+    }
   })
 }
 
 function handleEvent(event) {
+  console.log('处理事件:', event.type, event)
+  
   if (event.type === 'message.part.updated') {
     const part = event.properties?.part
     if (!part) return

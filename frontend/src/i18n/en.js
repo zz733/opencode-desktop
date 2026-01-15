@@ -22,6 +22,7 @@ export default {
     askAnything: 'Ask me anything about coding',
     you: 'You',
     assistant: 'Kiro',
+    cancel: 'Cancel',
   },
   model: {
     select: 'Select Model',

@@ -14,7 +14,7 @@ const props = defineProps({
 })
 
 // 面板类型: terminal, problems, output
-const activePanel = ref('terminal')
+const activePanel = ref('output') // 默认显示输出面板
 
 // 多终端支持
 const terminals = ref([]) // { id, name, term, fitAddon, containerRef }
@@ -24,6 +24,7 @@ const terminalContainerRef = ref(null)
 // 问题和输出数据
 const problems = ref([])
 const outputs = ref([])
+const outputRef = ref(null)
 
 const createTerminalTheme = () => ({
   background: '#1a1a1a',
@@ -48,6 +49,25 @@ const createTerminalTheme = () => ({
   brightCyan: '#67e8f9',
   brightWhite: '#ffffff',
 })
+
+// 添加输出日志
+const addOutput = (line) => {
+  const timestamp = new Date().toLocaleTimeString()
+  outputs.value.push(`[${timestamp}] ${line}`)
+  // 自动滚动到底部
+  nextTick(() => {
+    if (outputRef.value) {
+      outputRef.value.scrollTop = outputRef.value.scrollHeight
+    }
+  })
+}
+
+// 监听输出日志事件
+const setupOutputListener = () => {
+  EventsOn('output-log', (line) => {
+    addOutput(line)
+  })
+}
 
 // 创建新终端
 const addTerminal = async () => {
@@ -170,14 +190,17 @@ const handleResize = () => {
 
 onMounted(async () => {
   window.addEventListener('resize', handleResize)
+  // 监听输出日志
+  setupOutputListener()
   // 自动创建第一个终端
-  if (props.visible) {
+  if (props.visible && activePanel.value === 'terminal') {
     await addTerminal()
   }
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  EventsOff('output-log')
   // 清理所有终端
   terminals.value.forEach(termData => {
     EventsOff(`terminal-output-${termData.id}`)
@@ -205,13 +228,17 @@ watch(() => props.visible, async (visible) => {
 })
 
 // 切换面板类型时
-watch(activePanel, (panel) => {
+watch(activePanel, async (panel) => {
   if (panel === 'terminal') {
-    nextTick(() => {
-      handleResize()
-      const termData = terminals.value.find(t => t.id === activeTerminalId.value)
-      termData?.term?.focus()
-    })
+    if (terminals.value.length === 0) {
+      await addTerminal()
+    } else {
+      nextTick(() => {
+        handleResize()
+        const termData = terminals.value.find(t => t.id === activeTerminalId.value)
+        termData?.term?.focus()
+      })
+    }
   }
 })
 </script>
@@ -281,7 +308,7 @@ watch(activePanel, (panel) => {
       </div>
       
       <!-- 输出面板 -->
-      <div v-show="activePanel === 'output'" class="output-panel">
+      <div v-show="activePanel === 'output'" class="output-panel" ref="outputRef">
         <div v-if="outputs.length === 0" class="empty-state">
           {{ t('panel.noOutput') }}
         </div>
