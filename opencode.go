@@ -155,8 +155,8 @@ func (m *OpenCodeManager) Start() error {
 		return fmt.Errorf("OpenCode 未安装")
 	}
 
-	// 后台启动 opencode serve (headless 模式)
-	m.cmd = exec.Command(path, "serve")
+	// 后台启动 opencode serve (headless 模式)，指定端口 4096
+	m.cmd = exec.Command(path, "serve", "--port", "4096")
 	m.cmd.Env = os.Environ()
 
 	// 不显示窗口（静默运行）
