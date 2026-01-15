@@ -11,11 +11,18 @@ const props = defineProps({
   currentSessionId: String
 })
 
-const emit = defineEmits(['openFolder', 'update:workDir', 'activeFileChange'])
+const emit = defineEmits(['openFolder', 'update:workDir', 'activeFileChange', 'toggleMaximize'])
 
 // 打开的文件
 const openFiles = ref([])
 const activeFile = ref(null)
+const isMaximized = ref(false)
+
+// 双击标签栏最大化/还原
+const handleTabDoubleClick = () => {
+  isMaximized.value = !isMaximized.value
+  emit('toggleMaximize', isMaximized.value)
+}
 
 // Diff 视图
 const showDiff = ref(false)
@@ -105,6 +112,11 @@ const closeFileTab = (file) => {
         ? openFiles.value[Math.min(index, openFiles.value.length - 1)] 
         : null
     }
+    // 如果没有打开的文件了，退出最大化
+    if (openFiles.value.length === 0 && isMaximized.value) {
+      isMaximized.value = false
+      emit('toggleMaximize', false)
+    }
   }
 }
 
@@ -156,7 +168,7 @@ defineExpose({ openFile, activeFile, openFileWithDiff, reloadCurrentFile })
     
     <!-- 正常编辑器视图 -->
     <template v-else-if="openFiles.length > 0">
-      <div class="editor-tabs">
+      <div class="editor-tabs" @dblclick="handleTabDoubleClick">
         <div 
           v-for="file in openFiles" 
           :key="file.path"
@@ -166,6 +178,15 @@ defineExpose({ openFile, activeFile, openFileWithDiff, reloadCurrentFile })
           <span class="tab-name">{{ file.name }}</span>
           <button class="tab-close" @click.stop="closeFileTab(file)">×</button>
         </div>
+        <div class="tabs-spacer"></div>
+        <button class="btn-maximize" @click="handleTabDoubleClick" :title="isMaximized ? '还原' : '最大化'">
+          <svg v-if="!isMaximized" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+          </svg>
+        </button>
       </div>
       <div class="editor-content">
         <CodeEditor 
@@ -223,6 +244,10 @@ defineExpose({ openFile, activeFile, openFileWithDiff, reloadCurrentFile })
 .tab-close { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 0 2px; border-radius: 2px; opacity: 0; }
 .tab:hover .tab-close, .tab.active .tab-close { opacity: 1; }
 .tab-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.tabs-spacer { flex: 1; }
+.btn-maximize { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 4px 8px; margin-right: 4px; border-radius: 4px; display: flex; align-items: center; }
+.btn-maximize:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 .editor-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 .editor-placeholder { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--text-muted); }

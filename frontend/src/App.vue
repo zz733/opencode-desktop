@@ -42,6 +42,9 @@ const sidebarWidth = ref(260)
 const chatWidth = ref(420)
 const terminalHeight = ref(200)
 
+// 编辑器最大化状态
+const editorMaximized = ref(false)
+
 // 拖动状态
 const isDragging = ref(false)
 
@@ -112,6 +115,11 @@ const handleRevertEdit = (editId) => {
   editorAreaRef.value?.reloadCurrentFile()
 }
 
+// 编辑器最大化切换
+const handleEditorMaximize = (maximized) => {
+  editorMaximized.value = maximized
+}
+
 // 拖动处理
 const startDrag = (type) => (e) => {
   isDragging.value = true
@@ -140,11 +148,15 @@ const startDrag = (type) => (e) => {
 
 <template>
   <div class="app" :class="{ dragging: isDragging, mac: isMac }">
+    <!-- Mac 标题栏区域（用于拖动窗口） -->
+    <div v-if="isMac" class="mac-titlebar" style="--wails-draggable:drag"></div>
+    
     <TitleBar v-if="!isMac" />
     
     <div class="main">
       <!-- 活动栏 -->
       <ActivityBar 
+        v-show="!editorMaximized"
         :activeTab="activeTab" 
         :showSidebar="showSidebar"
         :showSettings="showSettings"
@@ -152,7 +164,7 @@ const startDrag = (type) => (e) => {
       />
       
       <!-- 侧边栏 -->
-      <div v-if="showSidebar" class="sidebar-container" :style="{ width: sidebarWidth + 'px' }">
+      <div v-if="showSidebar && !editorMaximized" class="sidebar-container" :style="{ width: sidebarWidth + 'px' }">
         <SettingsPanel v-if="showSettings" @close="showSettings = false; showSidebar = false" />
         <Sidebar v-else :activeTab="activeTab" :workDir="workDir" @openFile="handleOpenFile" @update:workDir="handleWorkDirChange" />
         <div class="resize-handle" @mousedown="startDrag('sidebar')"></div>
@@ -165,34 +177,39 @@ const startDrag = (type) => (e) => {
           :currentSessionId="currentSession?.id"
           @update:workDir="handleWorkDirChange"
           @activeFileChange="handleActiveFileChange"
+          @toggleMaximize="handleEditorMaximize"
         />
         
-        <div v-if="showTerminal" class="resize-handle-h" @mousedown="startDrag('terminal')"></div>
-        <div v-if="showTerminal" class="terminal-wrapper" :style="{ height: terminalHeight + 'px' }">
-          <TerminalPanel :visible="showTerminal" />
-        </div>
+        <template v-if="!editorMaximized">
+          <div v-if="showTerminal" class="resize-handle-h" @mousedown="startDrag('terminal')"></div>
+          <div v-if="showTerminal" class="terminal-wrapper" :style="{ height: terminalHeight + 'px' }">
+            <TerminalPanel :visible="showTerminal" />
+          </div>
+        </template>
       </div>
       
       <!-- 聊天面板 -->
-      <div class="resize-handle-chat" @mousedown="startDrag('chat')"></div>
-      <div class="chat-container" :style="{ width: chatWidth + 'px' }">
-        <ChatPanel
-          :sessions="sessions"
-          :currentSession="currentSession"
-          :messages="messages"
-          :sending="sending"
-          :currentModel="currentModel"
-          :models="models"
-          :connected="connected"
-          :connecting="connecting"
-          @selectSession="handleSelectSession"
-          @send="sendMessage"
-          @cancel="cancelMessage"
-          @update:currentModel="setModel"
-          @compare="handleCompare"
-          @revertEdit="handleRevertEdit"
-        />
-      </div>
+      <template v-if="!editorMaximized">
+        <div class="resize-handle-chat" @mousedown="startDrag('chat')"></div>
+        <div class="chat-container" :style="{ width: chatWidth + 'px' }">
+          <ChatPanel
+            :sessions="sessions"
+            :currentSession="currentSession"
+            :messages="messages"
+            :sending="sending"
+            :currentModel="currentModel"
+            :models="models"
+            :connected="connected"
+            :connecting="connecting"
+            @selectSession="handleSelectSession"
+            @send="sendMessage"
+            @cancel="cancelMessage"
+            @update:currentModel="setModel"
+            @compare="handleCompare"
+            @revertEdit="handleRevertEdit"
+          />
+        </div>
+      </template>
     </div>
     
     <StatusBar 
@@ -245,13 +262,15 @@ body {
 .app.dragging { cursor: col-resize; }
 .app.dragging * { pointer-events: none; }
 
-.main { flex: 1; display: flex; overflow: hidden; }
+/* Mac 标题栏 */
+.mac-titlebar {
+  height: 38px;
+  background: var(--bg-surface);
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-default);
+}
 
-/* Mac 上给顶部留出空间避开红黄绿按钮 */
-.app.mac .activity-bar { padding-top: 34px; }
-.app.mac .sidebar-container { padding-top: 38px; }
-.app.mac .editor-wrapper { padding-top: 38px; }
-.app.mac .chat-container { padding-top: 38px; }
+.main { flex: 1; display: flex; overflow: hidden; }
 
 .sidebar-container {
   position: relative;
