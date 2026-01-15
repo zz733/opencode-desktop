@@ -26,7 +26,15 @@ export function GetSessions():Promise<Array<main.Session>>;
 
 export function GetTerminals():Promise<Array<number>>;
 
+export function GetWorkDir():Promise<string>;
+
 export function InstallOpenCode():Promise<void>;
+
+export function ListDir(arg1:string):Promise<Array<main.FileInfo>>;
+
+export function OpenFolder():Promise<string>;
+
+export function ReadFileContent(arg1:string):Promise<string>;
 
 export function ResizeTerminal(arg1:number,arg2:number,arg3:number):Promise<void>;
 
@@ -34,12 +42,24 @@ export function SendMessage(arg1:string,arg2:string):Promise<void>;
 
 export function SendMessageWithModel(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function SetActiveFile(arg1:string,arg2:string):Promise<void>;
+
+export function SetOpenCodeWorkDir(arg1:string):Promise<void>;
+
 export function SetServerURL(arg1:string):Promise<void>;
+
+export function SetWorkDir(arg1:string):Promise<void>;
 
 export function StartOpenCode():Promise<void>;
 
 export function StopOpenCode():Promise<void>;
 
 export function SubscribeEvents():Promise<void>;
+
+export function UnwatchFile(arg1:string):Promise<void>;
+
+export function WatchFile(arg1:string):Promise<void>;
+
+export function WriteFileContent(arg1:string,arg2:string):Promise<void>;
 
 export function WriteTerminal(arg1:number,arg2:string):Promise<void>;

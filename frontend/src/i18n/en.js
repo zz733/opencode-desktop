@@ -10,6 +10,8 @@ export default {
     search: 'Search',
     git: 'Source Control',
     settings: 'Settings',
+    noFolder: 'No folder opened',
+    emptyFolder: 'Folder is empty',
   },
   chat: {
     newSession: 'New Session',
@@ -43,6 +45,7 @@ export default {
   },
   editor: {
     openFile: 'Open a file to start editing',
+    openFolder: 'Open Folder',
     showTerminal: 'Show Terminal',
     hideTerminal: 'Hide Terminal',
   },

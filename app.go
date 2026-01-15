@@ -16,11 +16,14 @@ import (
 
 // App struct
 type App struct {
-	ctx        context.Context
-	serverURL  string
-	httpClient *http.Client
-	termMgr    *TerminalManager
-	openCode   *OpenCodeManager
+	ctx           context.Context
+	serverURL     string
+	httpClient    *http.Client
+	termMgr       *TerminalManager
+	openCode      *OpenCodeManager
+	fileMgr       *FileManager
+	sseCancel     context.CancelFunc // 用于取消 SSE 订阅
+	sseSubscribed bool
 }
 
 // NewApp creates a new App application struct
@@ -33,6 +36,7 @@ func NewApp() *App {
 	}
 	app.termMgr = NewTerminalManager(app)
 	app.openCode = NewOpenCodeManager(app)
+	app.fileMgr = NewFileManager(app)
 	return app
 }
 
@@ -128,17 +132,62 @@ func (a *App) SendMessage(sessionID, content string) error {
 
 // SubscribeEvents 订阅服务器事件
 func (a *App) SubscribeEvents() error {
+	// 取消之前的订阅
+	if a.sseCancel != nil {
+		runtime.EventsEmit(a.ctx, "output-log", "取消旧的事件订阅...")
+		a.sseCancel()
+		a.sseCancel = nil
+		time.Sleep(100 * time.Millisecond) // 等待旧连接关闭
+	}
+
+	// 创建新的取消上下文
+	ctx, cancel := context.WithCancel(context.Background())
+	a.sseCancel = cancel
+	a.sseSubscribed = true
+
+	// 保存当前的 serverURL，避免在循环中被修改
+	serverURL := a.serverURL
+
 	go func() {
 		for {
-			resp, err := a.httpClient.Get(a.serverURL + "/event")
+			select {
+			case <-ctx.Done():
+				runtime.EventsEmit(a.ctx, "output-log", "事件订阅已取消")
+				return
+			default:
+			}
+
+			url := serverURL + "/event"
+			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("订阅事件: %s", url))
+
+			req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 			if err != nil {
+				runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("创建请求失败: %v", err))
+				time.Sleep(3 * time.Second)
+				continue
+			}
+
+			resp, err := a.httpClient.Do(req)
+			if err != nil {
+				if ctx.Err() != nil {
+					return // 上下文已取消
+				}
+				runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("订阅失败: %v", err))
 				runtime.EventsEmit(a.ctx, "connection-error", err.Error())
 				time.Sleep(3 * time.Second)
 				continue
 			}
 
+			runtime.EventsEmit(a.ctx, "output-log", "事件订阅成功，等待事件...")
 			reader := bufio.NewReader(resp.Body)
 			for {
+				select {
+				case <-ctx.Done():
+					resp.Body.Close()
+					return
+				default:
+				}
+
 				line, err := reader.ReadString('\n')
 				if err != nil {
 					resp.Body.Close()
@@ -151,7 +200,12 @@ func (a *App) SubscribeEvents() error {
 					runtime.EventsEmit(a.ctx, "server-event", data)
 				}
 			}
-			time.Sleep(1 * time.Second)
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Second):
+			}
 		}
 	}()
 	return nil
@@ -283,6 +337,37 @@ func (a *App) CancelSession(sessionID string) error {
 	return nil
 }
 
+// SetActiveFile 设置当前活动文件（注入上下文）
+func (a *App) SetActiveFile(sessionID, filePath string) error {
+	if sessionID == "" || filePath == "" {
+		return nil
+	}
+	
+	// 使用 noReply: true 注入上下文，不触发 AI 响应
+	payload := map[string]interface{}{
+		"noReply": true,
+		"parts": []map[string]interface{}{
+			{"type": "text", "text": fmt.Sprintf("[Current active file: %s]", filePath)},
+		},
+	}
+	body, _ := json.Marshal(payload)
+
+	url := fmt.Sprintf("%s/session/%s/prompt", a.serverURL, sessionID)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("设置活动文件失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	return nil
+}
+
 // CreateTerminal 创建新终端
 func (a *App) CreateTerminal() (int, error) {
 	return a.termMgr.CreateTerminal()
@@ -333,4 +418,73 @@ func (a *App) StopOpenCode() {
 // AutoStartOpenCode 自动检测并启动 OpenCode
 func (a *App) AutoStartOpenCode() error {
 	return a.openCode.AutoStart()
+}
+
+// SetOpenCodeWorkDir 设置 OpenCode 工作目录并重启
+func (a *App) SetOpenCodeWorkDir(dir string) error {
+	a.openCode.SetWorkDir(dir)
+	// 同时更新文件管理器的根目录
+	a.fileMgr.SetRootDir(dir)
+	// 重启 OpenCode 以应用新目录
+	return a.openCode.Restart()
+}
+
+
+// --- 文件管理 ---
+
+// SetWorkDir 设置工作目录
+func (a *App) SetWorkDir(dir string) error {
+	return a.fileMgr.SetRootDir(dir)
+}
+
+// GetWorkDir 获取工作目录
+func (a *App) GetWorkDir() string {
+	return a.fileMgr.GetRootDir()
+}
+
+// ListDir 列出目录内容
+func (a *App) ListDir(dir string) ([]*FileInfo, error) {
+	return a.fileMgr.ListDir(dir)
+}
+
+// ReadFile 读取文件内容
+func (a *App) ReadFileContent(path string) (string, error) {
+	return a.fileMgr.ReadFile(path)
+}
+
+// WriteFile 写入文件内容
+func (a *App) WriteFileContent(path, content string) error {
+	return a.fileMgr.WriteFile(path, content)
+}
+
+// WatchFile 监听文件变化
+func (a *App) WatchFile(path string) error {
+	return a.fileMgr.WatchFile(path)
+}
+
+// UnwatchFile 取消监听文件
+func (a *App) UnwatchFile(path string) {
+	a.fileMgr.UnwatchFile(path)
+}
+
+// OpenFolder 打开文件夹选择对话框并设置为工作目录
+func (a *App) OpenFolder() (string, error) {
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择工作目录",
+	})
+	if err != nil {
+		return "", err
+	}
+	if dir != "" {
+		// 设置文件管理器根目录
+		a.fileMgr.SetRootDir(dir)
+		// 设置 OpenCode 工作目录（会自动更新 serverURL）
+		a.openCode.SetWorkDir(dir)
+		// 更新 app 的 serverURL
+		a.serverURL = fmt.Sprintf("http://localhost:%d", a.openCode.GetCurrentPort())
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("服务器地址已更新: %s", a.serverURL))
+		// 启动该目录的 OpenCode 实例（如果已运行则复用）
+		go a.openCode.StartForDir(dir)
+	}
+	return dir, nil
 }

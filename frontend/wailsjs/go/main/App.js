@@ -50,8 +50,24 @@ export function GetTerminals() {
   return window['go']['main']['App']['GetTerminals']();
 }
 
+export function GetWorkDir() {
+  return window['go']['main']['App']['GetWorkDir']();
+}
+
 export function InstallOpenCode() {
   return window['go']['main']['App']['InstallOpenCode']();
+}
+
+export function ListDir(arg1) {
+  return window['go']['main']['App']['ListDir'](arg1);
+}
+
+export function OpenFolder() {
+  return window['go']['main']['App']['OpenFolder']();
+}
+
+export function ReadFileContent(arg1) {
+  return window['go']['main']['App']['ReadFileContent'](arg1);
 }
 
 export function ResizeTerminal(arg1, arg2, arg3) {
@@ -66,8 +82,20 @@ export function SendMessageWithModel(arg1, arg2, arg3) {
   return window['go']['main']['App']['SendMessageWithModel'](arg1, arg2, arg3);
 }
 
+export function SetActiveFile(arg1, arg2) {
+  return window['go']['main']['App']['SetActiveFile'](arg1, arg2);
+}
+
+export function SetOpenCodeWorkDir(arg1) {
+  return window['go']['main']['App']['SetOpenCodeWorkDir'](arg1);
+}
+
 export function SetServerURL(arg1) {
   return window['go']['main']['App']['SetServerURL'](arg1);
+}
+
+export function SetWorkDir(arg1) {
+  return window['go']['main']['App']['SetWorkDir'](arg1);
 }
 
 export function StartOpenCode() {
@@ -80,6 +108,18 @@ export function StopOpenCode() {
 
 export function SubscribeEvents() {
   return window['go']['main']['App']['SubscribeEvents']();
+}
+
+export function UnwatchFile(arg1) {
+  return window['go']['main']['App']['UnwatchFile'](arg1);
+}
+
+export function WatchFile(arg1) {
+  return window['go']['main']['App']['WatchFile'](arg1);
+}
+
+export function WriteFileContent(arg1, arg2) {
+  return window['go']['main']['App']['WriteFileContent'](arg1, arg2);
 }
 
 export function WriteTerminal(arg1, arg2) {

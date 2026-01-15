@@ -6,6 +6,14 @@ import {
   CancelSession
 } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsEmit } from '../../wailsjs/runtime/runtime'
+import { i18n } from '../i18n'
+
+// 语言名称映射
+const languageNames = {
+  'zh-CN': '中文',
+  'en': 'English',
+  'ja': '日本語'
+}
 
 // 输出日志到 OUTPUT 面板
 function log(message) {
@@ -22,6 +30,15 @@ const sending = ref(false)
 // 从 localStorage 读取上次选择的模型
 const currentModel = ref(localStorage.getItem('selectedModel') || 'opencode/claude-opus-4-5')
 const openCodeStatus = ref(null) // 'not-installed', 'installing', 'starting', 'connected'
+const currentWorkDir = ref('') // 当前工作目录
+
+// 目录 -> 会话ID 的映射
+const dirSessionMap = ref(JSON.parse(localStorage.getItem('dirSessionMap') || '{}'))
+
+// 保存映射到 localStorage
+function saveDirSessionMap() {
+  localStorage.setItem('dirSessionMap', JSON.stringify(dirSessionMap.value))
+}
 
 const models = [
   { id: 'opencode/big-pickle', name: 'Big Pickle', free: true },
@@ -140,8 +157,11 @@ async function onConnected() {
   log('正在加载会话列表...')
   await loadSessions()
   setupEventListeners()
+  
+  // 只在首次连接时订阅事件
+  log('订阅服务器事件...')
   await SubscribeEvents()
-  log('OpenCode 连接成功，已订阅事件')
+  log('OpenCode 连接成功')
 }
 
 // 监听 OpenCode 状态事件
@@ -181,10 +201,26 @@ async function createSession() {
     const session = await CreateSession()
     sessions.value.unshift(session)
     selectSession(session)
+    
+    // 绑定当前目录到新会话
+    if (currentWorkDir.value) {
+      dirSessionMap.value[currentWorkDir.value] = session.id
+      saveDirSessionMap()
+    }
+    
     return session
   } catch (e) {
     console.error('创建会话失败:', e)
   }
+}
+
+// 当前活动文件路径
+const activeFilePath = ref('')
+
+// 设置活动文件
+function setActiveFile(path) {
+  activeFilePath.value = path
+  log(`当前活动文件: ${path}`)
 }
 
 async function sendMessage(text) {
@@ -203,12 +239,24 @@ async function sendMessage(text) {
   }
   
   sending.value = true
+  // 界面显示原始消息
   messages.value.push({ role: 'user', content: text })
   messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {} })
   
+  // 根据当前语言添加提示（只发送给 AI，不显示在界面）
+  const currentLocale = i18n.global.locale.value
+  const langName = languageNames[currentLocale] || 'English'
+  
+  // 构建消息，包含当前文件上下文
+  let messageToSend = `[Please respond in ${langName}]`
+  if (activeFilePath.value) {
+    messageToSend += `\n[Current active file: ${activeFilePath.value}]`
+  }
+  messageToSend += `\n\n${text}`
+  
   try {
-    console.log('calling SendMessageWithModel:', session.id, text, currentModel.value)
-    await SendMessageWithModel(session.id, text, currentModel.value)
+    console.log('calling SendMessageWithModel:', session.id, currentModel.value)
+    await SendMessageWithModel(session.id, messageToSend, currentModel.value)
     setTimeout(() => { if (sending.value) sending.value = false }, 60000)
   } catch (e) {
     console.error('SendMessageWithModel error:', e)
@@ -217,7 +265,12 @@ async function sendMessage(text) {
   }
 }
 
+let eventListenersSetup = false
+
 function setupEventListeners() {
+  if (eventListenersSetup) return
+  eventListenersSetup = true
+  
   EventsOn('server-event', (data) => {
     console.log('收到 server-event:', data)
     try {
@@ -229,22 +282,51 @@ function setupEventListeners() {
   })
 }
 
+// 记录当前正在处理的消息 ID，避免重复处理
+let currentAssistantMessageId = null
+
 function handleEvent(event) {
-  console.log('处理事件:', event.type, event)
+  console.log('处理事件:', event.type, JSON.stringify(event.properties || {}).substring(0, 200))
   
   if (event.type === 'message.part.updated') {
     const part = event.properties?.part
+    const messageInfo = event.properties?.message
+    
     if (!part) return
+    
+    // 检查消息角色 - 只处理 assistant 消息
+    if (messageInfo?.role && messageInfo.role !== 'assistant') {
+      console.log('跳过非 assistant 消息:', messageInfo.role)
+      return
+    }
+    
+    // 如果有消息 ID，检查是否是新的 assistant 消息
+    if (messageInfo?.id) {
+      if (currentAssistantMessageId && messageInfo.id !== currentAssistantMessageId) {
+        // 不同的消息 ID，可能是用户消息的回显
+        if (messageInfo.role !== 'assistant') {
+          console.log('跳过不同 ID 的非 assistant 消息')
+          return
+        }
+      }
+      currentAssistantMessageId = messageInfo.id
+    }
+    
     const last = messages.value[messages.value.length - 1]
     if (!last || last.role !== 'assistant') return
     
-    if (part.type === 'text' && part.text) {
-      last.content = part.text.replace(/^\n+/, '')
+    if (part.type === 'text' && part.text !== undefined) {
+      // 过滤掉可能是用户消息的内容（包含语言提示前缀）
+      const text = part.text || ''
+      if (text.includes('[Please respond in')) {
+        console.log('跳过包含语言提示的文本（可能是用户消息回显）')
+        return
+      }
+      last.content = text.replace(/^\n+/, '')
     } else if (part.type === 'reasoning' && part.text) {
       last.reasoning = part.text
     } else if (part.type === 'tool') {
       if (!last.tools) last.tools = {}
-      // 提取工具信息，包括输入参数
       const toolInfo = {
         id: part.id,
         name: part.tool,
@@ -261,6 +343,7 @@ function handleEvent(event) {
     const status = event.properties?.status
     if (info?.time?.completed || info?.finish || status === 'idle') {
       sending.value = false
+      currentAssistantMessageId = null // 重置消息 ID
     }
   }
 }
@@ -285,6 +368,71 @@ async function cancelMessage() {
   }
 }
 
+// 切换工作目录时切换或创建会话
+async function switchWorkDir(dir) {
+  if (!dir) return
+  
+  // 即使是同一个目录，也需要确保连接正常
+  const isSameDir = dir === currentWorkDir.value
+  currentWorkDir.value = dir
+  
+  if (!isSameDir) {
+    log(`工作目录已切换到: ${dir}`)
+    
+    // 重置连接状态，等待新目录的 OpenCode 实例就绪
+    connecting.value = true
+    connected.value = false
+    messages.value = []
+  }
+  
+  // 轮询等待连接
+  let retries = 0
+  const maxRetries = 30
+  
+  while (retries < maxRetries) {
+    try {
+      const status = await GetOpenCodeStatus()
+      log(`检查连接状态: connected=${status.connected}, port=${status.port}, workDir=${status.workDir}`)
+      
+      if (status.connected && status.workDir === dir) {
+        connected.value = true
+        connecting.value = false
+        log(`已连接到 ${dir} 的 OpenCode (端口 ${status.port})`)
+        
+        // 重新加载会话列表
+        await loadSessions()
+        
+        // 重新订阅事件（会自动取消旧的订阅）
+        log('重新订阅事件...')
+        await SubscribeEvents()
+        
+        // 检查该目录是否有绑定的会话
+        const sessionId = dirSessionMap.value[dir]
+        if (sessionId) {
+          const existingSession = sessions.value.find(s => s.id === sessionId)
+          if (existingSession) {
+            log(`切换到目录 ${dir} 的已有会话: ${existingSession.id}`)
+            selectSession(existingSession)
+            return
+          }
+        }
+        
+        // 没有绑定的会话，创建新会话
+        log(`为目录 ${dir} 创建新会话`)
+        await createSession()
+        return
+      }
+    } catch (e) {
+      log(`连接检查出错: ${e}`)
+    }
+    retries++
+    await new Promise(r => setTimeout(r, 1000))
+  }
+  
+  connecting.value = false
+  log('连接超时')
+}
+
 export function useOpenCode() {
   // 初始化时设置事件监听
   setupOpenCodeEvents()
@@ -299,12 +447,16 @@ export function useOpenCode() {
     currentModel,
     models,
     openCodeStatus,
+    currentWorkDir,
+    activeFilePath,
     autoConnect,
     installOpenCode,
     selectSession,
     createSession,
     sendMessage,
     setModel,
-    cancelMessage
+    cancelMessage,
+    switchWorkDir,
+    setActiveFile
   }
 }

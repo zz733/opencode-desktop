@@ -10,6 +10,8 @@ export default {
     search: '搜索',
     git: '源代码管理',
     settings: '设置',
+    noFolder: '未打开文件夹',
+    emptyFolder: '文件夹为空',
   },
   chat: {
     newSession: '新会话',
@@ -43,6 +45,7 @@ export default {
   },
   editor: {
     openFile: '打开文件开始编辑',
+    openFolder: '打开目录',
     showTerminal: '显示终端',
     hideTerminal: '隐藏终端',
   },

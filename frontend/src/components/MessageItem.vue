@@ -9,6 +9,16 @@ const props = defineProps({
   isLoading: Boolean
 })
 
+// 过滤掉语言提示和活动文件提示
+const filteredContent = computed(() => {
+  if (!props.message.content) return ''
+  // 移除 [Please respond in xxx] 和 [Current active file: xxx] 这样的提示
+  return props.message.content
+    .replace(/^\[Please respond in [^\]]+\]\s*/i, '')
+    .replace(/^\[Current active file: [^\]]+\]\s*/i, '')
+    .trim()
+})
+
 // 工具图标映射 - 根据状态返回不同图标
 const getToolIcon = (tool) => {
   if (tool.status === 'running' || tool.status === 'pending') {
@@ -179,12 +189,12 @@ const formatToolInput = (tool) => {
       </div>
       
       <!-- 正文内容 -->
-      <div class="text" v-if="message.content || isLoading">
-        <template v-if="isLoading && !message.content">
+      <div class="text" v-if="filteredContent || isLoading">
+        <template v-if="isLoading && !filteredContent">
           <span class="working-dots">thinking</span>
         </template>
         <template v-else>
-          <pre>{{ message.content }}</pre>
+          <pre>{{ filteredContent }}</pre>
         </template>
       </div>
     </div>
