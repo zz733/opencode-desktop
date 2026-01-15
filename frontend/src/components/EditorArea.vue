@@ -173,7 +173,8 @@ defineExpose({ openFile, activeFile, openFileWithDiff, reloadCurrentFile })
           :key="file.path"
           v-show="activeFile?.path === file.path"
           :ref="el => setEditorRef(file.path, el)"
-          :file="file" 
+          :file="file"
+          :sessionId="props.currentSessionId"
         />
       </div>
     </template>

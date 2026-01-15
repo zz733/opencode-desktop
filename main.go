@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -16,6 +17,9 @@ var assets embed.FS
 func main() {
 	// Create an instance of the app structure
 	app := NewApp()
+
+	// Windows 使用无边框窗口（自定义标题栏），Mac 使用系统标题栏
+	frameless := runtime.GOOS == "windows"
 
 	// Create application with options
 	err := wails.Run(&options.App{
@@ -54,8 +58,7 @@ func main() {
 			Theme:                             windows.Dark,
 			DisableFramelessWindowDecorations: false,
 		},
-		// Windows 使用无边框，Mac 使用系统标题栏
-		Frameless: true,
+		Frameless: frameless,
 	})
 
 	if err != nil {

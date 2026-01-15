@@ -368,6 +368,102 @@ func (a *App) SetActiveFile(sessionID, filePath string) error {
 	return nil
 }
 
+// CodeCompletion 代码补全请求
+func (a *App) CodeCompletion(sessionID, code, language, filename string) (string, error) {
+	// 使用更简洁的 prompt，让 AI 只返回补全内容
+	prompt := fmt.Sprintf(`You are a code completion assistant. Complete the following %s code.
+IMPORTANT: Only output the completion text that should be inserted at the cursor position. No explanation, no markdown, no code blocks.
+If no completion is needed, output nothing.
+
+File: %s
+Code before cursor:
+%s
+
+Completion:`, language, filename, code)
+
+	payload := map[string]interface{}{
+		"parts": []map[string]interface{}{
+			{"type": "text", "text": prompt},
+		},
+	}
+	body, _ := json.Marshal(payload)
+
+	// 使用同步 prompt 接口，添加 Accept header
+	url := fmt.Sprintf("%s/session/%s/prompt", a.serverURL, sessionID)
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("请求代码补全: %s", url))
+	
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("创建补全请求失败: %v", err))
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("补全请求失败: %v", err))
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	// 读取响应体
+	respBody, _ := io.ReadAll(resp.Body)
+	
+	// 检查是否返回了 HTML（说明 API 不支持这个端点）
+	if strings.HasPrefix(string(respBody), "<!") || strings.HasPrefix(string(respBody), "<html") {
+		runtime.EventsEmit(a.ctx, "output-log", "补全 API 返回了 HTML，可能不支持同步 prompt 接口")
+		return "", fmt.Errorf("API 返回了 HTML 而不是 JSON")
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("补全响应状态: %d, 内容: %s", resp.StatusCode, string(respBody[:min(200, len(respBody))])))
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("请求失败: %d", resp.StatusCode)
+	}
+
+	// 解析响应
+	var result struct {
+		Parts []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"parts"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("解析补全响应失败: %v", err))
+		return "", err
+	}
+
+	// 提取文本内容
+	for _, part := range result.Parts {
+		if part.Type == "text" && part.Text != "" {
+			// 清理返回的代码
+			text := strings.TrimSpace(part.Text)
+			// 移除可能的 markdown 代码块标记
+			if strings.HasPrefix(text, "```") {
+				lines := strings.Split(text, "\n")
+				if len(lines) > 2 {
+					// 移除首尾的 ``` 行
+					text = strings.Join(lines[1:len(lines)-1], "\n")
+				}
+			}
+			text = strings.TrimSpace(text)
+			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("补全结果: %s", text[:min(100, len(text))]))
+			return text, nil
+		}
+	}
+
+	return "", nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // CreateTerminal 创建新终端
 func (a *App) CreateTerminal() (int, error) {
 	return a.termMgr.CreateTerminal()

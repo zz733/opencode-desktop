@@ -18,6 +18,10 @@ export function CloseTerminal(arg1) {
   return window['go']['main']['App']['CloseTerminal'](arg1);
 }
 
+export function CodeCompletion(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CodeCompletion'](arg1, arg2, arg3, arg4);
+}
+
 export function CreateSession() {
   return window['go']['main']['App']['CreateSession']();
 }

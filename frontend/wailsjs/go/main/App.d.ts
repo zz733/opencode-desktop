@@ -10,6 +10,8 @@ export function CheckConnection():Promise<boolean>;
 
 export function CloseTerminal(arg1:number):Promise<void>;
 
+export function CodeCompletion(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
+
 export function CreateSession():Promise<main.Session>;
 
 export function CreateTerminal():Promise<number>;

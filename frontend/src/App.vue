@@ -244,9 +244,14 @@ body {
 .app { height: 100vh; display: flex; flex-direction: column; }
 .app.dragging { cursor: col-resize; }
 .app.dragging * { pointer-events: none; }
-.app.mac .main { padding-top: 28px; }
 
 .main { flex: 1; display: flex; overflow: hidden; }
+
+/* Mac 上给顶部留出空间避开红黄绿按钮 */
+.app.mac .activity-bar { padding-top: 34px; }
+.app.mac .sidebar-container { padding-top: 38px; }
+.app.mac .editor-wrapper { padding-top: 38px; }
+.app.mac .chat-container { padding-top: 38px; }
 
 .sidebar-container {
   position: relative;

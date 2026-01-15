@@ -6,7 +6,7 @@ import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
-import { ReadFileContent, WriteFileContent, WatchFile, UnwatchFile } from '../../wailsjs/go/main/App'
+import { ReadFileContent, WriteFileContent, WatchFile, UnwatchFile, CodeCompletion } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
 import { useFileEdits } from '../composables/useFileEdits'
 
@@ -21,7 +21,10 @@ self.MonacoEnvironment = {
   }
 }
 
-const props = defineProps({ file: Object })
+const props = defineProps({ 
+  file: Object,
+  sessionId: String
+})
 const emit = defineEmits(['close', 'save'])
 
 const { addEdit } = useFileEdits()
@@ -34,11 +37,16 @@ const loading = ref(false)
 const saving = ref(false)
 const modified = ref(false)
 
+// AI 补全状态
+const completing = ref(false)
+const ghostText = ref('')
+const ghostDecoration = ref([])
+
 const getLanguage = (filename) => {
   const ext = filename?.split('.').pop()?.toLowerCase()
   const langMap = {
     'go': 'go', 'js': 'javascript', 'jsx': 'javascript', 'ts': 'typescript', 'tsx': 'typescript',
-    'vue': 'html', 'html': 'html', 'css': 'css', 'scss': 'scss', 'less': 'less', 'json': 'json',
+    'vue': 'vue', 'html': 'html', 'css': 'css', 'scss': 'scss', 'less': 'less', 'json': 'json',
     'md': 'markdown', 'py': 'python', 'rs': 'rust', 'sh': 'shell', 'yaml': 'yaml', 'yml': 'yaml',
     'xml': 'xml', 'sql': 'sql', 'java': 'java', 'c': 'c', 'cpp': 'cpp', 'swift': 'swift',
     'kt': 'kotlin', 'rb': 'ruby', 'php': 'php', 'lua': 'lua', 'toml': 'toml', 'ini': 'ini',
@@ -78,11 +86,8 @@ const handleFileChanged = async (changedPath) => {
   try {
     const newContent = await ReadFileContent(props.file.path)
     
-    // 如果内容不同，记录编辑
     if (oldContent !== newContent) {
       addEdit(props.file.path, oldContent, newContent)
-      
-      // 更新编辑器
       content.value = newContent
       originalContent.value = newContent
       modified.value = false
@@ -114,6 +119,153 @@ const saveFile = async () => {
   }
 }
 
+// AI 代码补全
+let completionTimeout = null
+let currentGhostPosition = null
+// 暂时禁用 AI 补全，因为 OpenCode 的同步 API 不可用
+let completionEnabled = ref(false)
+
+const requestCompletion = async () => {
+  // AI 补全暂时禁用
+  if (!completionEnabled.value) {
+    return
+  }
+  
+  console.log('[Completion] requestCompletion called')
+  console.log('[Completion] sessionId:', props.sessionId)
+  console.log('[Completion] editor:', !!editor.value)
+  console.log('[Completion] completing:', completing.value)
+  console.log('[Completion] enabled:', completionEnabled.value)
+  
+  if (!props.sessionId || !editor.value || completing.value) {
+    console.log('[Completion] Skipped - conditions not met')
+    return
+  }
+  
+  const position = editor.value.getPosition()
+  const model = editor.value.getModel()
+  
+  if (!position || !model) {
+    console.log('[Completion] No position or model')
+    return
+  }
+  
+  // 获取光标前的代码（最多 30 行，减少请求大小）
+  const startLine = Math.max(1, position.lineNumber - 30)
+  const textBeforeCursor = model.getValueInRange({
+    startLineNumber: startLine,
+    startColumn: 1,
+    endLineNumber: position.lineNumber,
+    endColumn: position.column
+  })
+  
+  // 如果光标前没有内容或只有空白，不补全
+  if (!textBeforeCursor.trim()) {
+    console.log('[Completion] No text before cursor')
+    return
+  }
+  
+  completing.value = true
+  console.log('[Completion] Requesting for:', textBeforeCursor.slice(-200))
+  
+  try {
+    const language = getLanguage(props.file?.name)
+    console.log('[Completion] Language:', language, 'File:', props.file?.name)
+    
+    const completion = await CodeCompletion(props.sessionId, textBeforeCursor, language, props.file?.name || '')
+    
+    console.log('[Completion] Result:', completion)
+    
+    // 检查光标位置是否还在原来的位置
+    const currentPos = editor.value.getPosition()
+    if (currentPos.lineNumber !== position.lineNumber || currentPos.column !== position.column) {
+      console.log('[Completion] Cursor moved, discarding result')
+      return
+    }
+    
+    if (completion && completion.trim()) {
+      // 显示幽灵文本
+      showGhostText(completion.trim(), position)
+    } else {
+      console.log('[Completion] Empty result')
+    }
+  } catch (e) {
+    console.error('[Completion] Error:', e)
+  } finally {
+    completing.value = false
+  }
+}
+
+// 显示幽灵文本（灰色预览）
+const showGhostText = (text, position) => {
+  if (!editor.value) {
+    console.log('[GhostText] No editor')
+    return
+  }
+  
+  console.log('[GhostText] Showing:', text.substring(0, 50))
+  
+  ghostText.value = text
+  currentGhostPosition = position
+  
+  // 只取第一行作为内联显示
+  const firstLine = text.split('\n')[0]
+  
+  // 使用 inline decoration 显示幽灵文本
+  const decorations = [{
+    range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+    options: {
+      after: {
+        content: firstLine,
+        inlineClassName: 'ghost-text-inline',
+        cursorStops: monaco.editor.InjectedTextCursorStops.None
+      }
+    }
+  }]
+  
+  console.log('[GhostText] Creating decoration at line', position.lineNumber, 'col', position.column)
+  ghostDecoration.value = editor.value.deltaDecorations(ghostDecoration.value, decorations)
+  console.log('[GhostText] Decoration IDs:', ghostDecoration.value)
+}
+
+// 清除幽灵文本
+const clearGhostText = () => {
+  if (editor.value && ghostDecoration.value.length) {
+    ghostDecoration.value = editor.value.deltaDecorations(ghostDecoration.value, [])
+  }
+  ghostText.value = ''
+  currentGhostPosition = null
+}
+
+// 接受补全
+const acceptCompletion = () => {
+  if (!ghostText.value || !currentGhostPosition || !editor.value) return false
+  
+  const text = ghostText.value
+  clearGhostText()
+  
+  // 插入补全文本
+  editor.value.executeEdits('ai-completion', [{
+    range: new monaco.Range(
+      currentGhostPosition.lineNumber,
+      currentGhostPosition.column,
+      currentGhostPosition.lineNumber,
+      currentGhostPosition.column
+    ),
+    text: text
+  }])
+  
+  // 移动光标到插入文本末尾
+  const lines = text.split('\n')
+  const newLine = currentGhostPosition.lineNumber + lines.length - 1
+  const newColumn = lines.length === 1 
+    ? currentGhostPosition.column + text.length 
+    : lines[lines.length - 1].length + 1
+  editor.value.setPosition({ lineNumber: newLine, column: newColumn })
+  
+  return true
+}
+
 const initEditor = () => {
   if (!editorContainer.value) return
   editor.value = monaco.editor.create(editorContainer.value, {
@@ -132,10 +284,67 @@ const initEditor = () => {
     cursorBlinking: 'smooth',
     smoothScrolling: true,
     padding: { top: 8 },
+    // 自动补全配置
+    quickSuggestions: true,
+    suggestOnTriggerCharacters: true,
+    acceptSuggestionOnEnter: 'on',
+    tabCompletion: 'on',
+    wordBasedSuggestions: 'currentDocument',
+    snippetSuggestions: 'inline',
   })
+  
+  // 自动保存：内容变化后延迟保存
+  let saveTimeout = null
   editor.value.onDidChangeModelContent(() => {
     modified.value = editor.value.getValue() !== originalContent.value
+    
+    // 清除幽灵文本
+    clearGhostText()
+    
+    // 清除之前的定时器
+    if (saveTimeout) clearTimeout(saveTimeout)
+    if (completionTimeout) clearTimeout(completionTimeout)
+    
+    // 如果有修改，延迟 1 秒后自动保存
+    if (modified.value) {
+      saveTimeout = setTimeout(() => {
+        saveFile()
+      }, 1000)
+    }
+    
+    // 延迟 500ms 后请求 AI 补全
+    if (props.sessionId) {
+      completionTimeout = setTimeout(() => {
+        requestCompletion()
+      }, 800)
+    }
   })
+  
+  // Tab 键接受补全
+  editor.value.addCommand(monaco.KeyCode.Tab, () => {
+    if (ghostText.value) {
+      acceptCompletion()
+    } else {
+      // 默认 Tab 行为
+      editor.value.trigger('keyboard', 'tab', {})
+    }
+  })
+  
+  // Escape 键取消补全
+  editor.value.addCommand(monaco.KeyCode.Escape, () => {
+    if (ghostText.value) {
+      clearGhostText()
+    }
+  })
+  
+  // 光标移动时清除幽灵文本
+  editor.value.onDidChangeCursorPosition(() => {
+    if (ghostText.value) {
+      clearGhostText()
+    }
+  })
+  
+  // 手动保存快捷键
   editor.value.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, saveFile)
 }
 
@@ -153,12 +362,27 @@ onMounted(() => {
   initEditor()
   if (props.file) loadFile()
   EventsOn('file-changed', handleFileChanged)
+  
+  // 添加幽灵文本样式（全局样式，因为 Monaco 在 shadow DOM 外）
+  if (!document.getElementById('ghost-text-style')) {
+    const style = document.createElement('style')
+    style.id = 'ghost-text-style'
+    style.textContent = `
+      .ghost-text-inline {
+        color: #6b6b6b !important;
+        font-style: italic !important;
+        opacity: 0.7 !important;
+      }
+    `
+    document.head.appendChild(style)
+  }
 })
 
 onUnmounted(() => {
   editor.value?.dispose()
   if (props.file?.path) UnwatchFile(props.file.path)
   EventsOff('file-changed')
+  if (completionTimeout) clearTimeout(completionTimeout)
 })
 
 const lineCount = () => editor.value?.getModel()?.getLineCount() || content.value.split('\n').length
@@ -177,7 +401,7 @@ defineExpose({ reloadFile })
       <span>{{ lineCount() }} 行</span>
       <span v-if="modified" class="status-modified">已修改</span>
       <span v-if="saving" class="status-saving">保存中...</span>
-      <span class="shortcut">⌘S 保存</span>
+      <span class="shortcut">自动保存</span>
     </div>
   </div>
 </template>
@@ -190,5 +414,6 @@ defineExpose({ reloadFile })
 .editor-status { display: flex; align-items: center; gap: 16px; padding: 4px 12px; background: var(--bg-surface); border-top: 1px solid var(--border-default); font-size: 11px; color: var(--text-muted); }
 .status-modified { color: var(--accent-primary); }
 .status-saving { color: var(--green); }
+.status-completing { color: var(--blue); }
 .shortcut { margin-left: auto; }
 </style>
