@@ -15,11 +15,24 @@ const languageNames = {
   'ja': '日本語'
 }
 
+// 全局日志存储
+const outputLogs = ref([])
+
 // 输出日志到 OUTPUT 面板
 function log(message) {
   console.log(message)
+  const timestamp = new Date().toLocaleTimeString()
+  outputLogs.value.push(`[${timestamp}] ${message}`)
   EventsEmit('output-log', message)
 }
+
+// 监听后端日志
+EventsOn('output-log', (message) => {
+  const timestamp = new Date().toLocaleTimeString()
+  // 避免重复添加（简单判断，如果需要在前端显示后端发回的前端日志，可能需要更复杂的去重）
+  // 这里假设 EventsOn 收到的都是后端主动发送的系统日志
+  outputLogs.value.push(`[${timestamp}] ${message}`)
+})
 
 const connected = ref(false)
 const connecting = ref(false)
@@ -501,6 +514,7 @@ export function useOpenCode() {
     openCodeStatus,
     currentWorkDir,
     activeFilePath,
+    outputLogs,
     autoConnect,
     installOpenCode,
     selectSession,

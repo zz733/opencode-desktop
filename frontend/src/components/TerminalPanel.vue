@@ -6,8 +6,12 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { CreateTerminal, WriteTerminal, ResizeTerminal, CloseTerminal } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
+import { useOpenCode } from '../composables/useOpenCode'
 
 const { t } = useI18n()
+const openCode = useOpenCode()
+// 防御性代码：确保 outputLogs 存在，防止解构失败导致组件崩溃
+const outputLogs = openCode?.outputLogs || ref([])
 
 const props = defineProps({
   visible: Boolean
@@ -23,8 +27,16 @@ const terminalContainerRef = ref(null)
 
 // 问题和输出数据
 const problems = ref([])
-const outputs = ref([])
 const outputRef = ref(null)
+
+// 自动滚动到底部
+watch(outputLogs, () => {
+  nextTick(() => {
+    if (outputRef.value) {
+      outputRef.value.scrollTop = outputRef.value.scrollHeight
+    }
+  })
+}, { deep: true })
 
 const createTerminalTheme = () => ({
   background: '#19161d',
@@ -49,25 +61,6 @@ const createTerminalTheme = () => ({
   brightCyan: '#80f4ff',
   brightWhite: '#ffffff',
 })
-
-// 添加输出日志
-const addOutput = (line) => {
-  const timestamp = new Date().toLocaleTimeString()
-  outputs.value.push(`[${timestamp}] ${line}`)
-  // 自动滚动到底部
-  nextTick(() => {
-    if (outputRef.value) {
-      outputRef.value.scrollTop = outputRef.value.scrollHeight
-    }
-  })
-}
-
-// 监听输出日志事件
-const setupOutputListener = () => {
-  EventsOn('output-log', (line) => {
-    addOutput(line)
-  })
-}
 
 // 创建新终端
 const addTerminal = async () => {
@@ -190,8 +183,6 @@ const handleResize = () => {
 
 onMounted(async () => {
   window.addEventListener('resize', handleResize)
-  // 监听输出日志
-  setupOutputListener()
   // 自动创建第一个终端
   if (props.visible && activePanel.value === 'terminal') {
     await addTerminal()
@@ -200,7 +191,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  EventsOff('output-log')
   // 清理所有终端
   terminals.value.forEach(termData => {
     EventsOff(`terminal-output-${termData.id}`)
@@ -332,11 +322,11 @@ defineExpose({ executeCommand })
       
       <!-- 输出面板 -->
       <div v-show="activePanel === 'output'" class="output-panel" ref="outputRef">
-        <div v-if="outputs.length === 0" class="empty-state">
+        <div v-if="outputLogs.length === 0" class="empty-state">
           {{ t('panel.noOutput') }}
         </div>
         <div v-else class="output-content">
-          <div v-for="(line, index) in outputs" :key="index" class="output-line">
+          <div v-for="(line, index) in outputLogs" :key="index" class="output-line">
             {{ line }}
           </div>
         </div>

@@ -141,19 +141,31 @@ const handleRunCommand = async (command) => {
 }
 
 // 拖动处理
-const startDrag = (type) => (e) => {
+const startDrag = (type, e) => {
+  e.preventDefault()
   isDragging.value = true
+  
+  const startX = e.clientX
+  const startY = e.clientY
+  
+  const startSidebarWidth = sidebarWidth.value
+  const startChatWidth = chatWidth.value
+  const startTerminalHeight = terminalHeight.value
+  
   const onMove = (e) => {
+    e.preventDefault()
     if (type === 'sidebar') {
-      const w = e.clientX - 48
-      if (w >= 180 && w <= 500) sidebarWidth.value = w
+      const deltaX = e.clientX - startX
+      const w = startSidebarWidth + deltaX
+      if (w >= 150 && w <= 800) sidebarWidth.value = w
     } else if (type === 'chat') {
-      const w = window.innerWidth - e.clientX
-      if (w >= 320 && w <= 800) chatWidth.value = w
+      const deltaX = startX - e.clientX // 右侧拖动方向相反
+      const w = startChatWidth + deltaX
+      if (w >= 200 && w <= 1200) chatWidth.value = w
     } else if (type === 'terminal') {
-      const rect = document.querySelector('.editor-wrapper').getBoundingClientRect()
-      const h = rect.bottom - e.clientY
-      if (h >= 100 && h <= 500) terminalHeight.value = h
+      const deltaY = startY - e.clientY // 底部拖动方向相反（向上拖动高度增加）
+      const h = startTerminalHeight + deltaY
+      if (h >= 50 && h <= 800) terminalHeight.value = h
     }
   }
   const onUp = () => {
@@ -187,7 +199,7 @@ const startDrag = (type) => (e) => {
       <div v-if="showSidebar && !editorMaximized" class="sidebar-container" :style="{ width: sidebarWidth + 'px' }">
         <SettingsPanel v-if="showSettings" @close="showSettings = false; showSidebar = false" />
         <Sidebar v-else :activeTab="activeTab" :workDir="workDir" @openFile="handleOpenFile" @update:workDir="handleWorkDirChange" />
-        <div class="resize-handle" @mousedown="startDrag('sidebar')"></div>
+        <div class="resize-handle" @mousedown="startDrag('sidebar', $event)"></div>
       </div>
       
       <!-- 编辑器 + 终端 -->
@@ -202,7 +214,7 @@ const startDrag = (type) => (e) => {
         />
         
         <template v-if="!editorMaximized">
-          <div v-if="showTerminal" class="resize-handle-h" @mousedown="startDrag('terminal')"></div>
+          <div v-if="showTerminal" class="resize-handle-h" @mousedown="startDrag('terminal', $event)"></div>
           <div v-if="showTerminal" class="terminal-wrapper" :style="{ height: terminalHeight + 'px' }">
             <TerminalPanel ref="terminalRef" :visible="showTerminal" />
           </div>
@@ -211,7 +223,7 @@ const startDrag = (type) => (e) => {
       
       <!-- 聊天面板 -->
       <template v-if="!editorMaximized">
-        <div class="resize-handle-chat" @mousedown="startDrag('chat')"></div>
+        <div class="resize-handle-chat" @mousedown="startDrag('chat', $event)"></div>
         <div class="chat-container" :style="{ width: chatWidth + 'px' }">
           <ChatPanel
             :sessions="sessions"
@@ -280,8 +292,10 @@ body {
 }
 
 .app { height: 100vh; display: flex; flex-direction: column; }
-.app.dragging { cursor: col-resize; }
-.app.dragging * { pointer-events: none; }
+.app.dragging { user-select: none; }
+.app.dragging .sidebar-container > *:not(.resize-handle),
+.app.dragging .editor-wrapper > *:not(.resize-handle-h),
+.app.dragging .chat-container { pointer-events: none; }
 
 /* Mac 标题栏 */
 .mac-titlebar {
@@ -311,10 +325,10 @@ body {
 }
 
 .terminal-wrapper {
-  min-height: 100px;
-  max-height: 500px;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
+  min-height: 50px;
 }
 
 .chat-container {
@@ -337,15 +351,20 @@ body {
   height: 4px;
   cursor: row-resize;
   background: var(--border-default);
+  z-index: 10;
+  position: relative;
 }
 
 .resize-handle-h:hover { background: var(--accent-primary); }
 
 .resize-handle-chat {
-  width: 1px;
+  width: 4px;
   cursor: col-resize;
   background: var(--border-default);
+  z-index: 10;
+  position: relative;
 }
+.resize-handle-chat:hover { background: var(--accent-primary); }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
