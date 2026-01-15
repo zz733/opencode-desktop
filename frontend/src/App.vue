@@ -362,10 +362,12 @@ body {
   max-height: 500px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .terminal-wrapper > * {
   flex: 1;
+  height: 100%;
 }
 
 .resize-handle-terminal {

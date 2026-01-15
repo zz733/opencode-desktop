@@ -138,10 +138,12 @@ watch(() => props.visible, (visible) => {
   flex-direction: column;
   background: #1a1a1a;
   border-top: 1px solid var(--border-default);
+  height: 100%;
 }
 
 .terminal-header {
   height: 32px;
+  min-height: 32px;
   padding: 0 12px;
   display: flex;
   align-items: center;
@@ -180,20 +182,41 @@ watch(() => props.visible, (visible) => {
 
 .terminal-container {
   flex: 1;
-  padding: 4px 8px;
   overflow: hidden;
+  padding: 4px 0 4px 8px;
 }
 
+/* 强制 xterm 左对齐 */
 .terminal-container :deep(.xterm) {
   height: 100%;
+  width: 100%;
+  text-align: left !important;
 }
 
 .terminal-container :deep(.xterm-screen) {
+  margin: 0 !important;
+  padding: 0 !important;
   width: 100% !important;
+}
+
+.terminal-container :deep(.xterm-screen canvas) {
+  display: block !important;
+}
+
+.terminal-container :deep(.xterm-rows) {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.terminal-container :deep(.xterm-helpers) {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
 }
 
 .terminal-container :deep(.xterm-viewport) {
   overflow-y: auto !important;
+  width: 100% !important;
 }
 
 .terminal-container :deep(.xterm-viewport::-webkit-scrollbar) {
