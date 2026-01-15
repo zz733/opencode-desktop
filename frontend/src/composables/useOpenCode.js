@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { 
   GetServerURL, SetServerURL, CheckConnection,
   GetSessions, CreateSession, SendMessage, SendMessageWithModel, 
-  SubscribeEvents
+  SubscribeEvents, GetOpenCodeStatus, AutoStartOpenCode, InstallOpenCode
 } from '../../wailsjs/go/main/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 
@@ -13,6 +13,7 @@ const currentSession = ref(null)
 const messages = ref([])
 const sending = ref(false)
 const currentModel = ref('opencode/claude-opus-4-5')
+const openCodeStatus = ref(null) // 'not-installed', 'installing', 'starting', 'connected'
 
 const models = [
   { id: 'opencode/big-pickle', name: 'Big Pickle', free: true },
@@ -26,27 +27,108 @@ const models = [
   { id: 'opencode/gpt-5.1-codex', name: 'GPT 5.1 Codex', free: false },
 ]
 
-// 自动连接
+// 自动连接（包含检测、安装、启动）
 async function autoConnect() {
   if (connected.value || connecting.value) return
   connecting.value = true
   
   try {
-    const url = await GetServerURL()
-    await SetServerURL(url)
-    const ok = await CheckConnection()
-    if (ok) {
-      connected.value = true
-      await loadSessions()
-      setupEventListeners()
-      await SubscribeEvents()
+    // 先检查 OpenCode 状态
+    const status = await GetOpenCodeStatus()
+    console.log('OpenCode status:', status)
+    
+    if (!status.installed) {
+      // 未安装，提示用户
+      openCodeStatus.value = 'not-installed'
+      connecting.value = false
+      return
     }
+    
+    if (status.connected) {
+      // 已连接，直接使用
+      await onConnected()
+      return
+    }
+    
+    // 已安装但未运行，自动启动
+    openCodeStatus.value = 'starting'
+    try {
+      await AutoStartOpenCode()
+    } catch (e) {
+      console.log('AutoStart error (may already be starting):', e)
+    }
+    
+    // 轮询等待连接
+    waitForConnection()
   } catch (e) {
     console.error('连接失败:', e)
-    // 3秒后重试
+    openCodeStatus.value = 'error'
+    connecting.value = false
     setTimeout(autoConnect, 3000)
   }
+}
+
+// 等待连接成功
+async function waitForConnection() {
+  let retries = 0
+  const maxRetries = 30
+  
+  const check = async () => {
+    try {
+      const status = await GetOpenCodeStatus()
+      if (status.connected) {
+        await onConnected()
+        return
+      }
+    } catch (e) {}
+    
+    retries++
+    if (retries < maxRetries) {
+      setTimeout(check, 1000)
+    } else {
+      openCodeStatus.value = 'timeout'
+      connecting.value = false
+    }
+  }
+  
+  setTimeout(check, 1000)
+}
+
+// 安装 OpenCode
+async function installOpenCode() {
+  openCodeStatus.value = 'installing'
+  try {
+    await InstallOpenCode()
+    // 安装完成后自动启动
+    await autoConnect()
+  } catch (e) {
+    console.error('安装失败:', e)
+    openCodeStatus.value = 'install-failed'
+  }
+}
+
+// 连接成功后的处理
+async function onConnected() {
+  connected.value = true
   connecting.value = false
+  openCodeStatus.value = 'connected'
+  await loadSessions()
+  setupEventListeners()
+  await SubscribeEvents()
+}
+
+// 监听 OpenCode 状态事件
+function setupOpenCodeEvents() {
+  EventsOn('opencode-status', (status) => {
+    openCodeStatus.value = status
+    if (status === 'connected') {
+      onConnected()
+    }
+  })
+  
+  EventsOn('opencode-installed', () => {
+    autoConnect()
+  })
 }
 
 async function loadSessions() {
@@ -138,6 +220,9 @@ function handleEvent(event) {
 }
 
 export function useOpenCode() {
+  // 初始化时设置事件监听
+  setupOpenCodeEvents()
+  
   return {
     connected,
     connecting,
@@ -147,7 +232,9 @@ export function useOpenCode() {
     sending,
     currentModel,
     models,
+    openCodeStatus,
     autoConnect,
+    installOpenCode,
     selectSession,
     createSession,
     sendMessage

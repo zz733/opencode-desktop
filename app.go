@@ -20,6 +20,7 @@ type App struct {
 	serverURL  string
 	httpClient *http.Client
 	termMgr    *TerminalManager
+	openCode   *OpenCodeManager
 }
 
 // NewApp creates a new App application struct
@@ -31,6 +32,7 @@ func NewApp() *App {
 		},
 	}
 	app.termMgr = NewTerminalManager(app)
+	app.openCode = NewOpenCodeManager(app)
 	return app
 }
 
@@ -283,4 +285,31 @@ func (a *App) CloseTerminal(id int) {
 // GetTerminals 获取所有终端
 func (a *App) GetTerminals() []int {
 	return a.termMgr.GetTerminals()
+}
+
+// --- OpenCode 管理 ---
+
+// GetOpenCodeStatus 获取 OpenCode 状态
+func (a *App) GetOpenCodeStatus() *OpenCodeStatus {
+	return a.openCode.GetStatus()
+}
+
+// InstallOpenCode 安装 OpenCode
+func (a *App) InstallOpenCode() error {
+	return a.openCode.Install()
+}
+
+// StartOpenCode 启动 OpenCode
+func (a *App) StartOpenCode() error {
+	return a.openCode.Start()
+}
+
+// StopOpenCode 停止 OpenCode
+func (a *App) StopOpenCode() {
+	a.openCode.Stop()
+}
+
+// AutoStartOpenCode 自动检测并启动 OpenCode
+func (a *App) AutoStartOpenCode() error {
+	return a.openCode.AutoStart()
 }

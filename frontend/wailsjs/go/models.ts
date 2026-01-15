@@ -12,6 +12,26 @@ export namespace main {
 	        this.model = source["model"];
 	    }
 	}
+	export class OpenCodeStatus {
+	    installed: boolean;
+	    running: boolean;
+	    connected: boolean;
+	    path: string;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OpenCodeStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.running = source["running"];
+	        this.connected = source["connected"];
+	        this.path = source["path"];
+	        this.version = source["version"];
+	    }
+	}
 	export class Provider {
 	    id: string;
 	    name: string;
