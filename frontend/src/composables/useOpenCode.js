@@ -5,7 +5,13 @@ import {
   SubscribeEvents, GetOpenCodeStatus, AutoStartOpenCode, InstallOpenCode,
   CancelSession
 } from '../../wailsjs/go/main/App'
-import { EventsOn } from '../../wailsjs/runtime/runtime'
+import { EventsOn, EventsEmit } from '../../wailsjs/runtime/runtime'
+
+// 输出日志到 OUTPUT 面板
+function log(message) {
+  console.log(message)
+  EventsEmit('output-log', message)
+}
 
 const connected = ref(false)
 const connecting = ref(false)
@@ -33,21 +39,24 @@ const models = [
 async function autoConnect() {
   if (connected.value || connecting.value) return
   connecting.value = true
+  log('开始检查 OpenCode 状态...')
   
   try {
     // 先检查 OpenCode 状态
     const status = await GetOpenCodeStatus()
-    console.log('OpenCode status:', status)
+    log(`OpenCode 状态: 已安装=${status.installed}, 运行中=${status.running}, 已连接=${status.connected}`)
+    if (status.path) log(`OpenCode 路径: ${status.path}`)
+    if (status.version) log(`OpenCode 版本: ${status.version}`)
     
     if (!status.installed) {
       // 未安装，自动安装
-      console.log('OpenCode 未安装，开始自动安装...')
+      log('OpenCode 未安装，开始自动安装...')
       openCodeStatus.value = 'installing'
       try {
         await InstallOpenCode()
-        console.log('安装完成，继续启动...')
+        log('安装完成，继续启动...')
       } catch (e) {
-        console.error('安装失败:', e)
+        log(`安装失败: ${e}`)
         openCodeStatus.value = 'install-failed'
         connecting.value = false
         return
@@ -59,22 +68,24 @@ async function autoConnect() {
     
     if (newStatus.connected) {
       // 已连接，直接使用
+      log('OpenCode 服务已在运行，直接连接')
       await onConnected()
       return
     }
     
     // 已安装但未运行，自动启动
+    log('正在启动 OpenCode 服务...')
     openCodeStatus.value = 'starting'
     try {
       await AutoStartOpenCode()
     } catch (e) {
-      console.log('AutoStart error (may already be starting):', e)
+      log(`启动出错 (可能已在启动中): ${e}`)
     }
     
     // 轮询等待连接
     waitForConnection()
   } catch (e) {
-    console.error('连接失败:', e)
+    log(`连接失败: ${e}`)
     openCodeStatus.value = 'error'
     connecting.value = false
     setTimeout(autoConnect, 3000)
@@ -126,10 +137,11 @@ async function onConnected() {
   connected.value = true
   connecting.value = false
   openCodeStatus.value = 'connected'
+  log('正在加载会话列表...')
   await loadSessions()
   setupEventListeners()
   await SubscribeEvents()
-  console.log('OpenCode 连接成功，已订阅事件')
+  log('OpenCode 连接成功，已订阅事件')
 }
 
 // 监听 OpenCode 状态事件
@@ -149,12 +161,13 @@ function setupOpenCodeEvents() {
 async function loadSessions() {
   try {
     sessions.value = await GetSessions()
+    log(`已加载 ${sessions.value.length} 个会话`)
     // 自动选择最近的会话或创建新会话
     if (sessions.value.length > 0) {
       selectSession(sessions.value[0])
     }
   } catch (e) {
-    console.error('加载会话失败:', e)
+    log(`加载会话失败: ${e}`)
   }
 }
 

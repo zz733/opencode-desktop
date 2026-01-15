@@ -48,17 +48,22 @@ func (m *OpenCodeManager) CheckInstalled() (bool, string) {
 
 	// 检查常见安装位置
 	homeDir, _ := os.UserHomeDir()
-	commonPaths := []string{
-		filepath.Join(homeDir, ".local", "bin", "opencode"),
-		filepath.Join(homeDir, "go", "bin", "opencode"),
-		"/usr/local/bin/opencode",
-		"/usr/bin/opencode",
-	}
 
+	var commonPaths []string
 	if runtime.GOOS == "windows" {
 		commonPaths = []string{
-			filepath.Join(homeDir, "go", "bin", "opencode.exe"),
+			filepath.Join(homeDir, ".opencode", "bin", "opencode.exe"),
+			filepath.Join(homeDir, "AppData", "Local", "Programs", "opencode", "opencode.exe"),
+			filepath.Join(homeDir, "bin", "opencode.exe"),
 			filepath.Join(os.Getenv("PROGRAMFILES"), "opencode", "opencode.exe"),
+		}
+	} else {
+		commonPaths = []string{
+			filepath.Join(homeDir, ".opencode", "bin", "opencode"),
+			filepath.Join(homeDir, ".local", "bin", "opencode"),
+			filepath.Join(homeDir, "bin", "opencode"),
+			"/usr/local/bin/opencode",
+			"/usr/bin/opencode",
 		}
 	}
 
@@ -120,14 +125,28 @@ func (m *OpenCodeManager) CheckConnection() bool {
 
 // Install 安装 OpenCode
 func (m *OpenCodeManager) Install() error {
-	// 使用 go install 安装
-	cmd := exec.Command("go", "install", "github.com/opencode-ai/opencode@latest")
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", "正在下载安装 OpenCode...")
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// Windows: 使用 PowerShell 下载安装脚本并执行
+		cmd = exec.Command("powershell", "-Command",
+			"irm https://opencode.ai/install.ps1 | iex")
+	} else {
+		// macOS/Linux: 使用 curl 下载安装脚本并执行
+		cmd = exec.Command("bash", "-c",
+			"curl -fsSL https://opencode.ai/install | bash")
+	}
 	cmd.Env = os.Environ()
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("安装输出: %s", string(output)))
 		return fmt.Errorf("安装失败: %s, %v", string(output), err)
 	}
+
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("安装输出: %s", string(output)))
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", "OpenCode 安装完成")
 
 	// 通知前端
 	wailsRuntime.EventsEmit(m.app.ctx, "opencode-installed", true)
@@ -155,13 +174,22 @@ func (m *OpenCodeManager) Start() error {
 	// 查找 opencode 路径
 	installed, path := m.CheckInstalled()
 	if !installed {
+		wailsRuntime.EventsEmit(m.app.ctx, "output-log", "错误: OpenCode 未安装")
 		return fmt.Errorf("OpenCode 未安装")
 	}
 
-	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("正在启动 OpenCode: %s serve --port 4096", path))
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("OpenCode 路径: %s", path))
 
-	// 后台启动 opencode serve (headless 模式)，指定端口 4096
+	// 获取工作目录（使用用户主目录）
+	homeDir, _ := os.UserHomeDir()
+	workDir := homeDir
+
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("工作目录: %s", workDir))
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", "正在启动 OpenCode serve...")
+
+	// 使用 serve 命令启动 headless 模式
 	m.cmd = exec.Command(path, "serve", "--port", "4096", "--print-logs")
+	m.cmd.Dir = workDir
 	m.cmd.Env = os.Environ()
 
 	// 捕获输出
@@ -178,11 +206,29 @@ func (m *OpenCodeManager) Start() error {
 	}
 
 	m.running = true
-	wailsRuntime.EventsEmit(m.app.ctx, "output-log", "OpenCode 进程已启动，等待服务就绪...")
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("OpenCode 进程已启动 (PID: %d)", m.cmd.Process.Pid))
 
 	// 读取输出并发送到前端
 	go m.readOutput(stdout)
 	go m.readOutput(stderr)
+
+	// 监控进程退出
+	go func() {
+		err := m.cmd.Wait()
+		m.mu.Lock()
+		m.running = false
+		m.mu.Unlock()
+		if err != nil {
+			exitErr, ok := err.(*exec.ExitError)
+			if ok {
+				wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("OpenCode 退出，代码: %d", exitErr.ExitCode()))
+			} else {
+				wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("OpenCode 退出: %v", err))
+			}
+		} else {
+			wailsRuntime.EventsEmit(m.app.ctx, "output-log", "OpenCode 进程已结束")
+		}
+	}()
 
 	// 等待服务就绪
 	go m.waitForReady()
