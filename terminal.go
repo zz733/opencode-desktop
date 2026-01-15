@@ -1,37 +1,47 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 
 	"github.com/creack/pty"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// Terminal 终端管理
-type Terminal struct {
-	app    *App
+// TerminalInstance 单个终端实例
+type TerminalInstance struct {
+	ID     int
 	ptmx   *os.File
 	cmd    *exec.Cmd
-	mu     sync.Mutex
 	active bool
 }
 
-// NewTerminal 创建终端
-func NewTerminal(app *App) *Terminal {
-	return &Terminal{app: app}
+// TerminalManager 终端管理器（支持多终端）
+type TerminalManager struct {
+	app       *App
+	terminals map[int]*TerminalInstance
+	mu        sync.Mutex
+	nextID    int32
 }
 
-// Start 启动终端
-func (t *Terminal) Start() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.active {
-		return nil
+// NewTerminalManager 创建终端管理器
+func NewTerminalManager(app *App) *TerminalManager {
+	return &TerminalManager{
+		app:       app,
+		terminals: make(map[int]*TerminalInstance),
 	}
+}
+
+// CreateTerminal 创建新终端，返回终端ID
+func (tm *TerminalManager) CreateTerminal() (int, error) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	id := int(atomic.AddInt32(&tm.nextID, 1))
 
 	// 获取默认 shell
 	shell := os.Getenv("SHELL")
@@ -40,87 +50,128 @@ func (t *Terminal) Start() error {
 	}
 
 	// 创建命令
-	t.cmd = exec.Command(shell)
-	t.cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd := exec.Command(shell)
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
 	// 启动 PTY
-	var err error
-	t.ptmx, err = pty.Start(t.cmd)
+	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	t.active = true
+	instance := &TerminalInstance{
+		ID:     id,
+		ptmx:   ptmx,
+		cmd:    cmd,
+		active: true,
+	}
+	tm.terminals[id] = instance
 
 	// 读取输出并发送到前端
-	go t.readOutput()
+	go tm.readOutput(instance)
 
-	return nil
+	return id, nil
 }
 
 // readOutput 读取终端输出
-func (t *Terminal) readOutput() {
+func (tm *TerminalManager) readOutput(inst *TerminalInstance) {
 	buf := make([]byte, 4096)
 	for {
-		n, err := t.ptmx.Read(buf)
+		n, err := inst.ptmx.Read(buf)
 		if err != nil {
 			if err != io.EOF {
-				runtime.EventsEmit(t.app.ctx, "terminal-error", err.Error())
+				runtime.EventsEmit(tm.app.ctx, fmt.Sprintf("terminal-error-%d", inst.ID), err.Error())
 			}
 			break
 		}
 		if n > 0 {
-			runtime.EventsEmit(t.app.ctx, "terminal-output", string(buf[:n]))
+			runtime.EventsEmit(tm.app.ctx, fmt.Sprintf("terminal-output-%d", inst.ID), string(buf[:n]))
 		}
 	}
-	t.active = false
+	tm.mu.Lock()
+	inst.active = false
+	tm.mu.Unlock()
 }
 
-// Write 写入终端
-func (t *Terminal) Write(data string) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+// WriteTerminal 写入指定终端
+func (tm *TerminalManager) WriteTerminal(id int, data string) error {
+	tm.mu.Lock()
+	inst, ok := tm.terminals[id]
+	tm.mu.Unlock()
 
-	if !t.active || t.ptmx == nil {
-		return nil
+	if !ok || !inst.active || inst.ptmx == nil {
+		return fmt.Errorf("terminal %d not found or inactive", id)
 	}
 
-	_, err := t.ptmx.Write([]byte(data))
+	_, err := inst.ptmx.Write([]byte(data))
 	return err
 }
 
-// Resize 调整终端大小
-func (t *Terminal) Resize(cols, rows int) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+// ResizeTerminal 调整指定终端大小
+func (tm *TerminalManager) ResizeTerminal(id int, cols, rows int) error {
+	tm.mu.Lock()
+	inst, ok := tm.terminals[id]
+	tm.mu.Unlock()
 
-	if !t.active || t.ptmx == nil {
+	if !ok || !inst.active || inst.ptmx == nil {
 		return nil
 	}
 
-	return pty.Setsize(t.ptmx, &pty.Winsize{
+	return pty.Setsize(inst.ptmx, &pty.Winsize{
 		Cols: uint16(cols),
 		Rows: uint16(rows),
 	})
 }
 
-// Stop 停止终端
-func (t *Terminal) Stop() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+// CloseTerminal 关闭指定终端
+func (tm *TerminalManager) CloseTerminal(id int) {
+	tm.mu.Lock()
+	inst, ok := tm.terminals[id]
+	if ok {
+		delete(tm.terminals, id)
+	}
+	tm.mu.Unlock()
 
-	if t.ptmx != nil {
-		t.ptmx.Close()
+	if ok && inst != nil {
+		if inst.ptmx != nil {
+			inst.ptmx.Close()
+		}
+		if inst.cmd != nil && inst.cmd.Process != nil {
+			inst.cmd.Process.Kill()
+		}
 	}
-	if t.cmd != nil && t.cmd.Process != nil {
-		t.cmd.Process.Kill()
-	}
-	t.active = false
 }
 
-// IsActive 检查终端是否活跃
-func (t *Terminal) IsActive() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.active
+// GetTerminals 获取所有终端ID列表
+func (tm *TerminalManager) GetTerminals() []int {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	ids := make([]int, 0, len(tm.terminals))
+	for id, inst := range tm.terminals {
+		if inst.active {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// CloseAll 关闭所有终端
+func (tm *TerminalManager) CloseAll() {
+	tm.mu.Lock()
+	terminals := make([]*TerminalInstance, 0, len(tm.terminals))
+	for _, inst := range tm.terminals {
+		terminals = append(terminals, inst)
+	}
+	tm.terminals = make(map[int]*TerminalInstance)
+	tm.mu.Unlock()
+
+	for _, inst := range terminals {
+		if inst.ptmx != nil {
+			inst.ptmx.Close()
+		}
+		if inst.cmd != nil && inst.cmd.Process != nil {
+			inst.cmd.Process.Kill()
+		}
+	}
 }

@@ -19,7 +19,7 @@ type App struct {
 	ctx        context.Context
 	serverURL  string
 	httpClient *http.Client
-	terminal   *Terminal
+	termMgr    *TerminalManager
 }
 
 // NewApp creates a new App application struct
@@ -30,7 +30,7 @@ func NewApp() *App {
 			Timeout: 0, // no timeout for SSE
 		},
 	}
-	app.terminal = NewTerminal(app)
+	app.termMgr = NewTerminalManager(app)
 	return app
 }
 
@@ -260,27 +260,27 @@ func (a *App) SendMessageWithModel(sessionID, content, model string) error {
 	return nil
 }
 
-// StartTerminal 启动终端
-func (a *App) StartTerminal() error {
-	return a.terminal.Start()
+// CreateTerminal 创建新终端
+func (a *App) CreateTerminal() (int, error) {
+	return a.termMgr.CreateTerminal()
 }
 
 // WriteTerminal 写入终端
-func (a *App) WriteTerminal(data string) error {
-	return a.terminal.Write(data)
+func (a *App) WriteTerminal(id int, data string) error {
+	return a.termMgr.WriteTerminal(id, data)
 }
 
 // ResizeTerminal 调整终端大小
-func (a *App) ResizeTerminal(cols, rows int) error {
-	return a.terminal.Resize(cols, rows)
+func (a *App) ResizeTerminal(id int, cols, rows int) error {
+	return a.termMgr.ResizeTerminal(id, cols, rows)
 }
 
-// StopTerminal 停止终端
-func (a *App) StopTerminal() {
-	a.terminal.Stop()
+// CloseTerminal 关闭终端
+func (a *App) CloseTerminal(id int) {
+	a.termMgr.CloseTerminal(id)
 }
 
-// IsTerminalActive 检查终端状态
-func (a *App) IsTerminalActive() bool {
-	return a.terminal.IsActive()
+// GetTerminals 获取所有终端
+func (a *App) GetTerminals() []int {
+	return a.termMgr.GetTerminals()
 }

@@ -34,6 +34,12 @@ export default {
     title: 'Terminal',
     new: 'New Terminal',
   },
+  panel: {
+    problems: 'Problems',
+    output: 'Output',
+    noProblems: 'No problems detected',
+    noOutput: 'No output',
+  },
   editor: {
     openFile: 'Open a file to start editing',
     showTerminal: 'Show Terminal',

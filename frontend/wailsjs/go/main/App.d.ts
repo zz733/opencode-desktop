@@ -4,7 +4,11 @@ import {main} from '../models';
 
 export function CheckConnection():Promise<boolean>;
 
+export function CloseTerminal(arg1:number):Promise<void>;
+
 export function CreateSession():Promise<main.Session>;
+
+export function CreateTerminal():Promise<number>;
 
 export function GetConfig():Promise<main.ConfigInfo>;
 
@@ -14,9 +18,9 @@ export function GetServerURL():Promise<string>;
 
 export function GetSessions():Promise<Array<main.Session>>;
 
-export function IsTerminalActive():Promise<boolean>;
+export function GetTerminals():Promise<Array<number>>;
 
-export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
+export function ResizeTerminal(arg1:number,arg2:number,arg3:number):Promise<void>;
 
 export function SendMessage(arg1:string,arg2:string):Promise<void>;
 
@@ -24,10 +28,6 @@ export function SendMessageWithModel(arg1:string,arg2:string,arg3:string):Promis
 
 export function SetServerURL(arg1:string):Promise<void>;
 
-export function StartTerminal():Promise<void>;
-
-export function StopTerminal():Promise<void>;
-
 export function SubscribeEvents():Promise<void>;
 
-export function WriteTerminal(arg1:string):Promise<void>;
+export function WriteTerminal(arg1:number,arg2:string):Promise<void>;

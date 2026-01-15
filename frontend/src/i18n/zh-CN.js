@@ -34,6 +34,12 @@ export default {
     title: '终端',
     new: '新建终端',
   },
+  panel: {
+    problems: '问题',
+    output: '输出',
+    noProblems: '没有检测到问题',
+    noOutput: '暂无输出',
+  },
   editor: {
     openFile: '打开文件开始编辑',
     showTerminal: '显示终端',

@@ -34,6 +34,12 @@ export default {
     title: 'ターミナル',
     new: '新しいターミナル',
   },
+  panel: {
+    problems: '問題',
+    output: '出力',
+    noProblems: '問題は検出されませんでした',
+    noOutput: '出力なし',
+  },
   editor: {
     openFile: 'ファイルを開いて編集を開始',
     showTerminal: 'ターミナルを表示',

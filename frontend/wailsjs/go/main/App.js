@@ -6,8 +6,16 @@ export function CheckConnection() {
   return window['go']['main']['App']['CheckConnection']();
 }
 
+export function CloseTerminal(arg1) {
+  return window['go']['main']['App']['CloseTerminal'](arg1);
+}
+
 export function CreateSession() {
   return window['go']['main']['App']['CreateSession']();
+}
+
+export function CreateTerminal() {
+  return window['go']['main']['App']['CreateTerminal']();
 }
 
 export function GetConfig() {
@@ -26,12 +34,12 @@ export function GetSessions() {
   return window['go']['main']['App']['GetSessions']();
 }
 
-export function IsTerminalActive() {
-  return window['go']['main']['App']['IsTerminalActive']();
+export function GetTerminals() {
+  return window['go']['main']['App']['GetTerminals']();
 }
 
-export function ResizeTerminal(arg1, arg2) {
-  return window['go']['main']['App']['ResizeTerminal'](arg1, arg2);
+export function ResizeTerminal(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResizeTerminal'](arg1, arg2, arg3);
 }
 
 export function SendMessage(arg1, arg2) {
@@ -46,18 +54,10 @@ export function SetServerURL(arg1) {
   return window['go']['main']['App']['SetServerURL'](arg1);
 }
 
-export function StartTerminal() {
-  return window['go']['main']['App']['StartTerminal']();
-}
-
-export function StopTerminal() {
-  return window['go']['main']['App']['StopTerminal']();
-}
-
 export function SubscribeEvents() {
   return window['go']['main']['App']['SubscribeEvents']();
 }
 
-export function WriteTerminal(arg1) {
-  return window['go']['main']['App']['WriteTerminal'](arg1);
+export function WriteTerminal(arg1, arg2) {
+  return window['go']['main']['App']['WriteTerminal'](arg1, arg2);
 }

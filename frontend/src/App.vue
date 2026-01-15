@@ -16,6 +16,7 @@ const chatWidth = ref(420)
 const terminalHeight = ref(200)
 const showTerminal = ref(true)
 const showSettings = ref(false)
+const showSidebar = ref(true)
 const isDraggingSidebar = ref(false)
 const isDraggingChat = ref(false)
 const isDraggingTerminal = ref(false)
@@ -120,10 +121,23 @@ const toggleTerminal = () => {
 
 const handleTabChange = (tab) => {
   if (tab === 'settings') {
-    showSettings.value = true
+    // 设置面板：点击切换显示/隐藏
+    if (showSettings.value) {
+      showSettings.value = false
+      showSidebar.value = false
+    } else {
+      showSettings.value = true
+      showSidebar.value = true
+    }
   } else {
-    activeTab.value = tab
-    showSettings.value = false
+    // 普通标签：点击同一个隐藏，点击不同的切换
+    if (activeTab.value === tab && showSidebar.value && !showSettings.value) {
+      showSidebar.value = false
+    } else {
+      activeTab.value = tab
+      showSettings.value = false
+      showSidebar.value = true
+    }
   }
 }
 </script>
@@ -142,11 +156,16 @@ const handleTabChange = (tab) => {
     <!-- 主体 -->
     <div class="main">
       <!-- 活动栏 -->
-      <ActivityBar :activeTab="activeTab" @change="handleTabChange" />
+      <ActivityBar 
+        :activeTab="activeTab" 
+        :showSidebar="showSidebar"
+        :showSettings="showSettings"
+        @change="handleTabChange" 
+      />
       
       <!-- 侧边栏 -->
-      <div class="sidebar-container" :style="{ width: sidebarWidth + 'px' }">
-        <SettingsPanel v-if="showSettings" @close="showSettings = false" />
+      <div v-if="showSidebar" class="sidebar-container" :style="{ width: sidebarWidth + 'px' }">
+        <SettingsPanel v-if="showSettings" @close="showSettings = false; showSidebar = false" />
         <Sidebar v-else :activeTab="activeTab" />
         <div class="resize-handle" @mousedown="startDragSidebar"></div>
       </div>
