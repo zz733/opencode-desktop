@@ -79,18 +79,19 @@ const toggleFolder = (item) => {
 <style scoped>
 .sidebar {
   flex: 1;
-  background: var(--bg-surface);
+  background: #211d25;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
 .sidebar-header {
-  padding: 12px 16px;
+  padding: 10px 20px;
   font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.5px;
-  color: var(--text-secondary);
+  font-weight: 400;
+  letter-spacing: 1.2px;
+  color: #938f9b;
+  text-transform: uppercase;
 }
 
 .file-tree {
@@ -101,16 +102,16 @@ const toggleFolder = (item) => {
 .section-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 4px;
+  padding: 4px 8px;
   font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
+  font-weight: 700;
+  color: #ffffff;
   cursor: pointer;
 }
 
 .section-header:hover {
-  background: var(--bg-hover);
+  background: #322e3a;
 }
 
 .tree-items {
@@ -120,15 +121,13 @@ const toggleFolder = (item) => {
 .tree-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
+  gap: 4px;
+  padding: 2px 8px 2px 16px;
   cursor: pointer;
-  border-radius: 4px;
-  margin: 1px 4px;
 }
 
 .tree-item:hover {
-  background: var(--bg-hover);
+  background: #322e3a;
 }
 
 .tree-item.nested {
@@ -140,12 +139,12 @@ const toggleFolder = (item) => {
 }
 
 .spacer {
-  width: 12px;
+  width: 16px;
 }
 
 .name {
   font-size: 13px;
-  color: var(--text-primary);
+  color: #ffffff;
 }
 
 .placeholder {
@@ -153,6 +152,7 @@ const toggleFolder = (item) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
+  color: #6b6773;
+  font-size: 13px;
 }
 </style>

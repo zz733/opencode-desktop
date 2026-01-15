@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import TitleBar from './components/TitleBar.vue'
 import ActivityBar from './components/ActivityBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatPanel from './components/ChatPanel.vue'
@@ -23,6 +24,7 @@ const isDraggingTerminal = ref(false)
 
 const {
   connected,
+  connecting,
   sessions,
   currentSession,
   messages,
@@ -154,14 +156,8 @@ const handleTabChange = (tab) => {
 
 <template>
   <div class="app" :class="{ dragging: isDraggingSidebar || isDraggingChat || isDraggingTerminal }">
-    <!-- 标题栏 -->
-    <header class="titlebar">
-      <div class="titlebar-drag"></div>
-      <div class="title">{{ t('app.title') }}</div>
-      <div class="status">
-        <span :class="['dot', { connected }]"></span>
-      </div>
-    </header>
+    <!-- 自定义标题栏 -->
+    <TitleBar />
     
     <!-- 主体 -->
     <div class="main">
@@ -221,6 +217,8 @@ const handleTabChange = (tab) => {
           :sending="sending"
           :currentModel="currentModel"
           :models="models"
+          :connected="connected"
+          :connecting="connecting"
           @selectSession="handleSelectSession"
           @send="handleSend"
           @cancel="handleCancel"
@@ -232,23 +230,30 @@ const handleTabChange = (tab) => {
 </template>
 
 <style>
-/* CSS Variables - Kiro 风格 */
+/* CSS Variables */
 :root {
-  --bg-base: #181818;
-  --bg-surface: #1f1f1f;
-  --bg-elevated: #262626;
-  --bg-hover: #2c2c2c;
-  --bg-active: #333333;
-  --bg-input: #2a2a2a;
-  --text-primary: #e4e4e4;
-  --text-secondary: #a0a0a0;
-  --text-muted: #6b6b6b;
-  --border-default: #333333;
-  --border-subtle: #2a2a2a;
-  --accent-primary: #4d9cf6;
-  --accent-hover: #5aa8ff;
-  --green: #4ade80;
-  --purple: #a78bfa;
+  /* Kiro Dark Theme */
+  --bg-base: #19161d;
+  --bg-surface: #211d25;
+  --bg-elevated: #28242e;
+  --bg-hover: #322e3a;
+  --bg-active: #3c3846;
+  --bg-input: #28242e;
+  --text-primary: #ffffff;
+  --text-secondary: #938f9b;
+  --text-muted: #6b6773;
+  --border-default: #28242e;
+  --border-subtle: #322e3a;
+  --accent-primary: #b080ff;
+  --accent-hover: #c4a0ff;
+  --accent-button: #7138cc;
+  --green: #80ffb5;
+  --blue: #8dc8fb;
+  --yellow: #ffcf99;
+  --red: #ff8080;
+  --pink: #ff80b5;
+  --cyan: #80f4ff;
+  --purple: #e2d3fe;
 }
 
 * {
@@ -258,7 +263,7 @@ const handleTabChange = (tab) => {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   background: var(--bg-base);
   color: var(--text-primary);
   font-size: 13px;
@@ -281,49 +286,7 @@ body {
   pointer-events: none;
 }
 
-/* Titlebar */
-.titlebar {
-  height: 38px;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-default);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.titlebar-drag {
-  position: absolute;
-  inset: 0;
-  -webkit-app-region: drag;
-}
-
-.title {
-  font-size: 13px;
-  color: var(--text-secondary);
-  z-index: 1;
-  pointer-events: none;
-}
-
-.status {
-  position: absolute;
-  right: 16px;
-  display: flex;
-  align-items: center;
-  z-index: 1;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  transition: background 0.3s;
-}
-
-.dot.connected {
-  background: var(--green);
-}
+/* Titlebar - removed */
 
 /* Main */
 .main {
@@ -338,6 +301,8 @@ body {
   display: flex;
   min-width: 180px;
   max-width: 500px;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-default);
 }
 
 /* Editor Area */
@@ -372,13 +337,14 @@ body {
 }
 
 .btn-toggle-terminal {
-  padding: 8px 16px;
+  padding: 6px 14px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
   border-radius: 6px;
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
+  transition: all 0.15s;
 }
 
 .btn-toggle-terminal:hover {
@@ -414,9 +380,11 @@ body {
 
 /* Chat Container */
 .chat-container {
-  min-width: 320px;
-  max-width: 800px;
+  width: 360px;
+  min-width: 280px;
+  max-width: 500px;
   display: flex;
+  background: var(--bg-base);
 }
 
 /* Resize Handles */
@@ -438,21 +406,15 @@ body {
 }
 
 .resize-handle-chat {
-  width: 4px;
+  width: 1px;
   cursor: col-resize;
   background: var(--border-default);
-  transition: background 0.15s;
-}
-
-.resize-handle-chat:hover,
-.resize-handle-chat:active {
-  background: var(--accent-primary);
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -460,11 +422,11 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-active);
-  border-radius: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #444;
+  background: rgba(255,255,255,0.2);
 }
 </style>

@@ -194,34 +194,30 @@ const formatToolInput = (tool) => {
 <style scoped>
 .message {
   display: flex;
-  gap: 12px;
-  padding: 14px 16px;
-}
-
-.message:hover {
-  background: var(--bg-hover);
+  gap: 10px;
+  padding: 10px 16px;
 }
 
 .avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
   flex-shrink: 0;
 }
 
 .avatar.user {
-  background: var(--accent-primary);
-  color: white;
+  background: #8dc8fb;
+  color: #19161d;
 }
 
 .avatar.assistant {
-  background: var(--purple);
-  color: white;
+  background: #b080ff;
+  color: #19161d;
 }
 
 .content {
@@ -230,59 +226,57 @@ const formatToolInput = (tool) => {
 }
 
 .role-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #ffffff;
+  margin-bottom: 4px;
 }
 
 /* 工具卡片 */
 .tools {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .tool-card {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
+  background: #28242e;
+  border-radius: 6px;
   overflow: hidden;
 }
 
 .tool-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 8px 10px;
   cursor: pointer;
-  transition: background 0.15s;
 }
 
 .tool-header:hover {
-  background: var(--bg-hover);
+  background: #322e3a;
 }
 
 .status-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .status-icon.running svg,
 .status-icon.pending svg {
-  color: var(--accent-primary);
+  color: #8dc8fb;
 }
 
 .status-icon.completed svg {
-  color: var(--green);
+  color: #80ffb5;
 }
 
 .status-icon.error svg {
-  color: #f87171;
+  color: #ff8080;
 }
 
 .spinner {
@@ -297,19 +291,18 @@ const formatToolInput = (tool) => {
 .type-icon {
   display: flex;
   align-items: center;
-  color: var(--text-muted);
+  color: #6b6773;
 }
 
 .tool-name {
-  font-size: 13px;
-  color: var(--text-primary);
-  font-weight: 500;
+  font-size: 12px;
+  color: #938f9b;
   flex: 1;
 }
 
 .expand-icon {
-  color: var(--text-muted);
-  transition: transform 0.2s;
+  color: #6b6773;
+  transition: transform 0.15s;
 }
 
 .expand-icon.expanded {
@@ -318,41 +311,41 @@ const formatToolInput = (tool) => {
 
 /* 工具内容 */
 .tool-content {
-  padding: 0 12px 10px;
+  padding: 0 10px 8px;
 }
 
 .command-line,
 .file-path,
 .search-query {
-  background: var(--bg-base);
+  background: rgba(0,0,0,0.2);
   border-radius: 4px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   overflow-x: auto;
 }
 
 .command-line code,
 .file-path code,
 .search-query code {
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  color: #938f9b;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
 /* 工具输出 */
 .tool-output {
-  border-top: 1px solid var(--border-default);
-  padding: 10px 12px;
-  background: var(--bg-base);
-  max-height: 200px;
+  border-top: 1px solid #28242e;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.15);
+  max-height: 120px;
   overflow-y: auto;
 }
 
 .tool-output pre {
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  font-size: 11px;
-  color: var(--text-secondary);
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 10px;
+  color: #6b6773;
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
@@ -360,28 +353,27 @@ const formatToolInput = (tool) => {
 
 /* 思考过程 */
 .reasoning {
-  background: rgba(167, 139, 250, 0.08);
-  border: 1px solid rgba(167, 139, 250, 0.2);
-  border-radius: 8px;
-  margin-bottom: 12px;
+  background: rgba(176, 128, 255, 0.1);
+  border-radius: 6px;
+  margin-bottom: 8px;
   overflow: hidden;
 }
 
 .reasoning-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--purple);
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #b080ff;
   font-weight: 500;
 }
 
 .reasoning-content {
-  padding: 0 12px 10px;
+  padding: 0 10px 8px;
   font-size: 12px;
-  color: #c4b5fd;
-  line-height: 1.5;
+  color: #938f9b;
+  line-height: 1.4;
 }
 
 /* 正文 */
@@ -390,12 +382,17 @@ const formatToolInput = (tool) => {
   word-break: break-word;
   font-family: inherit;
   font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-primary);
+  line-height: 1.5;
+  color: #ffffff;
   margin: 0;
 }
 
 /* working 动画 */
+.working-dots {
+  color: #6b6773;
+  font-size: 12px;
+}
+
 .working-dots::after {
   content: '';
   animation: dots 1.5s infinite;

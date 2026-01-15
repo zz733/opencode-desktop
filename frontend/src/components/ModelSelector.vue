@@ -72,19 +72,18 @@ const select = (id) => {
 .trigger {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-size: 12px;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #28242e;
+  border: none;
+  border-radius: 4px;
+  color: #938f9b;
+  font-size: 11px;
   cursor: pointer;
 }
 
 .trigger:hover {
-  background: var(--bg-hover);
-  border-color: var(--text-muted);
+  color: #ffffff;
 }
 
 .dropdown {
@@ -92,31 +91,34 @@ const select = (id) => {
   bottom: 100%;
   right: 0;
   margin-bottom: 4px;
-  width: 220px;
-  max-height: 300px;
+  width: 200px;
+  max-height: 260px;
   overflow-y: auto;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
+  background: #28242e;
+  border: 1px solid #322e3a;
   border-radius: 8px;
-  box-shadow: 0 -8px 24px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   z-index: 1000;
 }
 
 .header {
-  padding: 10px 12px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-default);
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b6773;
+  border-bottom: 1px solid #28242e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .group {
-  padding: 6px;
+  padding: 4px;
 }
 
 .group-label {
   padding: 6px 8px;
-  font-size: 11px;
-  color: var(--text-muted);
+  font-size: 10px;
+  color: #6b6773;
 }
 
 .option {
@@ -124,15 +126,16 @@ const select = (id) => {
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
-  color: var(--text-primary);
+  color: #938f9b;
 }
 
 .option:hover {
-  background: var(--bg-hover);
+  background: #322e3a;
+  color: #ffffff;
 }
 
 .option.active {
-  background: var(--accent-primary);
+  background: #7138cc;
   color: white;
 }
 

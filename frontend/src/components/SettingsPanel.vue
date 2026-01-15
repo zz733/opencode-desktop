@@ -38,7 +38,7 @@ const changeLanguage = (code) => {
 <style scoped>
 .settings-panel {
   flex: 1;
-  background: var(--bg-surface);
+  background: #211d25;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -49,7 +49,7 @@ const changeLanguage = (code) => {
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.5px;
-  color: var(--text-secondary);
+  color: #938f9b;
   text-transform: uppercase;
 }
 
@@ -66,7 +66,7 @@ const changeLanguage = (code) => {
 .section-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #ffffff;
   margin-bottom: 12px;
   padding: 0 4px;
 }
@@ -76,37 +76,37 @@ const changeLanguage = (code) => {
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  background: var(--bg-elevated);
+  background: #28242e;
   border-radius: 6px;
   margin-bottom: 8px;
 }
 
 .setting-label {
   font-size: 13px;
-  color: var(--text-primary);
+  color: #ffffff;
 }
 
 .setting-control select {
   padding: 6px 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-default);
+  background: #28242e;
+  border: 1px solid #28242e;
   border-radius: 4px;
-  color: var(--text-primary);
+  color: #ffffff;
   font-size: 12px;
   cursor: pointer;
   outline: none;
 }
 
 .setting-control select:hover {
-  border-color: var(--text-muted);
+  border-color: #6b6773;
 }
 
 .setting-control select:focus {
-  border-color: var(--accent-primary);
+  border-color: #b080ff;
 }
 
 .setting-control select option {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
+  background: #28242e;
+  color: #ffffff;
 }
 </style>

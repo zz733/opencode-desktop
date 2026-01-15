@@ -12,7 +12,9 @@ const props = defineProps({
   messages: Array,
   sending: Boolean,
   currentModel: String,
-  models: Array
+  models: Array,
+  connected: Boolean,
+  connecting: Boolean
 })
 
 const emit = defineEmits(['selectSession', 'send', 'update:currentModel', 'cancel'])
@@ -29,7 +31,9 @@ const handleKeydown = (e) => {
 }
 
 const send = () => {
+  console.log('send called, inputText:', inputText.value, 'sending:', props.sending)
   if (!inputText.value.trim() || props.sending) return
+  console.log('emitting send event')
   emit('send', inputText.value)
   inputText.value = ''
 }
@@ -92,6 +96,11 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
           </div>
         </div>
       </div>
+      
+      <!-- 连接状态指示器 -->
+      <div class="status-indicator" :title="connected ? '已连接' : (connecting ? '连接中...' : '未连接')">
+        <span :class="['status-dot', { connected, connecting }]"></span>
+      </div>
     </header>
     
     <!-- 消息 -->
@@ -102,6 +111,7 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
         </svg>
         <h3>{{ t('chat.howCanIHelp') }}</h3>
         <p>{{ t('chat.askAnything') }}</p>
+        <p v-if="!connected" class="status-hint">{{ connecting ? '正在连接...' : '未连接到 OpenCode 服务' }}</p>
       </div>
       
       <MessageItem 
@@ -122,49 +132,53 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
           :disabled="sending"
           rows="1"
         ></textarea>
-        <button 
-          v-if="sending" 
-          @click="cancel" 
-          class="btn-cancel"
-          :title="t('chat.cancel')"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2"/>
-          </svg>
-        </button>
-        <button 
-          v-else
-          @click="send" 
-          :disabled="!inputText.trim()" 
-          class="btn-send"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 12h14M12 5l7 7-7 7"/>
-          </svg>
-        </button>
-      </div>
-      
-      <!-- 底部工具栏：模型选择等 -->
-      <div class="input-toolbar">
-        <div class="toolbar-left">
-          <button class="toolbar-btn" title="Attach file">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-            </svg>
-          </button>
-          <button class="toolbar-btn" title="Add context">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 8v8M8 12h8"/>
-            </svg>
-          </button>
-        </div>
-        <div class="toolbar-right">
-          <ModelSelector 
-            :modelValue="currentModel"
-            :models="models"
-            @update:modelValue="emit('update:currentModel', $event)"
-          />
+        
+        <!-- 底部工具栏：在输入框内 -->
+        <div class="input-toolbar">
+          <div class="toolbar-left">
+            <button class="toolbar-btn" title="Add context (#)">
+              <span style="font-size: 16px; font-weight: 500;">#</span>
+            </button>
+            <button class="toolbar-btn" title="Attach image">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+            </button>
+            <button class="toolbar-btn" title="Voice input">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+              </svg>
+            </button>
+          </div>
+          <div class="toolbar-right">
+            <ModelSelector 
+              :modelValue="currentModel"
+              :models="models"
+              @update:modelValue="emit('update:currentModel', $event)"
+            />
+            <button 
+              v-if="sending" 
+              @click="cancel" 
+              class="btn-cancel"
+              :title="t('chat.cancel')"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+              </svg>
+            </button>
+            <button 
+              v-else
+              @click="send" 
+              :disabled="!inputText.trim()" 
+              :class="['btn-send', { active: inputText.trim() }]"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M12 19V5M5 12l7-7 7 7"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -178,33 +192,59 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: var(--bg-base);
-  border-left: 1px solid var(--border-default);
+  background: #19161d;
+  overflow: hidden;
+  border-left: 1px solid #28242e;
 }
 
 .chat-header {
-  height: 44px;
+  height: 35px;
   padding: 0 12px;
   display: flex;
   align-items: center;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-default);
+  justify-content: space-between;
+  border-bottom: 1px solid #28242e;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff8080;
+}
+
+.status-dot.connecting {
+  background: #ffcf99;
+  animation: pulse 1s infinite;
+}
+
+.status-dot.connected {
+  background: #80ffb5;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .session-selector {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 6px;
+  gap: 6px;
+  padding: 4px 8px;
   cursor: pointer;
-  color: var(--text-primary);
+  color: #ffffff;
   font-size: 13px;
   position: relative;
 }
 
 .session-selector:hover {
-  background: var(--bg-hover);
+  background: #322e3a;
 }
 
 .session-dropdown {
@@ -212,68 +252,70 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   top: 100%;
   left: 0;
   margin-top: 4px;
-  width: 260px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  width: 240px;
+  background: #28242e;
+  border: 1px solid #322e3a;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   z-index: 1000;
-  overflow: hidden;
 }
 
 .dropdown-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-default);
+  padding: 8px 12px;
+  border-bottom: 1px solid #28242e;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: #938f9b;
 }
 
 .btn-new {
-  padding: 4px 10px;
-  background: var(--accent-primary);
+  padding: 4px 8px;
+  background: #7138cc;
   border: none;
-  border-radius: 4px;
+  border-radius: 3px;
   color: white;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
+}
+
+.btn-new:hover {
+  background: #b080ff;
 }
 
 .session-list {
-  max-height: 200px;
+  max-height: 180px;
   overflow-y: auto;
-  padding: 6px;
+  padding: 4px;
 }
 
 .session-item {
-  padding: 8px 10px;
-  border-radius: 4px;
+  padding: 6px 8px;
   cursor: pointer;
-  font-size: 13px;
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: #938f9b;
 }
 
 .session-item:hover {
-  background: var(--bg-hover);
+  background: #322e3a;
 }
 
 .session-item.active {
-  background: var(--accent-primary);
+  background: #7138cc;
   color: white;
 }
 
 .empty {
-  padding: 16px;
+  padding: 12px;
   text-align: center;
-  color: var(--text-muted);
+  color: #6b6773;
+  font-size: 12px;
 }
 
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
 }
 
 .empty-state {
@@ -282,8 +324,7 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
-  padding: 40px;
+  color: #6b6773;
 }
 
 .empty-state svg {
@@ -292,49 +333,69 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
 }
 
 .empty-state h3 {
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.empty-state p {
+  font-size: 12px;
+  color: #6b6773;
+}
+
+.status-hint {
+  margin-top: 12px;
+  padding: 6px 12px;
+  background: #28242e;
+  border-radius: 6px;
+  color: #ffcf99 !important;
 }
 
 .input-area {
   padding: 12px;
-  background: var(--bg-surface);
-  border-top: 1px solid var(--border-default);
 }
 
 .input-box {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  padding: 10px 12px;
+  flex-direction: column;
+  background: #28242e;
+  border: 1px solid #3c3846;
+  border-radius: 12px;
+  padding: 12px;
   transition: border-color 0.15s;
 }
 
+.input-box:hover {
+  border-color: #7138cc;
+}
+
 .input-box:focus-within {
-  border-color: var(--accent-primary);
+  border-color: #7138cc;
 }
 
 .input-box textarea {
   flex: 1;
   background: transparent;
   border: none;
-  color: var(--text-primary);
-  font-size: 13px;
+  color: #ffffff;
+  font-size: 14px;
   resize: none;
   outline: none;
   font-family: inherit;
-  line-height: 1.5;
-  min-height: 20px;
+  line-height: 1.4;
+  min-height: 24px;
   max-height: 120px;
 }
 
 .input-box textarea::placeholder {
-  color: var(--text-muted);
+  color: #6b6773;
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .btn-send, .btn-cancel {
@@ -350,40 +411,46 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
 }
 
 .btn-send {
-  background: var(--accent-primary);
-  color: white;
+  background: #6b6773;
+  color: #19161d;
 }
 
 .btn-send:disabled {
-  opacity: 0.4;
+  background: #322e3a;
+  color: #6b6773;
   cursor: not-allowed;
 }
 
 .btn-send:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: #938f9b;
+}
+
+.btn-send.active {
+  background: #7138cc;
+  color: #ffffff;
+}
+
+.btn-send.active:hover {
+  background: #b080ff;
 }
 
 .btn-cancel {
-  background: #dc2626;
+  background: #ff8080;
   color: white;
-}
-
-.btn-cancel:hover {
-  background: #ef4444;
 }
 
 .input-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 8px;
-  padding: 0 4px;
+  margin-top: 10px;
+  padding-top: 0;
 }
 
 .toolbar-left, .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .toolbar-btn {
@@ -391,17 +458,17 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   height: 28px;
   background: transparent;
   border: none;
-  border-radius: 4px;
-  color: var(--text-muted);
+  color: #6b6773;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 4px;
 }
 
 .toolbar-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  color: #ffffff;
+  background: #322e3a;
 }
 
 .backdrop {

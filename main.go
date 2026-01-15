@@ -28,7 +28,7 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 30, G: 30, B: 30, A: 1},
+		BackgroundColour: &options.RGBA{R: 25, G: 22, B: 29, A: 1},
 		OnStartup:        app.startup,
 		Bind: []interface{}{
 			app,
@@ -45,9 +45,12 @@ func main() {
 			WindowIsTranslucent:  false,
 		},
 		Windows: &windows.Options{
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
+			WebviewIsTransparent:              false,
+			WindowIsTranslucent:               false,
+			Theme:                             windows.Dark,
+			DisableFramelessWindowDecorations: false,
 		},
+		Frameless: true,
 	})
 
 	if err != nil {

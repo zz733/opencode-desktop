@@ -27,26 +27,26 @@ const outputs = ref([])
 const outputRef = ref(null)
 
 const createTerminalTheme = () => ({
-  background: '#1a1a1a',
-  foreground: '#e4e4e4',
-  cursor: '#e4e4e4',
-  cursorAccent: '#1a1a1a',
-  selectionBackground: '#4d9cf650',
-  black: '#1a1a1a',
-  red: '#f87171',
-  green: '#4ade80',
-  yellow: '#facc15',
-  blue: '#60a5fa',
-  magenta: '#c084fc',
-  cyan: '#22d3ee',
-  white: '#e4e4e4',
-  brightBlack: '#6b6b6b',
-  brightRed: '#fca5a5',
-  brightGreen: '#86efac',
-  brightYellow: '#fde047',
-  brightBlue: '#93c5fd',
-  brightMagenta: '#d8b4fe',
-  brightCyan: '#67e8f9',
+  background: '#19161d',
+  foreground: '#ffffff',
+  cursor: '#b080ff',
+  cursorAccent: '#19161d',
+  selectionBackground: '#7138cc',
+  black: '#19161d',
+  red: '#ff8080',
+  green: '#80ffb5',
+  yellow: '#ffcf99',
+  blue: '#8dc8fb',
+  magenta: '#b080ff',
+  cyan: '#80f4ff',
+  white: '#ffffff',
+  brightBlack: '#6b6773',
+  brightRed: '#ff8080',
+  brightGreen: '#80ffb5',
+  brightYellow: '#ffcf99',
+  brightBlue: '#8dc8fb',
+  brightMagenta: '#b080ff',
+  brightCyan: '#80f4ff',
   brightWhite: '#ffffff',
 })
 
@@ -337,8 +337,8 @@ watch(activePanel, async (panel) => {
 .terminal-panel {
   display: flex;
   flex-direction: column;
-  background: #1a1a1a;
-  border-top: 1px solid var(--border-default);
+  background: #19161d;
+  border-top: 1px solid #28242e;
   height: 100%;
 }
 
@@ -349,51 +349,47 @@ watch(activePanel, async (panel) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-default);
+  background: #211d25;
 }
 
 .tabs-left {
   display: flex;
-  gap: 2px;
 }
 
 .tabs-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .tab {
-  padding: 4px 12px;
+  padding: 6px 12px;
   background: transparent;
   border: none;
-  border-radius: 4px;
-  color: var(--text-muted);
+  color: #938f9b;
   font-size: 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  text-transform: uppercase;
 }
 
 .tab:hover {
-  color: var(--text-secondary);
+  color: #ffffff;
 }
 
 .tab.active {
-  color: var(--text-primary);
-  background: var(--bg-hover);
+  color: #ffffff;
+  border-bottom: 1px solid #b080ff;
 }
 
 .badge {
-  background: var(--accent-primary);
+  background: #7138cc;
   color: white;
-  font-size: 10px;
-  padding: 1px 5px;
+  font-size: 9px;
+  padding: 1px 4px;
   border-radius: 8px;
-  min-width: 16px;
-  text-align: center;
 }
 
 .terminal-tabs {
@@ -402,32 +398,28 @@ watch(activePanel, async (panel) => {
 }
 
 .terminal-tab {
-  padding: 3px 8px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
-  color: var(--text-muted);
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  color: #938f9b;
   font-size: 11px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .terminal-tab:hover {
-  background: var(--bg-hover);
-  color: var(--text-secondary);
+  color: #ffffff;
 }
 
 .terminal-tab.active {
-  background: var(--bg-active);
-  color: var(--text-primary);
-  border-color: var(--accent-primary);
+  color: #ffffff;
+  background: #322e3a;
 }
 
 .tab-close {
-  font-size: 14px;
-  line-height: 1;
+  font-size: 12px;
   opacity: 0.5;
 }
 
@@ -436,12 +428,11 @@ watch(activePanel, async (panel) => {
 }
 
 .btn-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   background: transparent;
   border: none;
-  border-radius: 4px;
-  color: var(--text-muted);
+  color: #938f9b;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -449,8 +440,7 @@ watch(activePanel, async (panel) => {
 }
 
 .btn-icon:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  color: #ffffff;
 }
 
 .panel-content {
@@ -459,7 +449,6 @@ watch(activePanel, async (panel) => {
   position: relative;
 }
 
-/* 问题面板 */
 .problems-panel,
 .output-panel {
   height: 100%;
@@ -468,71 +457,67 @@ watch(activePanel, async (panel) => {
 }
 
 .empty-state {
-  color: var(--text-muted);
+  color: #6b6773;
   font-size: 12px;
   text-align: center;
-  padding: 20px;
+  padding: 16px;
 }
 
 .problems-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .problem-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 4px 8px;
-  border-radius: 4px;
   font-size: 12px;
 }
 
 .problem-item:hover {
-  background: var(--bg-hover);
+  background: #322e3a;
 }
 
 .problem-item .icon {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
 }
 
 .problem-item .icon.error {
-  background: #f87171;
+  background: #ff8080;
 }
 
 .problem-item .icon.warning {
-  background: #facc15;
+  background: #ffcf99;
 }
 
 .problem-item .icon.info {
-  background: #60a5fa;
+  background: #8dc8fb;
 }
 
 .problem-item .message {
   flex: 1;
-  color: var(--text-primary);
+  color: #ffffff;
 }
 
 .problem-item .location {
-  color: var(--text-muted);
+  color: #938f9b;
 }
 
-/* 输出面板 */
 .output-content {
-  font-family: Menlo, Monaco, "Courier New", monospace;
+  font-family: Consolas, 'Courier New', monospace;
   font-size: 12px;
   line-height: 1.4;
 }
 
 .output-line {
-  padding: 2px 0;
-  color: var(--text-secondary);
+  padding: 1px 0;
+  color: #ffffff;
 }
 
-/* 终端容器 */
 .terminals-container {
   height: 100%;
   position: relative;
@@ -549,45 +534,16 @@ watch(activePanel, async (panel) => {
   display: block;
 }
 
-/* xterm 样式覆盖 */
 .terminal-instance :deep(.xterm) {
   height: 100%;
   width: 100%;
-  text-align: left !important;
-}
-
-.terminal-instance :deep(.xterm-screen) {
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 100% !important;
-}
-
-.terminal-instance :deep(.xterm-screen canvas) {
-  display: block !important;
-}
-
-.terminal-instance :deep(.xterm-rows) {
-  padding: 0 !important;
-  margin: 0 !important;
-}
-
-.terminal-instance :deep(.xterm-helpers) {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-}
-
-.terminal-instance :deep(.xterm-viewport) {
-  overflow-y: auto !important;
-  width: 100% !important;
 }
 
 .terminal-instance :deep(.xterm-viewport::-webkit-scrollbar) {
-  width: 8px;
+  width: 10px;
 }
 
 .terminal-instance :deep(.xterm-viewport::-webkit-scrollbar-thumb) {
-  background: #333;
-  border-radius: 4px;
+  background: #322e3a;
 }
 </style>

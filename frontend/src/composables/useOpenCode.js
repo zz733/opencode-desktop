@@ -40,13 +40,24 @@ async function autoConnect() {
     console.log('OpenCode status:', status)
     
     if (!status.installed) {
-      // 未安装，提示用户
-      openCodeStatus.value = 'not-installed'
-      connecting.value = false
-      return
+      // 未安装，自动安装
+      console.log('OpenCode 未安装，开始自动安装...')
+      openCodeStatus.value = 'installing'
+      try {
+        await InstallOpenCode()
+        console.log('安装完成，继续启动...')
+      } catch (e) {
+        console.error('安装失败:', e)
+        openCodeStatus.value = 'install-failed'
+        connecting.value = false
+        return
+      }
     }
     
-    if (status.connected) {
+    // 重新检查状态
+    const newStatus = await GetOpenCodeStatus()
+    
+    if (newStatus.connected) {
       // 已连接，直接使用
       await onConnected()
       return
@@ -164,11 +175,18 @@ async function createSession() {
 }
 
 async function sendMessage(text) {
+  console.log('sendMessage called:', text, 'sending:', sending.value, 'connected:', connected.value)
   if (!text.trim() || sending.value) return
   
   // 如果没有会话，自动创建
-  if (!currentSession.value) {
-    await createSession()
+  let session = currentSession.value
+  console.log('current session:', session)
+  if (!session) {
+    session = await createSession()
+    if (!session) {
+      console.error('创建会话失败')
+      return
+    }
   }
   
   sending.value = true
@@ -176,9 +194,11 @@ async function sendMessage(text) {
   messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {} })
   
   try {
-    await SendMessageWithModel(currentSession.value.id, text, currentModel.value)
+    console.log('calling SendMessageWithModel:', session.id, text, currentModel.value)
+    await SendMessageWithModel(session.id, text, currentModel.value)
     setTimeout(() => { if (sending.value) sending.value = false }, 60000)
   } catch (e) {
+    console.error('SendMessageWithModel error:', e)
     messages.value[messages.value.length - 1].content = '错误: ' + e
     sending.value = false
   }

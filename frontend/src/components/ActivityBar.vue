@@ -58,17 +58,19 @@ const tabs = [
 <style scoped>
 .activity-bar {
   width: 48px;
-  background: var(--bg-surface);
-  border-right: 1px solid var(--border-default);
+  background: #211d25;
   display: flex;
   flex-direction: column;
-  padding: 8px 0;
+  align-items: center;
+  padding: 4px 0;
+  border-right: 1px solid #28242e;
 }
 
 .top-icons, .bottom-icons {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 0;
 }
 
 .bottom-icons {
@@ -76,25 +78,31 @@ const tabs = [
 }
 
 .icon-btn {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
+  color: #938f9b;
   cursor: pointer;
-  border-radius: 8px;
-  margin: 2px 0;
-  transition: all 0.15s;
+  position: relative;
 }
 
 .icon-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
+  color: #ffffff;
 }
 
 .icon-btn.active {
-  color: var(--text-primary);
-  background: var(--bg-active);
+  color: #ffffff;
+}
+
+.icon-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #b080ff;
 }
 </style>

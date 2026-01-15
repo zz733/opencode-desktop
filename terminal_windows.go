@@ -1,24 +1,22 @@
-//go:build !windows
+//go:build windows
 
 package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"sync"
 	"sync/atomic"
 
-	"github.com/creack/pty"
+	"github.com/UserExistsError/conpty"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // TerminalInstance 单个终端实例
 type TerminalInstance struct {
 	ID     int
-	ptmx   *os.File
-	cmd    *exec.Cmd
+	cpty   *conpty.ConPty
 	active bool
 }
 
@@ -45,31 +43,25 @@ func (tm *TerminalManager) CreateTerminal() (int, error) {
 
 	id := int(atomic.AddInt32(&tm.nextID, 1))
 
-	// 获取默认 shell
-	shell := os.Getenv("SHELL")
+	// Windows 使用 PowerShell
+	shell := os.Getenv("COMSPEC")
 	if shell == "" {
-		// macOS 和 Linux 的默认 shell
-		if _, err := os.Stat("/bin/zsh"); err == nil {
-			shell = "/bin/zsh"
-		} else {
-			shell = "/bin/bash"
-		}
+		shell = "cmd.exe"
+	}
+	// 优先使用 PowerShell
+	if _, err := exec.LookPath("powershell.exe"); err == nil {
+		shell = "powershell.exe"
 	}
 
-	// 创建命令
-	cmd := exec.Command(shell)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
-
-	// 启动 PTY
-	ptmx, err := pty.Start(cmd)
+	// 使用 ConPTY 创建伪终端
+	cpty, err := conpty.Start(shell, conpty.ConPtyDimensions(120, 30))
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to start conpty: %v", err)
 	}
 
 	instance := &TerminalInstance{
 		ID:     id,
-		ptmx:   ptmx,
-		cmd:    cmd,
+		cpty:   cpty,
 		active: true,
 	}
 	tm.terminals[id] = instance
@@ -83,21 +75,15 @@ func (tm *TerminalManager) CreateTerminal() (int, error) {
 // readOutput 读取终端输出
 func (tm *TerminalManager) readOutput(inst *TerminalInstance) {
 	buf := make([]byte, 4096)
-	for {
-		n, err := inst.ptmx.Read(buf)
+	for inst.active {
+		n, err := inst.cpty.Read(buf)
 		if err != nil {
-			if err != io.EOF {
-				runtime.EventsEmit(tm.app.ctx, fmt.Sprintf("terminal-error-%d", inst.ID), err.Error())
-			}
 			break
 		}
 		if n > 0 {
 			runtime.EventsEmit(tm.app.ctx, fmt.Sprintf("terminal-output-%d", inst.ID), string(buf[:n]))
 		}
 	}
-	tm.mu.Lock()
-	inst.active = false
-	tm.mu.Unlock()
 }
 
 // WriteTerminal 写入指定终端
@@ -106,11 +92,11 @@ func (tm *TerminalManager) WriteTerminal(id int, data string) error {
 	inst, ok := tm.terminals[id]
 	tm.mu.Unlock()
 
-	if !ok || !inst.active || inst.ptmx == nil {
+	if !ok || !inst.active || inst.cpty == nil {
 		return fmt.Errorf("terminal %d not found or inactive", id)
 	}
 
-	_, err := inst.ptmx.Write([]byte(data))
+	_, err := inst.cpty.Write([]byte(data))
 	return err
 }
 
@@ -120,14 +106,11 @@ func (tm *TerminalManager) ResizeTerminal(id int, cols, rows int) error {
 	inst, ok := tm.terminals[id]
 	tm.mu.Unlock()
 
-	if !ok || !inst.active || inst.ptmx == nil {
+	if !ok || !inst.active || inst.cpty == nil {
 		return nil
 	}
 
-	return pty.Setsize(inst.ptmx, &pty.Winsize{
-		Cols: uint16(cols),
-		Rows: uint16(rows),
-	})
+	return inst.cpty.Resize(cols, rows)
 }
 
 // CloseTerminal 关闭指定终端
@@ -140,11 +123,9 @@ func (tm *TerminalManager) CloseTerminal(id int) {
 	tm.mu.Unlock()
 
 	if ok && inst != nil {
-		if inst.ptmx != nil {
-			inst.ptmx.Close()
-		}
-		if inst.cmd != nil && inst.cmd.Process != nil {
-			inst.cmd.Process.Kill()
+		inst.active = false
+		if inst.cpty != nil {
+			inst.cpty.Close()
 		}
 	}
 }
@@ -174,11 +155,9 @@ func (tm *TerminalManager) CloseAll() {
 	tm.mu.Unlock()
 
 	for _, inst := range terminals {
-		if inst.ptmx != nil {
-			inst.ptmx.Close()
-		}
-		if inst.cmd != nil && inst.cmd.Process != nil {
-			inst.cmd.Process.Kill()
+		inst.active = false
+		if inst.cpty != nil {
+			inst.cpty.Close()
 		}
 	}
 }
