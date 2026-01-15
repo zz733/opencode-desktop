@@ -101,6 +101,17 @@ const handleActiveFileChange = (path) => {
   setActiveFile(path)
 }
 
+// 比较文件差异
+const handleCompare = (edit) => {
+  // 打开文件并显示 diff
+  editorAreaRef.value?.openFileWithDiff(edit)
+}
+
+// 撤销编辑后刷新编辑器
+const handleRevertEdit = (editId) => {
+  editorAreaRef.value?.reloadCurrentFile()
+}
+
 // 拖动处理
 const startDrag = (type) => (e) => {
   isDragging.value = true
@@ -178,6 +189,8 @@ const startDrag = (type) => (e) => {
           @send="sendMessage"
           @cancel="cancelMessage"
           @update:currentModel="setModel"
+          @compare="handleCompare"
+          @revertEdit="handleRevertEdit"
         />
       </div>
     </div>

@@ -8,6 +8,7 @@ import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 import { ReadFileContent, WriteFileContent, WatchFile, UnwatchFile } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
+import { useFileEdits } from '../composables/useFileEdits'
 
 // 配置 Monaco workers
 self.MonacoEnvironment = {
@@ -22,6 +23,8 @@ self.MonacoEnvironment = {
 
 const props = defineProps({ file: Object })
 const emit = defineEmits(['close', 'save'])
+
+const { addEdit } = useFileEdits()
 
 const editorContainer = ref(null)
 const editor = shallowRef(null)
@@ -66,11 +69,33 @@ const loadFile = async () => {
   }
 }
 
-// 文件变化时自动刷新
+// 文件变化时记录编辑并刷新
 const handleFileChanged = async (changedPath) => {
   if (changedPath !== props.file?.path) return
-  console.log('文件已更新，自动刷新:', changedPath)
-  await loadFile()
+  
+  const oldContent = editor.value?.getValue() || content.value
+  
+  try {
+    const newContent = await ReadFileContent(props.file.path)
+    
+    // 如果内容不同，记录编辑
+    if (oldContent !== newContent) {
+      addEdit(props.file.path, oldContent, newContent)
+      
+      // 更新编辑器
+      content.value = newContent
+      originalContent.value = newContent
+      modified.value = false
+      
+      if (editor.value) {
+        const position = editor.value.getPosition()
+        editor.value.setValue(newContent)
+        if (position) editor.value.setPosition(position)
+      }
+    }
+  } catch (e) {
+    console.error('读取文件失败:', e)
+  }
 }
 
 const saveFile = async () => {
@@ -114,6 +139,11 @@ const initEditor = () => {
   editor.value.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, saveFile)
 }
 
+// 重新加载文件（供外部调用，如撤销后）
+const reloadFile = async () => {
+  await loadFile()
+}
+
 watch(() => props.file?.path, (newPath, oldPath) => {
   if (oldPath) UnwatchFile(oldPath)
   loadFile()
@@ -132,6 +162,8 @@ onUnmounted(() => {
 })
 
 const lineCount = () => editor.value?.getModel()?.getLineCount() || content.value.split('\n').length
+
+defineExpose({ reloadFile })
 </script>
 
 <template>

@@ -3,6 +3,8 @@ import { ref, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MessageItem from './MessageItem.vue'
 import ModelSelector from './ModelSelector.vue'
+import FileEditCard from './FileEditCard.vue'
+import { useFileEdits } from '../composables/useFileEdits'
 
 const { t } = useI18n()
 
@@ -17,7 +19,9 @@ const props = defineProps({
   connecting: Boolean
 })
 
-const emit = defineEmits(['selectSession', 'send', 'update:currentModel', 'cancel'])
+const emit = defineEmits(['selectSession', 'send', 'update:currentModel', 'cancel', 'compare', 'revertEdit'])
+
+const { fileEdits, revertEdit } = useFileEdits()
 
 const inputText = ref('')
 const messagesContainer = ref(null)
@@ -47,6 +51,17 @@ const selectSession = (s) => {
   showSessionList.value = false
 }
 
+const handleCompare = (edit) => {
+  emit('compare', edit)
+}
+
+const handleRevert = async (editId) => {
+  const success = await revertEdit(editId)
+  if (success) {
+    emit('revertEdit', editId)
+  }
+}
+
 watch(() => props.messages.length, () => {
   nextTick(() => {
     if (messagesContainer.value) {
@@ -57,6 +72,15 @@ watch(() => props.messages.length, () => {
 
 // 监听消息内容变化，自动滚动
 watch(() => props.messages[props.messages.length - 1]?.content, () => {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  })
+})
+
+// 监听文件编辑变化，自动滚动
+watch(() => fileEdits.value.length, () => {
   nextTick(() => {
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
@@ -99,7 +123,7 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
     
     <!-- 消息 -->
     <div class="messages" ref="messagesContainer">
-      <div v-if="!messages.length" class="empty-state">
+      <div v-if="!messages.length && !fileEdits.length" class="empty-state">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
@@ -114,6 +138,17 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
         :message="msg"
         :isLoading="sending && i === messages.length - 1 && msg.role === 'assistant'"
       />
+      
+      <!-- 文件编辑卡片 -->
+      <div class="edit-cards" v-if="fileEdits.length">
+        <FileEditCard
+          v-for="edit in fileEdits"
+          :key="edit.id"
+          :edit="edit"
+          @compare="handleCompare"
+          @revert="handleRevert"
+        />
+      </div>
     </div>
     
     <!-- 输入区域 -->
@@ -317,6 +352,10 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   background: var(--bg-elevated);
   border-radius: 6px;
   color: var(--yellow) !important;
+}
+
+.edit-cards {
+  padding: 0 16px 8px;
 }
 
 .input-area {
