@@ -46,6 +46,10 @@ export function GetServerURL() {
   return window['go']['main']['App']['GetServerURL']();
 }
 
+export function GetSessionMessages(arg1) {
+  return window['go']['main']['App']['GetSessionMessages'](arg1);
+}
+
 export function GetSessions() {
   return window['go']['main']['App']['GetSessions']();
 }

@@ -1,8 +1,24 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { marked } from 'marked'
+import hljs from 'highlight.js'
 
 const { t } = useI18n()
+
+// 配置 marked 使用 highlight.js
+marked.setOptions({
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return hljs.highlight(code, { language: lang }).value
+      } catch (e) {}
+    }
+    return hljs.highlightAuto(code).value
+  },
+  breaks: true,
+  gfm: true
+})
 
 const props = defineProps({
   message: Object,
@@ -17,6 +33,16 @@ const filteredContent = computed(() => {
     .replace(/^\[Please respond in [^\]]+\]\s*/i, '')
     .replace(/^\[Current active file: [^\]]+\]\s*/i, '')
     .trim()
+})
+
+// 渲染 markdown 内容
+const renderedContent = computed(() => {
+  if (!filteredContent.value) return ''
+  try {
+    return marked(filteredContent.value)
+  } catch (e) {
+    return filteredContent.value
+  }
 })
 
 // 工具图标映射 - 根据状态返回不同图标
@@ -194,7 +220,7 @@ const formatToolInput = (tool) => {
           <span class="working-dots">thinking</span>
         </template>
         <template v-else>
-          <pre>{{ filteredContent }}</pre>
+          <div class="markdown-body" v-html="renderedContent"></div>
         </template>
       </div>
     </div>
@@ -387,14 +413,150 @@ const formatToolInput = (tool) => {
 }
 
 /* 正文 */
-.text pre {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: inherit;
+.text {
   font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+/* Markdown 样式 */
+.markdown-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.markdown-body p {
+  margin: 0 0 8px;
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3, 
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-body h1 { font-size: 1.4em; }
+.markdown-body h2 { font-size: 1.3em; }
+.markdown-body h3 { font-size: 1.2em; }
+.markdown-body h4 { font-size: 1.1em; }
+
+.markdown-body ul, .markdown-body ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.markdown-body li {
+  margin: 4px 0;
+}
+
+.markdown-body strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-body em {
+  font-style: italic;
+}
+
+.markdown-body code {
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+  background: var(--bg-elevated);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--pink);
+}
+
+.markdown-body pre {
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--text-primary);
-  margin: 0;
+}
+
+/* Highlight.js 代码高亮主题 */
+.markdown-body .hljs-keyword,
+.markdown-body .hljs-selector-tag,
+.markdown-body .hljs-built_in,
+.markdown-body .hljs-name,
+.markdown-body .hljs-tag {
+  color: var(--pink);
+}
+
+.markdown-body .hljs-string,
+.markdown-body .hljs-title,
+.markdown-body .hljs-section,
+.markdown-body .hljs-attribute,
+.markdown-body .hljs-literal,
+.markdown-body .hljs-template-tag,
+.markdown-body .hljs-template-variable,
+.markdown-body .hljs-type,
+.markdown-body .hljs-addition {
+  color: var(--green);
+}
+
+.markdown-body .hljs-comment,
+.markdown-body .hljs-quote,
+.markdown-body .hljs-deletion,
+.markdown-body .hljs-meta {
+  color: var(--text-muted);
+}
+
+.markdown-body .hljs-number,
+.markdown-body .hljs-regexp,
+.markdown-body .hljs-selector-id,
+.markdown-body .hljs-selector-class {
+  color: var(--yellow);
+}
+
+.markdown-body .hljs-function,
+.markdown-body .hljs-title.function_ {
+  color: var(--blue);
+}
+
+.markdown-body .hljs-variable,
+.markdown-body .hljs-params {
+  color: var(--cyan);
+}
+
+.markdown-body .hljs-attr {
+  color: var(--purple);
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid var(--accent-primary);
+  margin: 8px 0;
+  padding-left: 12px;
+  color: var(--text-secondary);
+}
+
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border-default);
+  margin: 16px 0;
+}
+
+.markdown-body a {
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
 }
 
 /* working 动画 */

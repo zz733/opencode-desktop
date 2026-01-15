@@ -368,6 +368,65 @@ func (a *App) SetActiveFile(sessionID, filePath string) error {
 	return nil
 }
 
+// OpenCodeMessage OpenCode 返回的消息格式
+type OpenCodeMessage struct {
+	Info struct {
+		ID        string `json:"id"`
+		SessionID string `json:"sessionID"`
+		Role      string `json:"role"`
+	} `json:"info"`
+	Parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"parts"`
+}
+
+// GetSessionMessages 获取会话的历史消息
+func (a *App) GetSessionMessages(sessionID string) ([]Message, error) {
+	url := fmt.Sprintf("%s/session/%s/message", a.serverURL, sessionID)
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("获取历史消息: %s", url))
+	
+	resp, err := a.httpClient.Get(url)
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("获取消息失败: %v", err))
+		return nil, fmt.Errorf("获取消息失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// 读取响应体
+	body, _ := io.ReadAll(resp.Body)
+	
+	// 解析 OpenCode 格式的消息
+	var ocMessages []OpenCodeMessage
+	if err := json.Unmarshal(body, &ocMessages); err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("解析消息失败: %v", err))
+		return nil, err
+	}
+	
+	// 转换为简单格式
+	var messages []Message
+	for _, ocMsg := range ocMessages {
+		// 提取文本内容
+		var content string
+		for _, part := range ocMsg.Parts {
+			if part.Type == "text" && part.Text != "" {
+				content = part.Text
+				break
+			}
+		}
+		
+		if ocMsg.Info.Role != "" && content != "" {
+			messages = append(messages, Message{
+				Role:    ocMsg.Info.Role,
+				Content: content,
+			})
+		}
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("解析到 %d 条消息，转换后 %d 条", len(ocMessages), len(messages)))
+	return messages, nil
+}
+
 // CodeCompletion 代码补全请求
 func (a *App) CodeCompletion(sessionID, code, language, filename string) (string, error) {
 	// 使用更简洁的 prompt，让 AI 只返回补全内容

@@ -24,6 +24,8 @@ export function GetProviders():Promise<main.ProviderInfo>;
 
 export function GetServerURL():Promise<string>;
 
+export function GetSessionMessages(arg1:string):Promise<Array<main.Message>>;
+
 export function GetSessions():Promise<Array<main.Session>>;
 
 export function GetTerminals():Promise<Array<number>>;

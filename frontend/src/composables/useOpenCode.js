@@ -3,7 +3,7 @@ import {
   GetServerURL, SetServerURL, CheckConnection,
   GetSessions, CreateSession, SendMessage, SendMessageWithModel, 
   SubscribeEvents, GetOpenCodeStatus, AutoStartOpenCode, InstallOpenCode,
-  CancelSession
+  CancelSession, GetSessionMessages
 } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsEmit } from '../../wailsjs/runtime/runtime'
 import { i18n } from '../i18n'
@@ -191,9 +191,52 @@ async function loadSessions() {
   }
 }
 
-function selectSession(session) {
+async function selectSession(session) {
   currentSession.value = session
   messages.value = []
+  
+  // 加载历史消息
+  if (session?.id) {
+    try {
+      log(`加载会话 ${session.id} 的历史消息...`)
+      const history = await GetSessionMessages(session.id)
+      if (history && history.length > 0) {
+        // 过滤并转换消息格式
+        let processedMessages = history
+          .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+          .map(msg => {
+            let content = msg.content || ''
+            // 过滤掉语言提示和文件上下文前缀
+            content = content.replace(/^\[Please respond in [^\]]+\]\n*/g, '')
+            content = content.replace(/^\[Current active file: [^\]]+\]\n*/g, '')
+            content = content.trim()
+            return {
+              role: msg.role,
+              content: content,
+              reasoning: '',
+              tools: {}
+            }
+          })
+          .filter(msg => msg.content) // 过滤空消息
+        
+        // 如果消息是倒序的（最新在前），需要反转
+        // 检查：如果第一条是 assistant 而最后一条是 user，可能是倒序
+        if (processedMessages.length >= 2) {
+          const first = processedMessages[0]
+          const last = processedMessages[processedMessages.length - 1]
+          // 正常对话应该是 user 开始，如果第一条是 assistant，说明是倒序
+          if (first.role === 'assistant' && last.role === 'user') {
+            processedMessages = processedMessages.reverse()
+          }
+        }
+        
+        messages.value = processedMessages
+        log(`已加载 ${messages.value.length} 条历史消息`)
+      }
+    } catch (e) {
+      log(`加载历史消息失败: ${e}`)
+    }
+  }
 }
 
 async function createSession() {
@@ -341,9 +384,18 @@ function handleEvent(event) {
   if (event.type === 'message.updated' || event.type === 'session.status') {
     const info = event.properties?.info
     const status = event.properties?.status
-    if (info?.time?.completed || info?.finish || status === 'idle') {
+    
+    // 只有当 session 状态变为 idle 时才停止 sending
+    // message.updated 可能在工具执行过程中多次触发，不应该停止
+    if (status === 'idle') {
       sending.value = false
-      currentAssistantMessageId = null // 重置消息 ID
+      currentAssistantMessageId = null
+    }
+    
+    // 或者消息明确标记为完成
+    if (info?.time?.completed && info?.finish) {
+      sending.value = false
+      currentAssistantMessageId = null
     }
   }
 }

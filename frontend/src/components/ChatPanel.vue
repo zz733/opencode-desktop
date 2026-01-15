@@ -1,5 +1,5 @@
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MessageItem from './MessageItem.vue'
 import ModelSelector from './ModelSelector.vue'
@@ -26,6 +26,37 @@ const { fileEdits, revertEdit } = useFileEdits()
 const inputText = ref('')
 const messagesContainer = ref(null)
 const showSessionList = ref(false)
+
+// 合并消息和编辑记录，按时间排序
+const combinedItems = computed(() => {
+  const items = []
+  
+  // 添加消息，带时间戳
+  props.messages.forEach((msg, index) => {
+    items.push({
+      type: 'message',
+      data: msg,
+      index,
+      // 消息没有时间戳，用索引作为排序依据
+      order: index * 1000
+    })
+  })
+  
+  // 添加编辑记录
+  fileEdits.value.forEach(edit => {
+    // 找到编辑记录应该插入的位置（在最后一条 assistant 消息之后）
+    const lastAssistantIndex = props.messages.length - 1
+    items.push({
+      type: 'edit',
+      data: edit,
+      // 编辑记录放在消息之后，用时间戳区分多个编辑
+      order: (lastAssistantIndex + 1) * 1000 + (edit.timestamp % 1000)
+    })
+  })
+  
+  // 按 order 排序
+  return items.sort((a, b) => a.order - b.order)
+})
 
 const handleKeydown = (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -132,23 +163,20 @@ watch(() => fileEdits.value.length, () => {
         <p v-if="!connected" class="status-hint">{{ connecting ? '正在连接...' : '未连接到 OpenCode 服务' }}</p>
       </div>
       
-      <MessageItem 
-        v-for="(msg, i) in messages" 
-        :key="i" 
-        :message="msg"
-        :isLoading="sending && i === messages.length - 1 && msg.role === 'assistant'"
-      />
-      
-      <!-- 文件编辑卡片 -->
-      <div class="edit-cards" v-if="fileEdits.length">
-        <FileEditCard
-          v-for="edit in fileEdits"
-          :key="edit.id"
-          :edit="edit"
-          @compare="handleCompare"
-          @revert="handleRevert"
+      <template v-for="item in combinedItems" :key="item.type + '-' + (item.data.id || item.index)">
+        <MessageItem 
+          v-if="item.type === 'message'"
+          :message="item.data"
+          :isLoading="sending && item.index === messages.length - 1 && item.data.role === 'assistant'"
         />
-      </div>
+        <div v-else-if="item.type === 'edit'" class="edit-card-wrapper">
+          <FileEditCard
+            :edit="item.data"
+            @compare="handleCompare"
+            @revert="handleRevert"
+          />
+        </div>
+      </template>
     </div>
     
     <!-- 输入区域 -->
@@ -354,7 +382,7 @@ watch(() => fileEdits.value.length, () => {
   color: var(--yellow) !important;
 }
 
-.edit-cards {
+.edit-card-wrapper {
   padding: 0 16px 8px;
 }
 
