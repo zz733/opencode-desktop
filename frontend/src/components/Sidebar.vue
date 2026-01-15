@@ -79,7 +79,7 @@ const toggleFolder = (item) => {
 <style scoped>
 .sidebar {
   flex: 1;
-  background: #211d25;
+  background: var(--bg-surface);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -90,7 +90,7 @@ const toggleFolder = (item) => {
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 1.2px;
-  color: #938f9b;
+  color: var(--text-secondary);
   text-transform: uppercase;
 }
 
@@ -106,12 +106,12 @@ const toggleFolder = (item) => {
   padding: 4px 8px;
   font-size: 11px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   cursor: pointer;
 }
 
 .section-header:hover {
-  background: #322e3a;
+  background: var(--bg-hover);
 }
 
 .tree-items {
@@ -127,7 +127,7 @@ const toggleFolder = (item) => {
 }
 
 .tree-item:hover {
-  background: #322e3a;
+  background: var(--bg-hover);
 }
 
 .tree-item.nested {
@@ -144,7 +144,7 @@ const toggleFolder = (item) => {
 
 .name {
   font-size: 13px;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .placeholder {
@@ -152,7 +152,7 @@ const toggleFolder = (item) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b6773;
+  color: var(--text-muted);
   font-size: 13px;
 }
 </style>

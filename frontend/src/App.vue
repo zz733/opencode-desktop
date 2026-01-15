@@ -1,6 +1,7 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Environment } from '../wailsjs/runtime/runtime'
 import TitleBar from './components/TitleBar.vue'
 import ActivityBar from './components/ActivityBar.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -9,8 +10,14 @@ import TerminalPanel from './components/TerminalPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import StatusBar from './components/StatusBar.vue'
 import { useOpenCode } from './composables/useOpenCode'
+import { useTheme } from './composables/useTheme'
 
 const { t } = useI18n()
+const { initTheme } = useTheme()
+
+// 检测平台
+const platform = ref('windows')
+const isMac = computed(() => platform.value === 'darwin')
 
 const activeTab = ref('files')
 const sidebarWidth = ref(260)
@@ -40,8 +47,16 @@ const {
   cancelMessage
 } = useOpenCode()
 
-onMounted(() => {
+onMounted(async () => {
+  initTheme()
   autoConnect()
+  // 获取平台信息
+  try {
+    const env = await Environment()
+    platform.value = env.platform
+  } catch (e) {
+    console.log('获取平台信息失败:', e)
+  }
 })
 
 const handleSelectSession = async (session) => {
@@ -156,9 +171,9 @@ const handleTabChange = (tab) => {
 </script>
 
 <template>
-  <div class="app" :class="{ dragging: isDraggingSidebar || isDraggingChat || isDraggingTerminal }">
-    <!-- 自定义标题栏 -->
-    <TitleBar />
+  <div class="app" :class="{ dragging: isDraggingSidebar || isDraggingChat || isDraggingTerminal, mac: isMac }">
+    <!-- 自定义标题栏 (仅 Windows) -->
+    <TitleBar v-if="!isMac" />
     
     <!-- 主体 -->
     <div class="main">
@@ -437,5 +452,15 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255,255,255,0.2);
+}
+
+/* Mac 适配 - 为系统标题栏留出空间 */
+.app.mac .main {
+  padding-top: 28px;
+}
+
+.app.mac .sidebar-container,
+.app.mac .chat-container {
+  padding-top: 0;
 }
 </style>

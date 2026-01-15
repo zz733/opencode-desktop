@@ -43,6 +43,10 @@ func main() {
 			},
 			WebviewIsTransparent: true,
 			WindowIsTranslucent:  false,
+			About: &mac.AboutInfo{
+				Title:   "OpenCode Desktop",
+				Message: "AI 编程助手",
+			},
 		},
 		Windows: &windows.Options{
 			WebviewIsTransparent:              false,
@@ -50,6 +54,7 @@ func main() {
 			Theme:                             windows.Dark,
 			DisableFramelessWindowDecorations: false,
 		},
+		// Windows 使用无边框，Mac 使用系统标题栏
 		Frameless: true,
 	})
 

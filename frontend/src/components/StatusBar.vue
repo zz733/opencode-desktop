@@ -50,14 +50,14 @@ const connectionStatus = computed(() => {
 <style scoped>
 .status-bar {
   height: 22px;
-  background: #211d25;
-  border-top: 1px solid #28242e;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 8px;
   font-size: 11px;
-  color: #938f9b;
+  color: var(--text-secondary);
 }
 
 .status-left, .status-right {
@@ -75,7 +75,7 @@ const connectionStatus = computed(() => {
 }
 
 .status-item:hover {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .status-item svg {
@@ -93,16 +93,16 @@ const connectionStatus = computed(() => {
 }
 
 .connection.connected .status-dot {
-  background: #80ffb5;
+  background: var(--green);
 }
 
 .connection.connecting .status-dot {
-  background: #ffcf99;
+  background: var(--yellow);
   animation: pulse 1s infinite;
 }
 
 .connection.disconnected .status-dot {
-  background: #ff8080;
+  background: var(--red);
 }
 
 @keyframes pulse {

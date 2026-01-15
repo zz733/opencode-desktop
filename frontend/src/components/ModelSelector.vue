@@ -74,16 +74,16 @@ const select = (id) => {
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  background: #28242e;
+  background: var(--bg-elevated);
   border: none;
   border-radius: 4px;
-  color: #938f9b;
+  color: var(--text-secondary);
   font-size: 11px;
   cursor: pointer;
 }
 
 .trigger:hover {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .dropdown {
@@ -94,8 +94,8 @@ const select = (id) => {
   width: 200px;
   max-height: 260px;
   overflow-y: auto;
-  background: #28242e;
-  border: 1px solid #322e3a;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   z-index: 1000;
@@ -105,8 +105,8 @@ const select = (id) => {
   padding: 8px 12px;
   font-size: 10px;
   font-weight: 500;
-  color: #6b6773;
-  border-bottom: 1px solid #28242e;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-default);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -118,7 +118,7 @@ const select = (id) => {
 .group-label {
   padding: 6px 8px;
   font-size: 10px;
-  color: #6b6773;
+  color: var(--text-muted);
 }
 
 .option {
@@ -126,16 +126,16 @@ const select = (id) => {
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
-  color: #938f9b;
+  color: var(--text-secondary);
 }
 
 .option:hover {
-  background: #322e3a;
-  color: #ffffff;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .option.active {
-  background: #7138cc;
+  background: var(--accent-button);
   color: white;
 }
 

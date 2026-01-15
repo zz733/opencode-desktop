@@ -45,13 +45,13 @@ const close = () => Quit()
 <style scoped>
 .titlebar {
   height: 30px;
-  background: #211d25;
+  background: var(--bg-surface);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 8px;
   user-select: none;
-  border-bottom: 1px solid #28242e;
+  border-bottom: 1px solid var(--border-default);
 }
 
 .titlebar-left {
@@ -63,14 +63,14 @@ const close = () => Quit()
 .menu-item {
   padding: 4px 10px;
   font-size: 12px;
-  color: #938f9b;
+  color: var(--text-secondary);
   cursor: pointer;
   border-radius: 4px;
 }
 
 .menu-item:hover {
-  background: #322e3a;
-  color: #ffffff;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .titlebar-center {
@@ -78,7 +78,7 @@ const close = () => Quit()
   left: 50%;
   transform: translateX(-50%);
   font-size: 12px;
-  color: #938f9b;
+  color: var(--text-secondary);
 }
 
 .titlebar-right {
@@ -91,7 +91,7 @@ const close = () => Quit()
   height: 30px;
   background: transparent;
   border: none;
-  color: #938f9b;
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -99,8 +99,8 @@ const close = () => Quit()
 }
 
 .window-btn:hover {
-  background: #322e3a;
-  color: #ffffff;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .window-btn.close:hover {

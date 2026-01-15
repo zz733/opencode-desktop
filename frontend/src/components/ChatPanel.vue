@@ -186,9 +186,9 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #19161d;
+  background: var(--bg-base);
   overflow: hidden;
-  border-left: 1px solid #28242e;
+  border-left: 1px solid var(--border-default);
 }
 
 .chat-header {
@@ -196,7 +196,7 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   padding: 0 12px;
   display: flex;
   align-items: center;
-  border-bottom: 1px solid #28242e;
+  border-bottom: 1px solid var(--border-default);
 }
 
 .session-selector {
@@ -205,13 +205,13 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   gap: 6px;
   padding: 4px 8px;
   cursor: pointer;
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 13px;
   position: relative;
 }
 
 .session-selector:hover {
-  background: #322e3a;
+  background: var(--bg-hover);
 }
 
 .session-dropdown {
@@ -220,8 +220,8 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   left: 0;
   margin-top: 4px;
   width: 240px;
-  background: #28242e;
-  border: 1px solid #322e3a;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   z-index: 1000;
@@ -232,14 +232,14 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  border-bottom: 1px solid #28242e;
+  border-bottom: 1px solid var(--border-default);
   font-size: 12px;
-  color: #938f9b;
+  color: var(--text-secondary);
 }
 
 .btn-new {
   padding: 4px 8px;
-  background: #7138cc;
+  background: var(--accent-button);
   border: none;
   border-radius: 3px;
   color: white;
@@ -248,7 +248,7 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
 }
 
 .btn-new:hover {
-  background: #b080ff;
+  background: var(--accent-primary);
 }
 
 .session-list {
@@ -261,22 +261,22 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   padding: 6px 8px;
   cursor: pointer;
   font-size: 12px;
-  color: #938f9b;
+  color: var(--text-secondary);
 }
 
 .session-item:hover {
-  background: #322e3a;
+  background: var(--bg-hover);
 }
 
 .session-item.active {
-  background: #7138cc;
+  background: var(--accent-button);
   color: white;
 }
 
 .empty {
   padding: 12px;
   text-align: center;
-  color: #6b6773;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -291,7 +291,7 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #6b6773;
+  color: var(--text-muted);
 }
 
 .empty-state svg {
@@ -302,21 +302,21 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
 .empty-state h3 {
   font-size: 14px;
   font-weight: 400;
-  color: #ffffff;
+  color: var(--text-primary);
   margin-bottom: 4px;
 }
 
 .empty-state p {
   font-size: 12px;
-  color: #6b6773;
+  color: var(--text-muted);
 }
 
 .status-hint {
   margin-top: 12px;
   padding: 6px 12px;
-  background: #28242e;
+  background: var(--bg-elevated);
   border-radius: 6px;
-  color: #ffcf99 !important;
+  color: var(--yellow) !important;
 }
 
 .input-area {
@@ -326,26 +326,26 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
 .input-box {
   display: flex;
   flex-direction: column;
-  background: #28242e;
-  border: 1px solid #3c3846;
+  background: var(--bg-elevated);
+  border: 1px solid var(--bg-active);
   border-radius: 12px;
   padding: 12px;
   transition: border-color 0.15s;
 }
 
 .input-box:hover {
-  border-color: #7138cc;
+  border-color: var(--accent-button);
 }
 
 .input-box:focus-within {
-  border-color: #7138cc;
+  border-color: var(--accent-button);
 }
 
 .input-box textarea {
   flex: 1;
   background: transparent;
   border: none;
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 14px;
   resize: none;
   outline: none;
@@ -356,7 +356,7 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
 }
 
 .input-box textarea::placeholder {
-  color: #6b6773;
+  color: var(--text-muted);
 }
 
 .input-row {
@@ -378,31 +378,31 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
 }
 
 .btn-send {
-  background: #6b6773;
-  color: #19161d;
+  background: var(--text-muted);
+  color: var(--bg-base);
 }
 
 .btn-send:disabled {
-  background: #322e3a;
-  color: #6b6773;
+  background: var(--bg-hover);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
 .btn-send:hover:not(:disabled) {
-  background: #938f9b;
+  background: var(--text-secondary);
 }
 
 .btn-send.active {
-  background: #7138cc;
-  color: #ffffff;
+  background: var(--accent-button);
+  color: var(--text-primary);
 }
 
 .btn-send.active:hover {
-  background: #b080ff;
+  background: var(--accent-primary);
 }
 
 .btn-cancel {
-  background: #ff8080;
+  background: var(--red);
   color: white;
 }
 
@@ -425,7 +425,7 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   height: 28px;
   background: transparent;
   border: none;
-  color: #6b6773;
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -434,8 +434,8 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
 }
 
 .toolbar-btn:hover {
-  color: #ffffff;
-  background: #322e3a;
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .backdrop {

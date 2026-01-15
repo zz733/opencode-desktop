@@ -211,13 +211,13 @@ const formatToolInput = (tool) => {
 }
 
 .avatar.user {
-  background: #8dc8fb;
-  color: #19161d;
+  background: var(--blue);
+  color: var(--bg-base);
 }
 
 .avatar.assistant {
-  background: #b080ff;
-  color: #19161d;
+  background: var(--accent-primary);
+  color: var(--bg-base);
 }
 
 .content {
@@ -228,7 +228,7 @@ const formatToolInput = (tool) => {
 .role-name {
   font-size: 12px;
   font-weight: 500;
-  color: #ffffff;
+  color: var(--text-primary);
   margin-bottom: 4px;
 }
 
@@ -241,7 +241,7 @@ const formatToolInput = (tool) => {
 }
 
 .tool-card {
-  background: #28242e;
+  background: var(--bg-elevated);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -255,7 +255,7 @@ const formatToolInput = (tool) => {
 }
 
 .tool-header:hover {
-  background: #322e3a;
+  background: var(--bg-hover);
 }
 
 .status-icon {
@@ -268,15 +268,15 @@ const formatToolInput = (tool) => {
 
 .status-icon.running svg,
 .status-icon.pending svg {
-  color: #8dc8fb;
+  color: var(--blue);
 }
 
 .status-icon.completed svg {
-  color: #80ffb5;
+  color: var(--green);
 }
 
 .status-icon.error svg {
-  color: #ff8080;
+  color: var(--red);
 }
 
 .spinner {
@@ -291,17 +291,17 @@ const formatToolInput = (tool) => {
 .type-icon {
   display: flex;
   align-items: center;
-  color: #6b6773;
+  color: var(--text-muted);
 }
 
 .tool-name {
   font-size: 12px;
-  color: #938f9b;
+  color: var(--text-secondary);
   flex: 1;
 }
 
 .expand-icon {
-  color: #6b6773;
+  color: var(--text-muted);
   transition: transform 0.15s;
 }
 
@@ -328,14 +328,14 @@ const formatToolInput = (tool) => {
 .search-query code {
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 11px;
-  color: #938f9b;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-all;
 }
 
 /* 工具输出 */
 .tool-output {
-  border-top: 1px solid #28242e;
+  border-top: 1px solid var(--border-default);
   padding: 8px 10px;
   background: rgba(0,0,0,0.15);
   max-height: 120px;
@@ -345,7 +345,7 @@ const formatToolInput = (tool) => {
 .tool-output pre {
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 10px;
-  color: #6b6773;
+  color: var(--text-muted);
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
@@ -365,14 +365,14 @@ const formatToolInput = (tool) => {
   gap: 4px;
   padding: 6px 10px;
   font-size: 11px;
-  color: #b080ff;
+  color: var(--accent-primary);
   font-weight: 500;
 }
 
 .reasoning-content {
   padding: 0 10px 8px;
   font-size: 12px;
-  color: #938f9b;
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 
@@ -383,13 +383,13 @@ const formatToolInput = (tool) => {
   font-family: inherit;
   font-size: 13px;
   line-height: 1.5;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0;
 }
 
 /* working 动画 */
 .working-dots {
-  color: #6b6773;
+  color: var(--text-muted);
   font-size: 12px;
 }
 

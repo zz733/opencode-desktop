@@ -337,8 +337,8 @@ watch(activePanel, async (panel) => {
 .terminal-panel {
   display: flex;
   flex-direction: column;
-  background: #19161d;
-  border-top: 1px solid #28242e;
+  background: var(--bg-base);
+  border-top: 1px solid var(--border-default);
   height: 100%;
 }
 
@@ -349,7 +349,7 @@ watch(activePanel, async (panel) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #211d25;
+  background: var(--bg-surface);
 }
 
 .tabs-left {
@@ -366,7 +366,7 @@ watch(activePanel, async (panel) => {
   padding: 6px 12px;
   background: transparent;
   border: none;
-  color: #938f9b;
+  color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
   display: flex;
@@ -376,16 +376,16 @@ watch(activePanel, async (panel) => {
 }
 
 .tab:hover {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .tab.active {
-  color: #ffffff;
-  border-bottom: 1px solid #b080ff;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--accent-primary);
 }
 
 .badge {
-  background: #7138cc;
+  background: var(--accent-button);
   color: white;
   font-size: 9px;
   padding: 1px 4px;
@@ -401,7 +401,7 @@ watch(activePanel, async (panel) => {
   padding: 2px 8px;
   background: transparent;
   border: none;
-  color: #938f9b;
+  color: var(--text-secondary);
   font-size: 11px;
   cursor: pointer;
   display: flex;
@@ -410,12 +410,12 @@ watch(activePanel, async (panel) => {
 }
 
 .terminal-tab:hover {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .terminal-tab.active {
-  color: #ffffff;
-  background: #322e3a;
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .tab-close {
@@ -432,7 +432,7 @@ watch(activePanel, async (panel) => {
   height: 22px;
   background: transparent;
   border: none;
-  color: #938f9b;
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -440,7 +440,7 @@ watch(activePanel, async (panel) => {
 }
 
 .btn-icon:hover {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .panel-content {
@@ -457,7 +457,7 @@ watch(activePanel, async (panel) => {
 }
 
 .empty-state {
-  color: #6b6773;
+  color: var(--text-muted);
   font-size: 12px;
   text-align: center;
   padding: 16px;
@@ -477,7 +477,7 @@ watch(activePanel, async (panel) => {
 }
 
 .problem-item:hover {
-  background: #322e3a;
+  background: var(--bg-hover);
 }
 
 .problem-item .icon {
@@ -487,24 +487,24 @@ watch(activePanel, async (panel) => {
 }
 
 .problem-item .icon.error {
-  background: #ff8080;
+  background: var(--red);
 }
 
 .problem-item .icon.warning {
-  background: #ffcf99;
+  background: var(--yellow);
 }
 
 .problem-item .icon.info {
-  background: #8dc8fb;
+  background: var(--blue);
 }
 
 .problem-item .message {
   flex: 1;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .problem-item .location {
-  color: #938f9b;
+  color: var(--text-secondary);
 }
 
 .output-content {
@@ -515,7 +515,7 @@ watch(activePanel, async (panel) => {
 
 .output-line {
   padding: 1px 0;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .terminals-container {
@@ -544,6 +544,6 @@ watch(activePanel, async (panel) => {
 }
 
 .terminal-instance :deep(.xterm-viewport::-webkit-scrollbar-thumb) {
-  background: #322e3a;
+  background: var(--bg-hover);
 }
 </style>

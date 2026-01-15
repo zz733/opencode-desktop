@@ -1,12 +1,18 @@
 <script setup>
 import { useI18n } from 'vue-i18n'
 import { languages, setLocale } from '../i18n'
+import { useTheme } from '../composables/useTheme'
 
 const { t, locale } = useI18n()
+const { currentTheme, themes, setTheme } = useTheme()
 const emit = defineEmits(['close'])
 
 const changeLanguage = (code) => {
   setLocale(code)
+}
+
+const changeTheme = (themeId) => {
+  setTheme(themeId)
 }
 </script>
 
@@ -19,6 +25,17 @@ const changeLanguage = (code) => {
     <div class="settings-content">
       <div class="settings-section">
         <div class="section-title">{{ t('settings.general') }}</div>
+        
+        <div class="setting-item">
+          <div class="setting-label">{{ t('settings.theme') }}</div>
+          <div class="setting-control">
+            <select :value="currentTheme" @change="changeTheme($event.target.value)">
+              <option v-for="theme in themes" :key="theme.id" :value="theme.id">
+                {{ theme.name }}
+              </option>
+            </select>
+          </div>
+        </div>
         
         <div class="setting-item">
           <div class="setting-label">{{ t('settings.language') }}</div>
@@ -38,7 +55,7 @@ const changeLanguage = (code) => {
 <style scoped>
 .settings-panel {
   flex: 1;
-  background: #211d25;
+  background: var(--bg-surface);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -49,7 +66,7 @@ const changeLanguage = (code) => {
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.5px;
-  color: #938f9b;
+  color: var(--text-secondary);
   text-transform: uppercase;
 }
 
@@ -66,7 +83,7 @@ const changeLanguage = (code) => {
 .section-title {
   font-size: 12px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   margin-bottom: 12px;
   padding: 0 4px;
 }
@@ -76,37 +93,37 @@ const changeLanguage = (code) => {
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  background: #28242e;
+  background: var(--bg-elevated);
   border-radius: 6px;
   margin-bottom: 8px;
 }
 
 .setting-label {
   font-size: 13px;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .setting-control select {
   padding: 6px 10px;
-  background: #28242e;
-  border: 1px solid #28242e;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
   border-radius: 4px;
-  color: #ffffff;
+  color: var(--text-primary);
   font-size: 12px;
   cursor: pointer;
   outline: none;
 }
 
 .setting-control select:hover {
-  border-color: #6b6773;
+  border-color: var(--text-muted);
 }
 
 .setting-control select:focus {
-  border-color: #b080ff;
+  border-color: var(--accent-primary);
 }
 
 .setting-control select option {
-  background: #28242e;
-  color: #ffffff;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
 }
 </style>
