@@ -76,9 +76,6 @@ const getShortcut = (key) => {
   return shortcuts[key] || ''
 }
 
-// 查找框状态
-const findWidgetVisible = ref(false)
-
 // 右键菜单操作
 const menuActions = {
   undo: () => editor.value?.trigger('contextmenu', 'undo', null),
@@ -102,30 +99,11 @@ const menuActions = {
   },
   delete: () => editor.value?.trigger('contextmenu', 'deleteRight', null),
   selectAll: () => editor.value?.trigger('contextmenu', 'selectAll', null),
-  find: () => toggleFind(),
+  find: () => editor.value?.trigger('contextmenu', 'actions.find', null),
   replace: () => editor.value?.trigger('contextmenu', 'editor.action.startFindReplaceAction', null),
   goToLine: () => editor.value?.trigger('contextmenu', 'editor.action.gotoLine', null),
   format: () => editor.value?.trigger('contextmenu', 'editor.action.formatDocument', null),
   comment: () => editor.value?.trigger('contextmenu', 'editor.action.commentLine', null),
-}
-
-// 切换查找框显示/隐藏
-const toggleFind = () => {
-  if (!editor.value) return
-  if (findWidgetVisible.value) {
-    editor.value.trigger('contextmenu', 'closeFindWidget', null)
-    findWidgetVisible.value = false
-  } else {
-    editor.value.trigger('contextmenu', 'actions.find', null)
-    findWidgetVisible.value = true
-  }
-}
-
-// 关闭查找框
-const closeFindWidget = () => {
-  if (!editor.value) return
-  editor.value.trigger('contextmenu', 'closeFindWidget', null)
-  findWidgetVisible.value = false
 }
 
 // 显示右键菜单
@@ -503,19 +481,25 @@ const initEditor = () => {
     }
   })
   
-  // Escape 键取消补全或关闭查找框
-  editor.value.addCommand(monaco.KeyCode.Escape, () => {
-    if (ghostText.value) {
-      clearGhostText()
-    } else if (findWidgetVisible.value) {
-      closeFindWidget()
+  // Escape 键取消补全（不覆盖 Monaco 默认行为）
+  editor.value.addAction({
+    id: 'clear-ghost-text',
+    label: 'Clear Ghost Text',
+    keybindings: [monaco.KeyCode.Escape],
+    precondition: null,
+    keybindingContext: null,
+    run: () => {
+      if (ghostText.value) {
+        clearGhostText()
+        return true // 阻止默认行为
+      }
+      // 返回 false 让 Monaco 处理（关闭查找框等）
+      return false
     }
   })
   
-  // Cmd/Ctrl+F 切换查找框
-  editor.value.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF, () => {
-    toggleFind()
-  })
+  // Cmd/Ctrl+F 打开查找框（使用 Monaco 默认行为）
+  // 不需要覆盖，Monaco 自带
   
   // 光标移动时清除幽灵文本
   editor.value.onDidChangeCursorPosition(() => {
