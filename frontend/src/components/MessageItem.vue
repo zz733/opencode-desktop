@@ -25,11 +25,66 @@ const props = defineProps({
   isLoading: Boolean
 })
 
+// 解析消息内容，提取 thinking 块
+const parsedMessage = computed(() => {
+  const content = props.message.content || ''
+  const reasoning = props.message.reasoning || ''
+  
+  // 1. 优先使用独立的 reasoning 字段
+  if (reasoning) {
+    return {
+      thinking: reasoning,
+      content: content
+    }
+  }
+  
+  // 2. 尝试从 content 中提取 <thinking> 标签
+  // 匹配 <thinking>content</thinking> 或 <thinking>content (未闭合)
+  const thinkingMatch = content.match(/<thinking>([\s\S]*?)(?:<\/thinking>|$)/)
+  
+  if (thinkingMatch) {
+    const thinkingContent = thinkingMatch[1]
+    // 移除 thinking 块，保留其余部分
+    const cleanContent = content.replace(/<thinking>[\s\S]*?(?:<\/thinking>|$)/, '').trim()
+    return {
+      thinking: thinkingContent,
+      content: cleanContent
+    }
+  }
+  
+  return {
+    thinking: '',
+    content: content
+  }
+})
+
+// 思考过程展开状态
+const isThinkingExpanded = ref(false)
+
+// 当检测到思考内容开始生成时，自动展开
+watch(() => parsedMessage.value.thinking, (newVal, oldVal) => {
+  if (newVal && !oldVal && props.isLoading) {
+    isThinkingExpanded.value = true
+  }
+})
+
+// 渲染思考内容的 markdown
+const renderedThinking = computed(() => {
+  if (!parsedMessage.value.thinking) return ''
+  try {
+    // 思考过程通常不需要高亮代码，或者简单渲染即可
+    return marked(parsedMessage.value.thinking)
+  } catch (e) {
+    return parsedMessage.value.thinking
+  }
+})
+
 // 过滤掉语言提示和活动文件提示
 const filteredContent = computed(() => {
-  if (!props.message.content) return ''
+  const content = parsedMessage.value.content
+  if (!content) return ''
   // 移除 [Please respond in xxx] 和 [Current active file: xxx] 这样的提示
-  return props.message.content
+  return content
     .replace(/^\[Please respond in [^\]]+\]\s*/i, '')
     .replace(/^\[Current active file: [^\]]+\]\s*/i, '')
     .trim()
@@ -125,6 +180,26 @@ const formatToolInput = (tool) => {
     <div class="content">
       <div class="role-name">{{ message.role === 'user' ? t('chat.you') : t('chat.assistant') }}</div>
       
+      <!-- 思考过程 -->
+      <div v-if="parsedMessage.thinking" class="thinking-block">
+        <div class="thinking-header" @click="isThinkingExpanded = !isThinkingExpanded">
+          <span class="thinking-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </span>
+          <span class="thinking-title">Thinking Process</span>
+          <span class="thinking-toggle">
+            <svg :class="{ rotated: isThinkingExpanded }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </span>
+        </div>
+        <div v-show="isThinkingExpanded" class="thinking-content markdown-body" v-html="renderedThinking"></div>
+      </div>
+
       <!-- 用户消息中的图片 -->
       <div v-if="message.role === 'user' && message.images && message.images.length" class="message-images">
         <div v-for="img in message.images" :key="img.id" class="message-image">
@@ -605,5 +680,54 @@ const formatToolInput = (tool) => {
   0%, 20% { content: '.'; }
   40% { content: '..'; }
   60%, 100% { content: '...'; }
+}
+
+/* 思考过程样式 */
+.thinking-block {
+  margin: 8px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  background: var(--bg-hover);
+  font-size: 12px;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.thinking-header:hover {
+  color: var(--text-primary);
+}
+
+.thinking-content {
+  padding: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.thinking-toggle svg {
+  transition: transform 0.2s;
+}
+
+.thinking-toggle svg.rotated {
+  transform: rotate(180deg);
+}
+
+/* 调整 markdown 样式适配思考块 */
+.thinking-content :deep(p) {
+  margin-bottom: 8px;
+}
+.thinking-content :deep(p:last-child) {
+  margin-bottom: 0;
 }
 </style>

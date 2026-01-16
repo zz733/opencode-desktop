@@ -9,6 +9,7 @@ import {
   DisconnectMCPServer, GetMCPTools 
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
+import { EventsEmit } from '../../wailsjs/runtime/runtime'
 
 const { t, locale } = useI18n()
 const { currentTheme, themes, setTheme } = useTheme()
@@ -32,6 +33,97 @@ const serverForm = ref({
   name: '', type: 'local', command: '', url: '', enabled: true, environment: {}
 })
 const envVars = ref([])
+
+// ========== 模型管理 ==========
+const defaultModels = [
+  { id: 'opencode/big-pickle', name: 'Big Pickle', free: true, builtin: true },
+  { id: 'opencode/grok-code', name: 'Grok Code Fast', free: true, builtin: true },
+  { id: 'opencode/minimax-m2.1-free', name: 'MiniMax M2.1', free: true, builtin: true },
+  { id: 'opencode/glm-4.7-free', name: 'GLM 4.7', free: true, builtin: true },
+  { id: 'opencode/gpt-5-nano', name: 'GPT 5 Nano', free: true, builtin: true },
+  { id: 'opencode/kimi-k2', name: 'Kimi K2', free: false, builtin: true },
+  { id: 'opencode/claude-opus-4-5', name: 'Claude Opus 4.5', free: false, builtin: true },
+  { id: 'opencode/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', free: false, builtin: true },
+  { id: 'opencode/gpt-5.1-codex', name: 'GPT 5.1 Codex', free: false, builtin: true },
+]
+
+const customModels = ref(JSON.parse(localStorage.getItem('customModels') || '[]'))
+const showModelDialog = ref(false)
+const showModelConfirmDialog = ref(false)
+const modelConfirmTarget = ref(null)
+const editingModel = ref(null)
+const modelForm = ref({ id: '', name: '', free: true, baseUrl: '', apiKey: '', supportsImage: false })
+
+function saveCustomModels() {
+  localStorage.setItem('customModels', JSON.stringify(customModels.value))
+  // 通知其他组件模型列表已更新
+  EventsEmit('models-updated')
+}
+
+function openModelDialog(model = null) {
+  if (model) {
+    editingModel.value = model.id
+    modelForm.value = { 
+      id: model.id, 
+      name: model.name, 
+      free: model.free,
+      baseUrl: model.baseUrl || '',
+      apiKey: model.apiKey || '',
+      supportsImage: model.supportsImage || false
+    }
+  } else {
+    editingModel.value = null
+    modelForm.value = { id: '', name: '', free: true, baseUrl: '', apiKey: '', supportsImage: false }
+  }
+  showModelDialog.value = true
+}
+
+function saveModel() {
+  if (!modelForm.value.id || !modelForm.value.name) return
+  
+  const model = {
+    id: modelForm.value.id,
+    name: modelForm.value.name,
+    free: modelForm.value.free,
+    baseUrl: modelForm.value.baseUrl,
+    apiKey: modelForm.value.apiKey,
+    supportsImage: modelForm.value.supportsImage,
+    builtin: false
+  }
+  
+  if (editingModel.value) {
+    // 编辑现有模型
+    const index = customModels.value.findIndex(m => m.id === editingModel.value)
+    if (index >= 0) {
+      customModels.value[index] = model
+    }
+  } else {
+    // 添加新模型
+    customModels.value.push(model)
+  }
+  
+  saveCustomModels()
+  showModelDialog.value = false
+}
+
+function askRemoveModel(model) {
+  modelConfirmTarget.value = model
+  showModelConfirmDialog.value = true
+}
+
+function confirmRemoveModel() {
+  const model = modelConfirmTarget.value
+  showModelConfirmDialog.value = false
+  modelConfirmTarget.value = null
+  
+  const index = customModels.value.findIndex(m => m.id === model.id)
+  if (index >= 0) {
+    customModels.value.splice(index, 1)
+    saveCustomModels()
+  }
+}
+
+const allModels = computed(() => [...defaultModels, ...customModels.value])
 
 const changeLanguage = (code) => setLocale(code)
 const changeTheme = (themeId) => setTheme(themeId)
@@ -231,22 +323,31 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
   <aside class="settings-panel">
     <div class="settings-header"><span>{{ t('settings.title') }}</span></div>
     
-    <div class="settings-nav">
-      <div :class="['nav-item', { active: activeCategory === 'general' }]" @click="activeCategory = 'general'">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-        </svg>
-        <span>{{ t('settings.general') }}</span>
+    <div class="settings-body">
+      <!-- 左侧导航 -->
+      <div class="settings-nav">
+        <div :class="['nav-item', { active: activeCategory === 'general' }]" @click="activeCategory = 'general'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+          </svg>
+          <span>{{ t('settings.general') }}</span>
+        </div>
+        <div :class="['nav-item', { active: activeCategory === 'models' }]" @click="activeCategory = 'models'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+          </svg>
+          <span>{{ t('settings.models.title') }}</span>
+        </div>
+        <div :class="['nav-item', { active: activeCategory === 'mcp' }]" @click="activeCategory = 'mcp'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+          </svg>
+          <span>MCP</span>
+        </div>
       </div>
-      <div :class="['nav-item', { active: activeCategory === 'mcp' }]" @click="activeCategory = 'mcp'">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
-        </svg>
-        <span>MCP</span>
-      </div>
-    </div>
-    
-    <div class="settings-content">
+      
+      <!-- 右侧内容 -->
+      <div class="settings-content">
       <div v-if="activeCategory === 'general'" class="settings-section">
         <div class="setting-item">
           <div class="setting-label">{{ t('settings.theme') }}</div>
@@ -262,6 +363,58 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
             <select :value="locale" @change="changeLanguage($event.target.value)">
               <option v-for="lang in languages" :key="lang.code" :value="lang.code">{{ lang.name }}</option>
             </select>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 模型管理 -->
+      <div v-if="activeCategory === 'models'" class="settings-section models-section">
+        <div class="section-header">
+          <span class="section-title">{{ t('settings.models.custom') }}</span>
+          <div class="section-actions">
+            <button class="btn-icon" @click="openModelDialog()" :title="t('settings.models.add')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
+        </div>
+        
+        <div v-if="customModels.length === 0" class="empty-state">{{ t('settings.models.noCustom') }}</div>
+        
+        <div v-else class="model-list">
+          <div v-for="model in customModels" :key="model.id" class="model-item">
+            <div class="model-info">
+              <div class="model-name">
+                <span :class="['model-badge', model.free ? 'free' : 'premium']">{{ model.free ? '🆓' : '⭐' }}</span>
+                {{ model.name }}
+                <span v-if="model.supportsImage" class="model-feature" :title="t('settings.models.supportsImage')">🖼️</span>
+              </div>
+              <div class="model-id">{{ model.id }}</div>
+              <div v-if="model.baseUrl" class="model-url">{{ model.baseUrl }}</div>
+            </div>
+            <div class="model-actions">
+              <button class="btn-icon" @click="openModelDialog(model)" :title="t('common.edit')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button class="btn-icon danger" @click="askRemoveModel(model)" :title="t('common.delete')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="section-header builtin-header">
+          <span class="section-title">{{ t('settings.models.builtin') }}</span>
+        </div>
+        
+        <div class="model-list builtin-list">
+          <div v-for="model in defaultModels" :key="model.id" class="model-item builtin">
+            <div class="model-info">
+              <div class="model-name">
+                <span :class="['model-badge', model.free ? 'free' : 'premium']">{{ model.free ? '🆓' : '⭐' }}</span>
+                {{ model.name }}
+              </div>
+              <div class="model-id">{{ model.id }}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -338,6 +491,7 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
             </div>
           </template>
         </div>
+      </div>
       </div>
     </div>
 
@@ -430,18 +584,76 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
         </div>
       </div>
     </div>
+    
+    <!-- 模型添加/编辑对话框 -->
+    <div v-if="showModelDialog" class="dialog-overlay" @click.self="showModelDialog = false">
+      <div class="dialog model-dialog">
+        <div class="dialog-header">
+          {{ editingModel ? t('settings.models.edit') : t('settings.models.add') }}
+        </div>
+        <div class="dialog-content">
+          <div class="form-group">
+            <label>{{ t('settings.models.modelId') }} <span class="required">*</span></label>
+            <input v-model="modelForm.id" type="text" :placeholder="t('settings.models.modelIdPlaceholder')" autocapitalize="off" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="form-group">
+            <label>{{ t('settings.models.modelName') }} <span class="required">*</span></label>
+            <input v-model="modelForm.name" type="text" :placeholder="t('settings.models.modelNamePlaceholder')" autocapitalize="off" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="form-group">
+            <label>{{ t('settings.models.baseUrl') }}</label>
+            <input v-model="modelForm.baseUrl" type="text" :placeholder="t('settings.models.baseUrlPlaceholder')" autocapitalize="off" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="form-group">
+            <label>{{ t('settings.models.apiKey') }}</label>
+            <input v-model="modelForm.apiKey" type="password" :placeholder="t('settings.models.apiKeyPlaceholder')" autocapitalize="off" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="form-group checkbox-group">
+            <label><input v-model="modelForm.free" type="checkbox"> {{ t('settings.models.isFree') }}</label>
+          </div>
+          <div class="form-group checkbox-group">
+            <label><input v-model="modelForm.supportsImage" type="checkbox"> {{ t('settings.models.supportsImage') }}</label>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-cancel" @click="showModelDialog = false">{{ t('common.cancel') }}</button>
+          <button class="btn-save" @click="saveModel">{{ t('common.save') }}</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 模型删除确认对话框 -->
+    <div v-if="showModelConfirmDialog" class="dialog-overlay" @click.self="showModelConfirmDialog = false">
+      <div class="dialog confirm-dialog">
+        <div class="dialog-header">{{ t('common.confirm') }}</div>
+        <div class="dialog-content">
+          <p class="confirm-message">{{ t('settings.models.confirmDelete', { name: modelConfirmTarget?.name }) }}</p>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn-cancel" @click="showModelConfirmDialog = false">{{ t('common.cancel') }}</button>
+          <button class="btn-danger" @click="confirmRemoveModel">{{ t('common.delete') }}</button>
+        </div>
+      </div>
+    </div>
   </aside>
 </template>
 
 <style scoped>
 .settings-panel { flex: 1; background: var(--bg-surface); display: flex; flex-direction: column; overflow: hidden; }
-.settings-header { padding: 12px 16px; font-size: 11px; font-weight: 500; letter-spacing: 0.5px; color: var(--text-secondary); text-transform: uppercase; border-bottom: 1px solid var(--border-subtle); }
-.settings-nav { display: flex; padding: 8px 12px; gap: 4px; border-bottom: 1px solid var(--border-subtle); }
-.nav-item { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; color: var(--text-secondary); transition: all 0.15s; }
+.settings-header { padding: 12px 16px; font-size: 11px; font-weight: 500; letter-spacing: 0.5px; color: var(--text-secondary); text-transform: uppercase; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
+
+/* 左右布局 */
+.settings-body { flex: 1; display: flex; overflow: hidden; }
+
+/* 左侧导航 */
+.settings-nav { width: 140px; flex-shrink: 0; display: flex; flex-direction: column; padding: 8px; gap: 2px; border-right: 1px solid var(--border-subtle); overflow-y: auto; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; color: var(--text-secondary); transition: all 0.15s; }
 .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 .nav-item.active { background: var(--accent-primary); color: white; }
-.nav-item svg { opacity: 0.7; }
+.nav-item svg { opacity: 0.7; flex-shrink: 0; }
 .nav-item.active svg { opacity: 1; }
+
+/* 右侧内容 */
 .settings-content { flex: 1; overflow-y: auto; padding: 12px; }
 .settings-section { display: flex; flex-direction: column; gap: 8px; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -527,4 +739,21 @@ input:checked + .slider:before { transform: translateX(16px); }
 .tool-item { padding: 10px 12px; background: var(--bg-elevated); border-radius: 6px; border: 1px solid var(--border-subtle); }
 .tool-name { font-size: 13px; font-weight: 500; color: var(--accent-primary); font-family: monospace; }
 .tool-desc { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+
+/* 模型管理样式 */
+.models-section { gap: 0; }
+.model-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.model-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--bg-elevated); border-radius: 6px; border: 1px solid var(--border-subtle); }
+.model-item.builtin { opacity: 0.8; }
+.model-info { flex: 1; min-width: 0; }
+.model-name { font-size: 13px; font-weight: 500; color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
+.model-badge { font-size: 12px; }
+.model-feature { font-size: 11px; opacity: 0.8; }
+.model-id { font-size: 11px; color: var(--text-muted); font-family: monospace; margin-top: 2px; }
+.model-url { font-size: 10px; color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-actions { display: flex; align-items: center; gap: 8px; }
+.builtin-header { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
+.builtin-list { opacity: 0.7; }
+.model-dialog { width: 450px; }
+.required { color: var(--red); }
 </style>

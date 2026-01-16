@@ -54,16 +54,22 @@ function saveDirSessionMap() {
 }
 
 const models = [
-  { id: 'opencode/big-pickle', name: 'Big Pickle', free: true },
-  { id: 'opencode/grok-code', name: 'Grok Code Fast', free: true },
-  { id: 'opencode/minimax-m2.1-free', name: 'MiniMax M2.1', free: true },
-  { id: 'opencode/glm-4.7-free', name: 'GLM 4.7', free: true },
-  { id: 'opencode/gpt-5-nano', name: 'GPT 5 Nano', free: true },
-  { id: 'opencode/kimi-k2', name: 'Kimi K2', free: false },
-  { id: 'opencode/claude-opus-4-5', name: 'Claude Opus 4.5', free: false },
-  { id: 'opencode/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', free: false },
-  { id: 'opencode/gpt-5.1-codex', name: 'GPT 5.1 Codex', free: false },
+  { id: 'opencode/big-pickle', name: 'Big Pickle', free: true, builtin: true },
+  { id: 'opencode/grok-code', name: 'Grok Code Fast', free: true, builtin: true },
+  { id: 'opencode/minimax-m2.1-free', name: 'MiniMax M2.1', free: true, builtin: true },
+  { id: 'opencode/glm-4.7-free', name: 'GLM 4.7', free: true, builtin: true },
+  { id: 'opencode/gpt-5-nano', name: 'GPT 5 Nano', free: true, builtin: true },
+  { id: 'opencode/kimi-k2', name: 'Kimi K2', free: false, builtin: true },
+  { id: 'opencode/claude-opus-4-5', name: 'Claude Opus 4.5', free: false, builtin: true },
+  { id: 'opencode/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', free: false, builtin: true },
+  { id: 'opencode/gpt-5.1-codex', name: 'GPT 5.1 Codex', free: false, builtin: true },
 ]
+
+// 获取所有模型（内置 + 自定义）
+function getAllModels() {
+  const customModels = JSON.parse(localStorage.getItem('customModels') || '[]')
+  return [...models, ...customModels]
+}
 
 // 自动连接（包含检测、安装、启动）
 async function autoConnect() {
@@ -536,6 +542,7 @@ export function useOpenCode() {
     sending,
     currentModel,
     models,
+    getAllModels,
     openCodeStatus,
     currentWorkDir,
     activeFilePath,

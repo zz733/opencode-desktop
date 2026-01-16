@@ -506,14 +506,16 @@ const focusEditor = () => {
 }
 
 const handleEscapeKey = (e) => {
-  if (e.key !== 'Escape') return
+  const isEscape = e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27
+  if (!isEscape) return
+  if (!editor.value?.hasTextFocus?.()) return
   const root = editor.value?.getDomNode()
   if (!root) return
   const widget = root.querySelector('.find-widget')
   if (!widget) return
-  const style = window.getComputedStyle(widget)
-  if (style.display === 'none' || style.visibility === 'hidden') return
-  if (widget.getAttribute('aria-hidden') === 'true') return
+  const rect = widget.getBoundingClientRect()
+  const displayed = widget.offsetParent !== null && rect.width > 0 && rect.height > 0
+  if (!displayed) return
   editor.value?.getAction('closeFindWidget')?.run()
   editor.value?.getAction('closeReplaceWidget')?.run()
   e.preventDefault()
@@ -526,6 +528,8 @@ watch(() => props.file?.path, (newPath, oldPath) => {
 })
 
 onMounted(() => {
+  window.addEventListener('keydown', handleEscapeKey, true)
+  
   initEditor()
   if (props.file) loadFile()
   EventsOn('file-changed', handleFileChanged)
@@ -533,7 +537,6 @@ onMounted(() => {
   // 点击外部关闭右键菜单
   document.addEventListener('click', hideContextMenu)
   document.addEventListener('contextmenu', hideContextMenu)
-  document.addEventListener('keydown', handleEscapeKey, true)
   
   // 添加幽灵文本样式（全局样式，因为 Monaco 在 shadow DOM 外）
   if (!document.getElementById('ghost-text-style')) {
@@ -557,7 +560,7 @@ onUnmounted(() => {
   if (completionTimeout) clearTimeout(completionTimeout)
   document.removeEventListener('click', hideContextMenu)
   document.removeEventListener('contextmenu', hideContextMenu)
-  document.removeEventListener('keydown', handleEscapeKey, true)
+  window.removeEventListener('keydown', handleEscapeKey, true)
 })
 
 const lineCount = () => editor.value?.getModel()?.getLineCount() || content.value.split('\n').length

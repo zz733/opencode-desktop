@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Environment } from '../wailsjs/runtime/runtime'
+import { Environment, EventsOn } from '../wailsjs/runtime/runtime'
 import TitleBar from './components/TitleBar.vue'
 import ActivityBar from './components/ActivityBar.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -39,8 +39,12 @@ const handleWorkDirChange = (dir) => {
 
 // 面板尺寸
 const sidebarWidth = ref(260)
+const savedSidebarWidth = ref(260) // 保存设置打开前的宽度
 const chatWidth = ref(420)
 const terminalHeight = ref(200)
+
+// 设置面板宽度
+const settingsWidth = 450
 
 // 编辑器最大化状态
 const editorMaximized = ref(false)
@@ -54,13 +58,21 @@ const editorAreaRef = ref(null)
 // OpenCode
 const {
   connected, connecting, sessions, currentSession, messages,
-  sending, currentModel, models, autoConnect,
+  sending, currentModel, models, getAllModels, autoConnect,
   selectSession, createSession, sendMessage, setModel, cancelMessage,
   switchWorkDir, setActiveFile
 } = useOpenCode()
 
+// 动态模型列表（响应自定义模型变化）
+const allModels = ref(getAllModels())
+
 onMounted(async () => {
   initTheme()
+  
+  // 监听模型列表更新事件
+  EventsOn('models-updated', () => {
+    allModels.value = getAllModels()
+  })
   
   // 如果有保存的工作目录，先通过后端设置它（不重启，只设置目录）
   if (workDir.value) {
@@ -91,13 +103,22 @@ const handleSelectSession = async (session) => {
 const handleTabChange = (tab) => {
   if (tab === 'settings') {
     if (showSettings.value) {
+      // 关闭设置，恢复原来的宽度
       showSettings.value = false
       showSidebar.value = false
+      sidebarWidth.value = savedSidebarWidth.value
     } else {
+      // 打开设置，保存当前宽度并加宽
+      savedSidebarWidth.value = sidebarWidth.value
+      sidebarWidth.value = settingsWidth
       showSettings.value = true
       showSidebar.value = true
     }
   } else {
+    // 切换到其他 tab 时，如果之前是设置，恢复宽度
+    if (showSettings.value) {
+      sidebarWidth.value = savedSidebarWidth.value
+    }
     if (activeTab.value === tab && showSidebar.value && !showSettings.value) {
       showSidebar.value = false
     } else {
@@ -245,7 +266,7 @@ const startDrag = (type, e) => {
             :messages="messages"
             :sending="sending"
             :currentModel="currentModel"
-            :models="models"
+            :models="allModels"
             :connected="connected"
             :connecting="connecting"
             @selectSession="handleSelectSession"
