@@ -54,15 +54,23 @@ function saveDirSessionMap() {
 }
 
 const models = [
+  // OpenCode Zen 免费模型
   { id: 'opencode/big-pickle', name: 'Big Pickle', free: true, builtin: true },
   { id: 'opencode/grok-code', name: 'Grok Code Fast', free: true, builtin: true },
   { id: 'opencode/minimax-m2.1-free', name: 'MiniMax M2.1', free: true, builtin: true },
   { id: 'opencode/glm-4.7-free', name: 'GLM 4.7', free: true, builtin: true },
   { id: 'opencode/gpt-5-nano', name: 'GPT 5 Nano', free: true, builtin: true },
+  // OpenCode Zen 付费模型
   { id: 'opencode/kimi-k2', name: 'Kimi K2', free: false, builtin: true },
   { id: 'opencode/claude-opus-4-5', name: 'Claude Opus 4.5', free: false, builtin: true },
   { id: 'opencode/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', free: false, builtin: true },
   { id: 'opencode/gpt-5.1-codex', name: 'GPT 5.1 Codex', free: false, builtin: true },
+  // Antigravity 模型（需要 Google OAuth 认证）
+  { id: 'google/antigravity-gemini-3-pro', name: 'Gemini 3 Pro (Antigravity)', free: true, builtin: true, provider: 'antigravity' },
+  { id: 'google/antigravity-gemini-3-flash', name: 'Gemini 3 Flash (Antigravity)', free: true, builtin: true, provider: 'antigravity' },
+  { id: 'google/antigravity-claude-sonnet-4-5', name: 'Claude Sonnet 4.5 (Antigravity)', free: true, builtin: true, provider: 'antigravity' },
+  { id: 'google/antigravity-claude-sonnet-4-5-thinking', name: 'Claude Sonnet 4.5 Thinking (Antigravity)', free: true, builtin: true, provider: 'antigravity' },
+  { id: 'google/antigravity-claude-opus-4-5-thinking', name: 'Claude Opus 4.5 Thinking (Antigravity)', free: true, builtin: true, provider: 'antigravity' },
 ]
 
 // 获取所有模型（内置 + 自定义）
