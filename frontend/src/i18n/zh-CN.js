@@ -73,4 +73,14 @@ export default {
     theme: '主题',
     general: '通用',
   },
+  maven: {
+    clean: '清理',
+    compile: '编译',
+    test: '测试',
+    package: '打包',
+    install: '安装',
+    cleanInstall: '清理并安装',
+    springRun: '运行 Spring Boot',
+    tree: '依赖树',
+  },
 }

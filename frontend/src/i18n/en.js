@@ -73,4 +73,14 @@ export default {
     theme: 'Theme',
     general: 'General',
   },
+  maven: {
+    clean: 'Clean',
+    compile: 'Compile',
+    test: 'Test',
+    package: 'Package',
+    install: 'Install',
+    cleanInstall: 'Clean Install',
+    springRun: 'Run Spring Boot',
+    tree: 'Dependency Tree',
+  },
 }
