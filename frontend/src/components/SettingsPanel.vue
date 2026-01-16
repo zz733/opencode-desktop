@@ -199,8 +199,8 @@ async function uninstallAntigravityAuth() {
 }
 
 function runAntigravityAuth() {
-  // 发送命令到终端执行
-  emit('runCommand', 'opencode auth login google/antigravity')
+  // 发送命令到终端执行（不带参数，会显示交互式选择菜单）
+  emit('runCommand', 'opencode auth login')
 }
 
 const changeLanguage = (code) => setLocale(code)

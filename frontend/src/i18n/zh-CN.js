@@ -184,7 +184,7 @@ export default {
       tipTitle: '使用提示',
       tipText: '安装后在聊天中输入 "ultrawork" 或 "ulw" 即可激活增强模式，Agent 会自动规划和执行复杂任务。',
       authTipTitle: '认证提示',
-      authTipText: '安装后点击"认证"按钮，在终端中完成 Google 账号认证。',
+      authTipText: '安装后点击"认证"按钮，在终端菜单中选择 Google 完成账号认证。',
       authenticate: '认证',
     },
   },

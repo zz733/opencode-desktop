@@ -184,7 +184,7 @@ export default {
       tipTitle: 'Usage Tip',
       tipText: 'After installation, type "ultrawork" or "ulw" in chat to activate enhanced mode. The agent will automatically plan and execute complex tasks.',
       authTipTitle: 'Authentication Tip',
-      authTipText: 'After installation, click "Authenticate" button to complete Google account authentication in terminal.',
+      authTipText: 'After installation, click "Authenticate" button and select Google from the menu to complete authentication.',
       authenticate: 'Authenticate',
     },
   },

@@ -182,7 +182,7 @@ export default {
       tipTitle: '使用のヒント',
       tipText: 'インストール後、チャットで「ultrawork」または「ulw」と入力すると拡張モードが有効になります。エージェントが自動的に複雑なタスクを計画・実行します。',
       authTipTitle: '認証のヒント',
-      authTipText: 'インストール後、「認証」ボタンをクリックしてターミナルで Google アカウント認証を完了してください。',
+      authTipText: 'インストール後、「認証」ボタンをクリックしてメニューから Google を選択し、認証を完了してください。',
       authenticate: '認証',
     },
   },
