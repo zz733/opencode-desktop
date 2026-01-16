@@ -15,8 +15,9 @@ export default {
     confirm: '确认',
   },
   contextMenu: {
-    newFile: '新建文件',
-    newFolder: '新建文件夹',
+    new: '新建',
+    newFile: '文件',
+    newFolder: '文件夹',
     copy: '复制',
     cut: '剪切',
     paste: '粘贴',
@@ -26,6 +27,34 @@ export default {
     openInFinder: '在访达中显示',
     newFileName: '文件名',
     newFolderName: '文件夹名',
+    // Java
+    javaClass: 'Java 类',
+    javaInterface: 'Java 接口',
+    javaEnum: 'Java 枚举',
+    javaRecord: 'Java Record',
+    javaAnnotation: 'Java 注解',
+    javaPackage: 'Java 包',
+    // Go
+    goFile: 'Go 文件',
+    goTest: 'Go 测试文件',
+    // Python
+    pyFile: 'Python 文件',
+    pyPackage: 'Python 包',
+    pyTest: 'Python 测试',
+    // Vue/React
+    vueComponent: 'Vue 组件',
+    vueComposable: 'Vue Composable',
+    reactComponent: 'React 组件',
+    reactHook: 'React Hook',
+    tsFile: 'TypeScript 文件',
+    jsFile: 'JavaScript 文件',
+    // Rust
+    rsFile: 'Rust 文件',
+    rsMod: 'Rust 模块',
+    // C#
+    csClass: 'C# 类',
+    csInterface: 'C# 接口',
+    csEnum: 'C# 枚举',
   },
   sidebar: {
     explorer: '资源管理器',

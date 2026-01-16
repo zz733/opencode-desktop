@@ -15,8 +15,9 @@ export default {
     confirm: 'Confirm',
   },
   contextMenu: {
-    newFile: 'New File',
-    newFolder: 'New Folder',
+    new: 'New',
+    newFile: 'File',
+    newFolder: 'Folder',
     copy: 'Copy',
     cut: 'Cut',
     paste: 'Paste',
@@ -26,6 +27,34 @@ export default {
     openInFinder: 'Reveal in Finder',
     newFileName: 'File name',
     newFolderName: 'Folder name',
+    // Java
+    javaClass: 'Java Class',
+    javaInterface: 'Java Interface',
+    javaEnum: 'Java Enum',
+    javaRecord: 'Java Record',
+    javaAnnotation: 'Java Annotation',
+    javaPackage: 'Java Package',
+    // Go
+    goFile: 'Go File',
+    goTest: 'Go Test File',
+    // Python
+    pyFile: 'Python File',
+    pyPackage: 'Python Package',
+    pyTest: 'Python Test',
+    // Vue/React
+    vueComponent: 'Vue Component',
+    vueComposable: 'Vue Composable',
+    reactComponent: 'React Component',
+    reactHook: 'React Hook',
+    tsFile: 'TypeScript File',
+    jsFile: 'JavaScript File',
+    // Rust
+    rsFile: 'Rust File',
+    rsMod: 'Rust Module',
+    // C#
+    csClass: 'C# Class',
+    csInterface: 'C# Interface',
+    csEnum: 'C# Enum',
   },
   sidebar: {
     explorer: 'Explorer',

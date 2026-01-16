@@ -15,8 +15,9 @@ export default {
     confirm: '確認',
   },
   contextMenu: {
-    newFile: '新しいファイル',
-    newFolder: '新しいフォルダ',
+    new: '新規作成',
+    newFile: 'ファイル',
+    newFolder: 'フォルダ',
     copy: 'コピー',
     cut: '切り取り',
     paste: '貼り付け',
@@ -26,6 +27,34 @@ export default {
     openInFinder: 'Finder で表示',
     newFileName: 'ファイル名',
     newFolderName: 'フォルダ名',
+    // Java
+    javaClass: 'Java クラス',
+    javaInterface: 'Java インターフェース',
+    javaEnum: 'Java 列挙型',
+    javaRecord: 'Java Record',
+    javaAnnotation: 'Java アノテーション',
+    javaPackage: 'Java パッケージ',
+    // Go
+    goFile: 'Go ファイル',
+    goTest: 'Go テストファイル',
+    // Python
+    pyFile: 'Python ファイル',
+    pyPackage: 'Python パッケージ',
+    pyTest: 'Python テスト',
+    // Vue/React
+    vueComponent: 'Vue コンポーネント',
+    vueComposable: 'Vue Composable',
+    reactComponent: 'React コンポーネント',
+    reactHook: 'React Hook',
+    tsFile: 'TypeScript ファイル',
+    jsFile: 'JavaScript ファイル',
+    // Rust
+    rsFile: 'Rust ファイル',
+    rsMod: 'Rust モジュール',
+    // C#
+    csClass: 'C# クラス',
+    csInterface: 'C# インターフェース',
+    csEnum: 'C# 列挙型',
   },
   sidebar: {
     explorer: 'エクスプローラー',
