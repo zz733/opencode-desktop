@@ -880,8 +880,8 @@ func (a *App) InstallAntigravityAuth() error {
 		}
 	}
 
-	// 添加插件
-	pluginName := "opencode-antigravity-auth@beta"
+	// 添加插件 - 使用 fork 版本修复了 Gemini 工具格式问题
+	pluginName := "github:zz733/opencode-antigravity-auth"
 	if plugins, ok := config["plugin"].([]interface{}); ok {
 		found := false
 		for _, p := range plugins {
