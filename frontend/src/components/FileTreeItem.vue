@@ -12,7 +12,7 @@ const props = defineProps({
   projectType: { type: String, default: '' }
 })
 
-const emit = defineEmits(['openFile', 'toggleFolder', 'refresh'])
+const emit = defineEmits(['openFile', 'toggleFolder', 'refresh', 'refreshFolder'])
 
 const showContextMenu = ref(false)
 const contextMenuX = ref(0)
@@ -188,7 +188,7 @@ const doPaste = async () => {
   try {
     if (cb.action === 'copy') await CopyPath(cb.path, props.item.path)
     else { await MovePath(cb.path, props.item.path); window.__fileClipboard = null }
-    emit('refresh')
+    emit('refreshFolder', props.item.path)
   } catch (e) { console.error(e) }
 }
 
@@ -198,13 +198,29 @@ const startRename = () => {
   isRenaming.value = true
   nextTick(() => { const input = document.querySelector('.rename-input'); if (input) { input.focus(); input.select() } })
 }
+// 获取父文件夹路径
+const getParentPath = (path) => {
+  const parts = path.split('/')
+  parts.pop()
+  return parts.join('/') || '/'
+}
+
 const confirmRename = async () => {
   if (!renameValue.value || renameValue.value === props.item.name) { isRenaming.value = false; return }
-  try { await RenamePath(props.item.path, renameValue.value); emit('refresh') } catch (e) { console.error(e) }
+  try { 
+    await RenamePath(props.item.path, renameValue.value)
+    emit('refreshFolder', getParentPath(props.item.path))
+  } catch (e) { console.error(e) }
   isRenaming.value = false
 }
 const cancelRename = () => { isRenaming.value = false }
-const doDelete = async () => { closeContextMenu(); try { await DeletePath(props.item.path); emit('refresh') } catch (e) { console.error(e) } }
+const doDelete = async () => { 
+  closeContextMenu()
+  try { 
+    await DeletePath(props.item.path)
+    emit('refreshFolder', getParentPath(props.item.path))
+  } catch (e) { console.error(e) } 
+}
 
 const startCreate = (type) => {
   closeContextMenu()
@@ -236,7 +252,8 @@ const confirmCreate = async () => {
       await CreateNewFile(props.item.path, fileName)
       if (template) await WriteFileContent(filePath, template)
     }
-    emit('refresh')
+    // 只刷新当前文件夹，不刷新整个树
+    emit('refreshFolder', props.item.path)
   } catch (e) { console.error(e) }
   isCreating.value = false
 }
@@ -306,7 +323,7 @@ const getCreateIcon = computed(() => {
         <span class="create-icon">{{ getCreateIcon }}</span>
         <input class="create-input" v-model="createValue" :placeholder="getCreatePlaceholder" @keyup.enter="confirmCreate" @keyup.escape="cancelCreate" @blur="confirmCreate" autocomplete="off" spellcheck="false" />
       </div>
-      <FileTreeItem v-for="child in item.children" :key="child.path" :item="child" :depth="depth + 1" :expandedFolders="expandedFolders" :projectType="projectType" @openFile="emit('openFile', $event)" @toggleFolder="emit('toggleFolder', $event)" @refresh="emit('refresh')" />
+      <FileTreeItem v-for="child in item.children" :key="child.path" :item="child" :depth="depth + 1" :expandedFolders="expandedFolders" :projectType="projectType" @openFile="emit('openFile', $event)" @toggleFolder="emit('toggleFolder', $event)" @refresh="emit('refresh')" @refreshFolder="emit('refreshFolder', $event)" />
     </template>
   </div>
 </template>

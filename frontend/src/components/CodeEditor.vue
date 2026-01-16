@@ -409,7 +409,7 @@ const initEditor = () => {
     cursorBlinking: 'smooth',
     smoothScrolling: true,
     padding: { top: 8 },
-    // 自动补全配置
+    fixedOverflowWidgets: true,
     quickSuggestions: true,
     suggestOnTriggerCharacters: true,
     acceptSuggestionOnEnter: 'on',
@@ -481,25 +481,9 @@ const initEditor = () => {
     }
   })
   
-  // Escape 键取消补全（不覆盖 Monaco 默认行为）
-  editor.value.addAction({
-    id: 'clear-ghost-text',
-    label: 'Clear Ghost Text',
-    keybindings: [monaco.KeyCode.Escape],
-    precondition: null,
-    keybindingContext: null,
-    run: () => {
-      if (ghostText.value) {
-        clearGhostText()
-        return true // 阻止默认行为
-      }
-      // 返回 false 让 Monaco 处理（关闭查找框等）
-      return false
-    }
-  })
-  
-  // Cmd/Ctrl+F 打开查找框（使用 Monaco 默认行为）
-  // 不需要覆盖，Monaco 自带
+  // Escape 键取消补全（只在有幽灵文本时处理，否则让 Monaco 处理）
+  // 注意：不能用 addCommand 覆盖 Escape，否则查找框无法关闭
+  // 幽灵文本会在光标移动时自动清除
   
   // 光标移动时清除幽灵文本
   editor.value.onDidChangeCursorPosition(() => {
@@ -517,6 +501,25 @@ const reloadFile = async () => {
   await loadFile()
 }
 
+const focusEditor = () => {
+  editor.value?.focus()
+}
+
+const handleEscapeKey = (e) => {
+  if (e.key !== 'Escape') return
+  const root = editor.value?.getDomNode()
+  if (!root) return
+  const widget = root.querySelector('.find-widget')
+  if (!widget) return
+  const style = window.getComputedStyle(widget)
+  if (style.display === 'none' || style.visibility === 'hidden') return
+  if (widget.getAttribute('aria-hidden') === 'true') return
+  editor.value?.getAction('closeFindWidget')?.run()
+  editor.value?.getAction('closeReplaceWidget')?.run()
+  e.preventDefault()
+  e.stopPropagation()
+}
+
 watch(() => props.file?.path, (newPath, oldPath) => {
   if (oldPath) UnwatchFile(oldPath)
   loadFile()
@@ -530,6 +533,7 @@ onMounted(() => {
   // 点击外部关闭右键菜单
   document.addEventListener('click', hideContextMenu)
   document.addEventListener('contextmenu', hideContextMenu)
+  document.addEventListener('keydown', handleEscapeKey, true)
   
   // 添加幽灵文本样式（全局样式，因为 Monaco 在 shadow DOM 外）
   if (!document.getElementById('ghost-text-style')) {
@@ -553,11 +557,12 @@ onUnmounted(() => {
   if (completionTimeout) clearTimeout(completionTimeout)
   document.removeEventListener('click', hideContextMenu)
   document.removeEventListener('contextmenu', hideContextMenu)
+  document.removeEventListener('keydown', handleEscapeKey, true)
 })
 
 const lineCount = () => editor.value?.getModel()?.getLineCount() || content.value.split('\n').length
 
-defineExpose({ reloadFile })
+defineExpose({ reloadFile, focusEditor })
 </script>
 
 <template>
@@ -717,5 +722,10 @@ defineExpose({ reloadFile })
   height: 1px;
   background: var(--border-default);
   margin: 4px 0;
+}
+
+/* 修复查找框宽度 */
+.monaco-editor .find-widget {
+  min-width: 450px !important;
 }
 </style>

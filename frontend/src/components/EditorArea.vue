@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, shallowRef, computed } from 'vue'
+import { ref, watch, shallowRef, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import * as monaco from 'monaco-editor'
 import CodeEditor from './CodeEditor.vue'
@@ -62,11 +62,25 @@ const diffEditor = shallowRef(null)
 const editorRefs = ref({})
 
 // 监听活动文件变化
+const focusActiveEditor = async () => {
+  await nextTick()
+  if (!activeFile.value) return
+  if (isImageFile(activeFile.value.name)) return
+  const ref = editorRefs.value[activeFile.value.path]
+  ref?.focusEditor?.()
+}
+
 watch(activeFile, (file) => {
   if (file && props.currentSessionId) {
     emit('activeFileChange', file.path)
   }
+  focusActiveEditor()
 })
+
+const activateFile = (file) => {
+  activeFile.value = file
+  focusActiveEditor()
+}
 
 const openFile = (file) => {
   showDiff.value = false
@@ -79,10 +93,10 @@ const openFile = (file) => {
   
   const existing = openFiles.value.find(f => f.path === file.path)
   if (existing) {
-    activeFile.value = existing
+    activateFile(existing)
   } else {
     openFiles.value.push(file)
-    activeFile.value = file
+    activateFile(file)
   }
 }
 
@@ -118,6 +132,7 @@ const createDiffEditor = (edit) => {
     renderSideBySide: true,
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
+    fixedOverflowWidgets: true,
   })
   
   diffEditor.value.setModel({
@@ -291,7 +306,7 @@ defineExpose({ openFile, activeFile, openFileWithDiff, reloadCurrentFile, isImag
           v-for="(file, index) in openFiles" 
           :key="file.path"
           :class="['tab', { active: activeFile?.path === file.path }]"
-          @click="activeFile = file"
+          @click="activateFile(file)"
           @contextmenu="showContextMenu($event, file, index)"
         >
           <span class="tab-name">{{ file.name }}</span>

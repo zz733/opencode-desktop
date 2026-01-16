@@ -190,7 +190,31 @@ const openFile = (item) => {
   }
 }
 
-// 刷新文件树
+// 刷新指定文件夹（保持展开状态）
+const refreshFolder = async (folderPath) => {
+  // 递归查找并刷新文件夹
+  const refreshItem = async (items, targetPath) => {
+    for (const item of items) {
+      if (item.path === targetPath && item.type === 'folder') {
+        // 重新加载这个文件夹的内容
+        item.children = await loadDir(targetPath)
+        return true
+      }
+      if (item.children && item.children.length > 0) {
+        if (await refreshItem(item.children, targetPath)) {
+          return true
+        }
+      }
+    }
+    return false
+  }
+  
+  await refreshItem(files.value, folderPath)
+  // 触发响应式更新
+  files.value = [...files.value]
+}
+
+// 刷新文件树（完全刷新）
 const refreshFileTree = async () => {
   expandedFolders.value.clear()
   await loadDir()
@@ -250,6 +274,7 @@ const getDirName = () => {
             @openFile="openFile"
             @toggleFolder="toggleFolder"
             @refresh="refreshFileTree"
+            @refreshFolder="refreshFolder"
           />
         </div>
         <div v-else-if="!loading" class="empty-files"><p>{{ t('sidebar.emptyFolder') }}</p></div>
