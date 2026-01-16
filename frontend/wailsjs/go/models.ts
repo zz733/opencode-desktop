@@ -84,6 +84,56 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class GitChange {
+	    path: string;
+	    status: string;
+	    staged: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitChange(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.status = source["status"];
+	        this.staged = source["staged"];
+	    }
+	}
+	export class GitStatus {
+	    branch: string;
+	    changes: GitChange[];
+	    hasRepo: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.branch = source["branch"];
+	        this.changes = this.convertValues(source["changes"], GitChange);
+	        this.hasRepo = source["hasRepo"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ImageData {
 	    name: string;
 	    type: string;
@@ -292,6 +342,24 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class SearchResult {
+	    path: string;
+	    line: number;
+	    content: string;
+	    match: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SearchResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.line = source["line"];
+	        this.content = source["content"];
+	        this.match = source["match"];
+	    }
 	}
 	export class Session {
 	    id: string;

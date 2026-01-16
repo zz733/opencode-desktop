@@ -40,6 +40,8 @@ export function GetConfig():Promise<main.ConfigInfo>;
 
 export function GetConfigModels():Promise<Array<main.ConfigModel>>;
 
+export function GetGitStatus(arg1:string):Promise<main.GitStatus>;
+
 export function GetMCPConfig():Promise<main.MCPConfig>;
 
 export function GetMCPConfigPath():Promise<string>;
@@ -67,6 +69,16 @@ export function GetSessions():Promise<Array<main.Session>>;
 export function GetTerminals():Promise<Array<number>>;
 
 export function GetWorkDir():Promise<string>;
+
+export function GitAdd(arg1:string,arg2:string):Promise<void>;
+
+export function GitCommit(arg1:string,arg2:string):Promise<void>;
+
+export function GitDiscard(arg1:string,arg2:string):Promise<void>;
+
+export function GitPull(arg1:string):Promise<void>;
+
+export function GitPush(arg1:string):Promise<void>;
 
 export function InstallAntigravityAuth():Promise<void>;
 
@@ -99,6 +111,8 @@ export function RunFile(arg1:string):Promise<string>;
 export function SaveImageToWorkDir(arg1:main.ImageData):Promise<string>;
 
 export function SaveMCPConfig(arg1:main.MCPConfig):Promise<void>;
+
+export function SearchInFiles(arg1:string,arg2:string,arg3:boolean,arg4:boolean):Promise<Array<main.SearchResult>>;
 
 export function SendMessage(arg1:string,arg2:string):Promise<void>;
 

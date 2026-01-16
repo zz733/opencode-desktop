@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ListDir, OpenFolder, ReadFileContent } from '../../wailsjs/go/main/App'
+import { ListDir, OpenFolder, ReadFileContent, SearchInFiles, GetGitStatus, GitAdd, GitCommit, GitPush, GitPull, GitDiscard } from '../../wailsjs/go/main/App'
 import FileTreeItem from './FileTreeItem.vue'
 
 const { t } = useI18n()
@@ -17,6 +17,19 @@ const localWorkDir = ref('')
 const files = ref([])
 const loading = ref(false)
 const expandedFolders = ref(new Set())
+
+// 搜索相关
+const searchQuery = ref('')
+const searchResults = ref([])
+const searching = ref(false)
+const searchCaseSensitive = ref(false)
+const searchRegex = ref(false)
+
+// Git 相关
+const gitStatus = ref(null)
+const gitBranch = ref('')
+const gitChanges = ref([])
+const loadingGit = ref(false)
 
 // Maven 项目检测
 const isMavenProject = ref(false)
@@ -234,6 +247,141 @@ const getDirName = () => {
   if (!localWorkDir.value) return ''
   return localWorkDir.value.split('/').pop() || localWorkDir.value.split('\\').pop() || 'ROOT'
 }
+
+// 搜索功能
+const performSearch = async () => {
+  if (!searchQuery.value || !localWorkDir.value) {
+    searchResults.value = []
+    return
+  }
+  
+  searching.value = true
+  try {
+    const results = await SearchInFiles(
+      localWorkDir.value,
+      searchQuery.value,
+      searchCaseSensitive.value,
+      searchRegex.value
+    )
+    searchResults.value = results || []
+  } catch (e) {
+    console.error('搜索失败:', e)
+    searchResults.value = []
+  } finally {
+    searching.value = false
+  }
+}
+
+const openSearchResult = (result) => {
+  emit('openFile', {
+    path: result.path,
+    name: result.path.split('/').pop() || result.path.split('\\').pop(),
+    type: 'file'
+  })
+}
+
+// Git 功能
+const loadGitStatus = async () => {
+  if (!localWorkDir.value) {
+    gitStatus.value = null
+    return
+  }
+  
+  loadingGit.value = true
+  try {
+    const status = await GetGitStatus(localWorkDir.value)
+    gitStatus.value = status
+    gitBranch.value = status.branch || ''
+    gitChanges.value = status.changes || []
+  } catch (e) {
+    console.error('获取 Git 状态失败:', e)
+    gitStatus.value = null
+  } finally {
+    loadingGit.value = false
+  }
+}
+
+const gitStageFile = async (path) => {
+  try {
+    await GitAdd(localWorkDir.value, path)
+    await loadGitStatus()
+  } catch (e) {
+    console.error('暂存文件失败:', e)
+  }
+}
+
+const gitCommitChanges = async () => {
+  const message = prompt(t('git.commitMessage'))
+  if (!message) return
+  
+  try {
+    await GitCommit(localWorkDir.value, message)
+    await loadGitStatus()
+  } catch (e) {
+    console.error('提交失败:', e)
+    alert(t('git.commitFailed') + ': ' + e)
+  }
+}
+
+const gitPushChanges = async () => {
+  try {
+    await GitPush(localWorkDir.value)
+    await loadGitStatus()
+  } catch (e) {
+    console.error('推送失败:', e)
+    alert(t('git.pushFailed') + ': ' + e)
+  }
+}
+
+const gitPullChanges = async () => {
+  try {
+    await GitPull(localWorkDir.value)
+    await loadGitStatus()
+  } catch (e) {
+    console.error('拉取失败:', e)
+    alert(t('git.pullFailed') + ': ' + e)
+  }
+}
+
+const gitDiscardFile = async (path) => {
+  if (!confirm(t('git.discardConfirm'))) return
+  
+  try {
+    await GitDiscard(localWorkDir.value, path)
+    await loadGitStatus()
+  } catch (e) {
+    console.error('丢弃更改失败:', e)
+  }
+}
+
+const getStatusIcon = (status) => {
+  switch (status) {
+    case 'M': return 'M'
+    case 'A': return 'A'
+    case 'D': return 'D'
+    case 'R': return 'R'
+    case '??': return 'U'
+    default: return '?'
+  }
+}
+
+const getStatusColor = (status) => {
+  switch (status) {
+    case 'M': return 'var(--yellow)'
+    case 'A': return 'var(--green)'
+    case 'D': return 'var(--red)'
+    case 'R': return 'var(--blue)'
+    case '??': return 'var(--text-muted)'
+    default: return 'var(--text-secondary)'
+  }
+}
+
+// 监听 activeTab 变化，加载对应数据
+watch(() => props.activeTab, async (newTab) => {
+  if (newTab === 'git') {
+    await loadGitStatus()
+  }
+})
 </script>
 
 <template>
@@ -335,6 +483,143 @@ const getDirName = () => {
         </div>
       </div>
     </div>
+    
+    <!-- 搜索面板 -->
+    <div v-else-if="activeTab === 'search'" class="search-panel">
+      <div class="search-input-group">
+        <input 
+          v-model="searchQuery" 
+          type="text" 
+          :placeholder="t('search.placeholder')"
+          @keyup.enter="performSearch"
+          class="search-input"
+        />
+        <div class="search-options">
+          <label class="search-option">
+            <input type="checkbox" v-model="searchCaseSensitive" />
+            <span>Aa</span>
+          </label>
+          <label class="search-option">
+            <input type="checkbox" v-model="searchRegex" />
+            <span>.*</span>
+          </label>
+          <button @click="performSearch" class="btn-search" :disabled="!searchQuery || searching">
+            <svg v-if="!searching" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <span v-else class="spinner"></span>
+          </button>
+        </div>
+      </div>
+      
+      <div v-if="searchResults.length > 0" class="search-results">
+        <div class="results-header">{{ searchResults.length }} {{ t('search.results') }}</div>
+        <div 
+          v-for="(result, idx) in searchResults" 
+          :key="idx"
+          class="search-result-item"
+          @click="openSearchResult(result)"
+        >
+          <div class="result-path">{{ result.path }}</div>
+          <div class="result-line">
+            <span class="line-number">{{ result.line }}</span>
+            <span class="line-content">{{ result.content }}</span>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="!searching && searchQuery" class="empty-results">
+        {{ t('search.noResults') }}
+      </div>
+    </div>
+    
+    <!-- Git 面板 -->
+    <div v-else-if="activeTab === 'git'" class="git-panel">
+      <div v-if="!localWorkDir" class="empty-git">
+        <p>{{ t('git.noFolder') }}</p>
+      </div>
+      <div v-else-if="!gitStatus || !gitStatus.hasRepo" class="empty-git">
+        <p>{{ t('git.noRepo') }}</p>
+      </div>
+      <div v-else class="git-content">
+        <!-- Git 工具栏 -->
+        <div class="git-toolbar">
+          <div class="git-branch">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+              <path d="M18 9a9 9 0 0 1-9 9"/>
+            </svg>
+            <span>{{ gitBranch || 'main' }}</span>
+          </div>
+          <div class="git-actions">
+            <button @click="gitPullChanges" :title="t('git.pull')" class="git-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="8 18 12 22 16 18"/><polyline points="8 6 12 2 16 6"/>
+                <line x1="12" y1="2" x2="12" y2="22"/>
+              </svg>
+            </button>
+            <button @click="gitPushChanges" :title="t('git.push')" class="git-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/>
+                <line x1="12" y1="6" x2="12" y2="18"/>
+              </svg>
+            </button>
+            <button @click="gitCommitChanges" :title="t('git.commit')" class="git-btn" :disabled="gitChanges.length === 0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+              </svg>
+            </button>
+            <button @click="loadGitStatus" :title="t('git.refresh')" class="git-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <!-- 变更列表 -->
+        <div v-if="gitChanges.length > 0" class="git-changes">
+          <div class="changes-header">{{ t('git.changes') }} ({{ gitChanges.length }})</div>
+          <div 
+            v-for="change in gitChanges" 
+            :key="change.path"
+            class="git-change-item"
+          >
+            <div class="change-status" :style="{ color: getStatusColor(change.status) }">
+              {{ getStatusIcon(change.status) }}
+            </div>
+            <div class="change-path" @click="emit('openFile', { path: localWorkDir + '/' + change.path, name: change.path.split('/').pop(), type: 'file' })">
+              {{ change.path }}
+            </div>
+            <div class="change-actions">
+              <button 
+                v-if="!change.staged" 
+                @click="gitStageFile(change.path)" 
+                :title="t('git.stage')"
+                class="change-btn"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </button>
+              <button 
+                v-if="change.status !== 'A' && change.status !== '??'" 
+                @click="gitDiscardFile(change.path)" 
+                :title="t('git.discard')"
+                class="change-btn"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div v-else class="no-changes">
+          <p>{{ t('git.noChanges') }}</p>
+        </div>
+      </div>
+    </div>
+    
     <div v-else class="placeholder"><p>{{ activeTab }}</p></div>
   </aside>
 </template>
@@ -432,5 +717,286 @@ const getDirName = () => {
 
 .maven-cmd:hover svg {
   opacity: 1;
+}
+
+/* 搜索面板样式 */
+.search-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.search-input-group {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.search-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.search-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.search-option input {
+  cursor: pointer;
+}
+
+.btn-search {
+  margin-left: auto;
+  padding: 4px 12px;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-search:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-search:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.search-results {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.results-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.search-result-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.search-result-item:hover {
+  background: var(--bg-hover);
+}
+
+.result-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-line {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.line-number {
+  color: var(--text-muted);
+  min-width: 30px;
+}
+
+.line-content {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-results {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Git 面板样式 */
+.git-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.empty-git {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.git-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.git-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.git-branch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.git-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.git-btn {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.git-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.git-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.git-changes {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.changes-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.git-change-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.git-change-item:hover {
+  background: var(--bg-hover);
+}
+
+.change-status {
+  font-size: 11px;
+  font-weight: 700;
+  width: 16px;
+  text-align: center;
+}
+
+.change-path {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.change-path:hover {
+  color: var(--text-primary);
+}
+
+.change-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.change-btn {
+  padding: 2px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.change-btn:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.no-changes {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 </style>

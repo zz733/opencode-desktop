@@ -2142,3 +2142,4 @@ func (a *App) readModelsFromConfig(configPath string) ([]ConfigModel, error) {
 
 	return models, nil
 }
+

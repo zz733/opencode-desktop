@@ -78,6 +78,10 @@ export function GetConfigModels() {
   return window['go']['main']['App']['GetConfigModels']();
 }
 
+export function GetGitStatus(arg1) {
+  return window['go']['main']['App']['GetGitStatus'](arg1);
+}
+
 export function GetMCPConfig() {
   return window['go']['main']['App']['GetMCPConfig']();
 }
@@ -132,6 +136,26 @@ export function GetTerminals() {
 
 export function GetWorkDir() {
   return window['go']['main']['App']['GetWorkDir']();
+}
+
+export function GitAdd(arg1, arg2) {
+  return window['go']['main']['App']['GitAdd'](arg1, arg2);
+}
+
+export function GitCommit(arg1, arg2) {
+  return window['go']['main']['App']['GitCommit'](arg1, arg2);
+}
+
+export function GitDiscard(arg1, arg2) {
+  return window['go']['main']['App']['GitDiscard'](arg1, arg2);
+}
+
+export function GitPull(arg1) {
+  return window['go']['main']['App']['GitPull'](arg1);
+}
+
+export function GitPush(arg1) {
+  return window['go']['main']['App']['GitPush'](arg1);
 }
 
 export function InstallAntigravityAuth() {
@@ -196,6 +220,10 @@ export function SaveImageToWorkDir(arg1) {
 
 export function SaveMCPConfig(arg1) {
   return window['go']['main']['App']['SaveMCPConfig'](arg1);
+}
+
+export function SearchInFiles(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SearchInFiles'](arg1, arg2, arg3, arg4);
 }
 
 export function SendMessage(arg1, arg2) {
