@@ -31,52 +31,41 @@ const mavenInfo = ref({
 // 项目类型检测
 const projectType = ref('')
 
-// 检测项目类型
+// 检测项目类型（异步，不阻塞）
 const detectProjectType = async () => {
   if (!localWorkDir.value) {
     projectType.value = ''
     return
   }
   
-  try {
-    // 检测各种项目类型
-    const checks = [
-      { file: 'pom.xml', type: 'maven' },
-      { file: 'build.gradle', type: 'gradle' },
-      { file: 'build.gradle.kts', type: 'gradle' },
-      { file: 'go.mod', type: 'go' },
-      { file: 'Cargo.toml', type: 'rust' },
-      { file: 'package.json', type: 'node' },
-      { file: 'requirements.txt', type: 'python' },
-      { file: 'pyproject.toml', type: 'python' },
-      { file: 'setup.py', type: 'python' },
-      { file: '*.csproj', type: 'csharp' },
-      { file: '*.sln', type: 'dotnet' },
-    ]
-    
-    for (const check of checks) {
-      try {
-        const content = await ReadFileContent(localWorkDir.value + '/' + check.file)
-        if (content) {
-          projectType.value = check.type
-          
-          // 进一步检测 Node 项目类型
-          if (check.type === 'node') {
-            if (content.includes('"vue"')) projectType.value = 'vue'
-            else if (content.includes('"react"')) projectType.value = 'react'
-          }
-          
-          return
+  // 简单检测，不阻塞
+  const checks = [
+    { file: 'pom.xml', type: 'maven' },
+    { file: 'build.gradle', type: 'gradle' },
+    { file: 'go.mod', type: 'go' },
+    { file: 'Cargo.toml', type: 'rust' },
+    { file: 'package.json', type: 'node' },
+    { file: 'requirements.txt', type: 'python' },
+    { file: 'pyproject.toml', type: 'python' },
+  ]
+  
+  for (const check of checks) {
+    try {
+      const content = await ReadFileContent(localWorkDir.value + '/' + check.file)
+      if (content) {
+        projectType.value = check.type
+        // 进一步检测 Node 项目类型
+        if (check.type === 'node') {
+          if (content.includes('"vue"')) projectType.value = 'vue'
+          else if (content.includes('"react"')) projectType.value = 'react'
         }
-      } catch (e) {
-        // 文件不存在，继续检测
+        return
       }
+    } catch (e) {
+      // 忽略错误，继续检测
     }
-    
-    projectType.value = ''
-  } catch (e) {
-    projectType.value = ''
   }
+  projectType.value = ''
 }
 
 // 检测是否是 Maven 项目
