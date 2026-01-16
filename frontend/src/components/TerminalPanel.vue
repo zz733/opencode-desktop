@@ -237,15 +237,21 @@ const executeCommand = async (command) => {
   // 切换到终端面板
   activePanel.value = 'terminal'
   
-  // 确保有终端
-  if (terminals.value.length === 0) {
-    await addTerminal()
-  }
-  
+  // 等待 DOM 更新
   await nextTick()
   
-  // 获取当前终端
-  const termData = terminals.value.find(t => t.id === activeTerminalId.value)
+  // 等待终端初始化完成（如果是新创建的）
+  await new Promise(resolve => setTimeout(resolve, 300))
+  
+  // 获取当前活动终端（使用最新的 activeTerminalId）
+  let termData = terminals.value.find(t => t.id === activeTerminalId.value)
+  
+  // 如果没有找到活动终端，使用第一个终端
+  if (!termData && terminals.value.length > 0) {
+    termData = terminals.value[0]
+    activeTerminalId.value = termData.id
+  }
+  
   if (termData) {
     // 发送命令到终端
     WriteTerminal(termData.id, command + '\n')
