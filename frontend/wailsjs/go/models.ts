@@ -66,6 +66,99 @@ export namespace main {
 	        this.data = source["data"];
 	    }
 	}
+	export class MCPServer {
+	    type: string;
+	    command?: string[];
+	    url?: string;
+	    enabled: boolean;
+	    environment?: Record<string, string>;
+	    timeout?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPServer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.command = source["command"];
+	        this.url = source["url"];
+	        this.enabled = source["enabled"];
+	        this.environment = source["environment"];
+	        this.timeout = source["timeout"];
+	    }
+	}
+	export class MCPConfig {
+	    mcp: Record<string, MCPServer>;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mcp = this.convertValues(source["mcp"], MCPServer, true);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MCPMarketItem {
+	    name: string;
+	    description: string;
+	    command: string[];
+	    envVars?: string[];
+	    category: string;
+	    docsUrl?: string;
+	    configTips?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPMarketItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.command = source["command"];
+	        this.envVars = source["envVars"];
+	        this.category = source["category"];
+	        this.docsUrl = source["docsUrl"];
+	        this.configTips = source["configTips"];
+	    }
+	}
+	
+	export class MCPTool {
+	    id: string;
+	    description: string;
+	    parameters: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPTool(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.description = source["description"];
+	        this.parameters = source["parameters"];
+	    }
+	}
 	export class Message {
 	    role: string;
 	    content: string;

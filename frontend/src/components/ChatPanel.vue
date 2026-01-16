@@ -178,6 +178,24 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   })
 })
 
+// 监听思考内容变化，自动滚动
+watch(() => props.messages[props.messages.length - 1]?.reasoning, () => {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  })
+})
+
+// 监听工具调用变化，自动滚动
+watch(() => props.messages[props.messages.length - 1]?.tools, () => {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  })
+}, { deep: true })
+
 // 监听文件编辑变化，自动滚动
 watch(() => fileEdits.value.length, () => {
   nextTick(() => {

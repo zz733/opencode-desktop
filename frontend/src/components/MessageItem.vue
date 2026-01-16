@@ -439,6 +439,8 @@ const formatToolInput = (tool) => {
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.4;
+  max-height: 150px;
+  overflow-y: auto;
 }
 
 /* 正文 */

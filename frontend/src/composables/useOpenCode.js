@@ -3,7 +3,7 @@ import {
   GetServerURL, SetServerURL, CheckConnection,
   GetSessions, CreateSession, SendMessage, SendMessageWithModel, 
   SubscribeEvents, GetOpenCodeStatus, AutoStartOpenCode, InstallOpenCode,
-  CancelSession, GetSessionMessages
+  CancelSession, GetSessionMessages, GetMCPToolsPrompt
 } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsEmit } from '../../wailsjs/runtime/runtime'
 import { i18n } from '../i18n'
@@ -309,10 +309,21 @@ async function sendMessage(text, images = []) {
   const currentLocale = i18n.global.locale.value
   const langName = languageNames[currentLocale] || 'English'
   
-  // 构建消息，包含当前文件上下文
+  // 获取 MCP 工具提示
+  let mcpToolsPrompt = ''
+  try {
+    mcpToolsPrompt = await GetMCPToolsPrompt()
+  } catch (e) {
+    console.log('获取 MCP 工具提示失败:', e)
+  }
+  
+  // 构建消息，包含当前文件上下文和 MCP 工具
   let messageToSend = `[Please respond in ${langName}]`
   if (activeFilePath.value) {
     messageToSend += `\n[Current active file: ${activeFilePath.value}]`
+  }
+  if (mcpToolsPrompt) {
+    messageToSend += `\n${mcpToolsPrompt}`
   }
   messageToSend += `\n\n${text}`
   
