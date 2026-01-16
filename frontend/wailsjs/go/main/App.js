@@ -202,6 +202,10 @@ export function RenamePath(arg1, arg2) {
   return window['go']['main']['App']['RenamePath'](arg1, arg2);
 }
 
+export function ReplaceInFiles(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ReplaceInFiles'](arg1, arg2, arg3, arg4);
+}
+
 export function ResizeTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeTerminal'](arg1, arg2, arg3);
 }

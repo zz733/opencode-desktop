@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ListDir, OpenFolder, ReadFileContent, SearchInFiles, GetGitStatus, GitAdd, GitCommit, GitPush, GitPull, GitDiscard } from '../../wailsjs/go/main/App'
+import { ListDir, OpenFolder, ReadFileContent, SearchInFiles, ReplaceInFiles, GetGitStatus, GitAdd, GitCommit, GitPush, GitPull, GitDiscard } from '../../wailsjs/go/main/App'
 import FileTreeItem from './FileTreeItem.vue'
 
 const { t } = useI18n()
@@ -24,6 +24,9 @@ const searchResults = ref([])
 const searching = ref(false)
 const searchCaseSensitive = ref(false)
 const searchRegex = ref(false)
+const showReplace = ref(false)
+const replaceText = ref('')
+const replacing = ref(false)
 
 // Git 相关
 const gitStatus = ref(null)
@@ -280,6 +283,38 @@ const openSearchResult = (result) => {
   })
 }
 
+// 替换功能
+const performReplace = async () => {
+  if (!searchQuery.value || !localWorkDir.value) {
+    return
+  }
+  
+  if (!confirm(t('search.replaceConfirm', { 
+    search: searchQuery.value, 
+    replace: replaceText.value 
+  }))) {
+    return
+  }
+  
+  replacing.value = true
+  try {
+    const count = await ReplaceInFiles(
+      localWorkDir.value,
+      searchQuery.value,
+      replaceText.value,
+      searchCaseSensitive.value
+    )
+    alert(t('search.replaceSuccess', { count }))
+    // 重新搜索以更新结果
+    await performSearch()
+  } catch (e) {
+    console.error('替换失败:', e)
+    alert(t('search.replaceFailed') + ': ' + e)
+  } finally {
+    replacing.value = false
+  }
+}
+
 // Git 功能
 const loadGitStatus = async () => {
   if (!localWorkDir.value) {
@@ -494,18 +529,48 @@ watch(() => props.activeTab, async (newTab) => {
           @keyup.enter="performSearch"
           class="search-input"
         />
+        <div v-if="showReplace" class="replace-input-wrapper">
+          <input 
+            v-model="replaceText" 
+            type="text" 
+            :placeholder="t('search.replacePlaceholder')"
+            class="search-input"
+          />
+        </div>
         <div class="search-options">
-          <label class="search-option">
+          <label class="search-option" :title="t('search.caseSensitive')">
             <input type="checkbox" v-model="searchCaseSensitive" />
             <span>Aa</span>
           </label>
-          <label class="search-option">
+          <label class="search-option" :title="t('search.useRegex')">
             <input type="checkbox" v-model="searchRegex" />
             <span>.*</span>
           </label>
+          <button 
+            @click="showReplace = !showReplace" 
+            class="btn-toggle-replace"
+            :class="{ active: showReplace }"
+            :title="t('search.toggleReplace')"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
           <button @click="performSearch" class="btn-search" :disabled="!searchQuery || searching">
             <svg v-if="!searching" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <span v-else class="spinner"></span>
+          </button>
+          <button 
+            v-if="showReplace" 
+            @click="performReplace" 
+            class="btn-replace" 
+            :disabled="!searchQuery || !searchResults.length || replacing"
+          >
+            <svg v-if="!replacing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"/>
             </svg>
             <span v-else class="spinner"></span>
           </button>
@@ -767,6 +832,32 @@ watch(() => props.activeTab, async (newTab) => {
   cursor: pointer;
 }
 
+.btn-toggle-replace {
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.btn-toggle-replace:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-toggle-replace.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.replace-input-wrapper {
+  margin-top: 8px;
+}
+
 .btn-search {
   margin-left: auto;
   padding: 4px 12px;
@@ -785,6 +876,27 @@ watch(() => props.activeTab, async (newTab) => {
 }
 
 .btn-search:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-replace {
+  padding: 4px 12px;
+  background: var(--green);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-replace:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-replace:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

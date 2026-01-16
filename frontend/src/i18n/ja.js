@@ -204,8 +204,15 @@ export default {
   },
   search: {
     placeholder: 'ファイル内を検索...',
+    replacePlaceholder: '置換後の文字列...',
     results: '件の結果',
     noResults: '結果が見つかりません',
+    caseSensitive: '大文字小文字を区別',
+    useRegex: '正規表現を使用',
+    toggleReplace: '置換を切り替え',
+    replaceConfirm: '"{search}" を "{replace}" に置換しますか？',
+    replaceSuccess: '{count} 個のファイルを置換しました',
+    replaceFailed: '置換に失敗しました',
   },
   git: {
     noFolder: 'フォルダが開かれていません',

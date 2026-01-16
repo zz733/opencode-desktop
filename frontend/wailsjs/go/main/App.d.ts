@@ -102,6 +102,8 @@ export function RemoveMCPServer(arg1:string):Promise<void>;
 
 export function RenamePath(arg1:string,arg2:string):Promise<string>;
 
+export function ReplaceInFiles(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<number>;
+
 export function ResizeTerminal(arg1:number,arg2:number,arg3:number):Promise<void>;
 
 export function RestartOpenCode():Promise<void>;

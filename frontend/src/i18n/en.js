@@ -206,8 +206,15 @@ export default {
   },
   search: {
     placeholder: 'Search in files...',
+    replacePlaceholder: 'Replace with...',
     results: 'results',
     noResults: 'No results found',
+    caseSensitive: 'Match Case',
+    useRegex: 'Use Regular Expression',
+    toggleReplace: 'Toggle Replace',
+    replaceConfirm: 'Replace all "{search}" with "{replace}"?',
+    replaceSuccess: 'Successfully replaced in {count} files',
+    replaceFailed: 'Replace failed',
   },
   git: {
     noFolder: 'No folder opened',

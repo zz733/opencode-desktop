@@ -206,8 +206,15 @@ export default {
   },
   search: {
     placeholder: '搜索文件内容...',
+    replacePlaceholder: '替换为...',
     results: '个结果',
     noResults: '未找到结果',
+    caseSensitive: '区分大小写',
+    useRegex: '使用正则表达式',
+    toggleReplace: '切换替换',
+    replaceConfirm: '确定要将 "{search}" 替换为 "{replace}" 吗？',
+    replaceSuccess: '成功替换 {count} 个文件',
+    replaceFailed: '替换失败',
   },
   git: {
     noFolder: '未打开文件夹',
