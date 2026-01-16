@@ -26,6 +26,26 @@ export namespace main {
 	        this.model = source["model"];
 	    }
 	}
+	export class ConfigModel {
+	    id: string;
+	    name: string;
+	    provider: string;
+	    contextLen?: number;
+	    outputLen?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConfigModel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.provider = source["provider"];
+	        this.contextLen = source["contextLen"];
+	        this.outputLen = source["outputLen"];
+	    }
+	}
 	export class FileInfo {
 	    name: string;
 	    path: string;

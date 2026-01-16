@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -16,6 +16,27 @@ const currentModelName = () => {
   const m = props.models.find(m => m.id === props.modelValue)
   return m ? m.name : t('model.select')
 }
+
+// 分类模型
+const antigravityModels = computed(() => 
+  props.models.filter(m => m.category === 'antigravity' || m.id?.includes('antigravity'))
+)
+
+const geminiCliModels = computed(() => 
+  props.models.filter(m => m.category === 'gemini-cli')
+)
+
+const freeModels = computed(() => 
+  props.models.filter(m => m.free && m.builtin && !m.id?.includes('antigravity'))
+)
+
+const premiumModels = computed(() => 
+  props.models.filter(m => !m.free && m.builtin)
+)
+
+const customModels = computed(() => 
+  props.models.filter(m => !m.builtin && !m.provider)
+)
 
 const select = (id) => {
   emit('update:modelValue', id)
@@ -37,10 +58,11 @@ const select = (id) => {
     <div v-if="show" class="dropdown" @click.stop>
       <div class="header">{{ t('model.select') }}</div>
       
-      <div class="group">
-        <div class="group-label">🆓 {{ t('model.freeModels') }}</div>
+      <!-- Antigravity 模型 -->
+      <div v-if="antigravityModels.length" class="group">
+        <div class="group-label">🚀 Antigravity</div>
         <div 
-          v-for="m in models.filter(m => m.free)" 
+          v-for="m in antigravityModels" 
           :key="m.id"
           :class="['option', { active: modelValue === m.id }]"
           @click="select(m.id)"
@@ -49,10 +71,37 @@ const select = (id) => {
         </div>
       </div>
       
-      <div class="group">
+      <!-- 免费模型 -->
+      <div v-if="freeModels.length" class="group">
+        <div class="group-label">🆓 {{ t('model.freeModels') }}</div>
+        <div 
+          v-for="m in freeModels" 
+          :key="m.id"
+          :class="['option', { active: modelValue === m.id }]"
+          @click="select(m.id)"
+        >
+          {{ m.name }}
+        </div>
+      </div>
+      
+      <!-- 付费模型 -->
+      <div v-if="premiumModels.length" class="group">
         <div class="group-label">⭐ {{ t('model.premiumModels') }}</div>
         <div 
-          v-for="m in models.filter(m => !m.free)" 
+          v-for="m in premiumModels" 
+          :key="m.id"
+          :class="['option', { active: modelValue === m.id }]"
+          @click="select(m.id)"
+        >
+          {{ m.name }}
+        </div>
+      </div>
+      
+      <!-- 自定义模型 -->
+      <div v-if="customModels.length" class="group">
+        <div class="group-label">🔧 {{ t('model.customModels') }}</div>
+        <div 
+          v-for="m in customModels" 
           :key="m.id"
           :class="['option', { active: modelValue === m.id }]"
           @click="select(m.id)"

@@ -81,6 +81,7 @@ export default {
     premium: 'プレミアム',
     freeModels: '無料モデル',
     premiumModels: 'プレミアムモデル',
+    customModels: 'カスタムモデル',
   },
   terminal: {
     title: 'ターミナル',
@@ -184,6 +185,11 @@ export default {
       authTipTitle: '認証のヒント',
       authTipText: 'インストール後、「認証」ボタンをクリックしてメニューから Google を選択し、認証を完了してください。',
       authenticate: '認証',
+      restartOpenCode: 'OpenCode を再起動',
+      restarting: '再起動中...',
+      restartHint: 'プラグイン設定を変更した後、OpenCode を再起動する必要があります',
+      fix: '修復',
+      fixHint: 'Antigravity Auth との競合を避けるため Google 認証を無効化',
     },
   },
   maven: {

@@ -7,8 +7,9 @@ import {
   GetMCPConfig, SaveMCPConfig, GetMCPMarket, AddMCPServer, RemoveMCPServer, 
   ToggleMCPServer, OpenMCPConfigFile, GetMCPStatus, ConnectMCPServer, 
   DisconnectMCPServer, GetMCPTools,
-  GetOhMyOpenCodeStatus, InstallOhMyOpenCode, UninstallOhMyOpenCode,
-  GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth
+  GetOhMyOpenCodeStatus, InstallOhMyOpenCode, UninstallOhMyOpenCode, FixOhMyOpenCode,
+  GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth,
+  RestartOpenCode
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
 import { EventsEmit } from '../../wailsjs/runtime/runtime'
@@ -170,12 +171,27 @@ async function uninstallOhMyOpenCode() {
   }
 }
 
+async function fixOhMyOpenCode() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'oh-my-opencode-fix'
+  try {
+    await FixOhMyOpenCode()
+  } catch (e) {
+    console.error('修复失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
 async function installAntigravityAuth() {
   pluginLoading.value = true
   pluginLoadingName.value = 'antigravity-auth'
   try {
     await InstallAntigravityAuth()
     await loadPluginStatus()
+    // 通知重新加载模型列表
+    EventsEmit('antigravity-models-changed', true)
   } catch (e) {
     console.error('安装失败:', e)
   } finally {
@@ -190,6 +206,8 @@ async function uninstallAntigravityAuth() {
   try {
     await UninstallAntigravityAuth()
     await loadPluginStatus()
+    // 通知清空模型列表
+    EventsEmit('antigravity-models-changed', false)
   } catch (e) {
     console.error('卸载失败:', e)
   } finally {
@@ -201,6 +219,19 @@ async function uninstallAntigravityAuth() {
 function runAntigravityAuth() {
   // 发送命令到终端执行（不带参数，会显示交互式选择菜单）
   emit('runCommand', 'opencode auth login')
+}
+
+async function restartOpenCode() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'restart'
+  try {
+    await RestartOpenCode()
+  } catch (e) {
+    console.error('重启失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
 }
 
 const changeLanguage = (code) => setLocale(code)
@@ -618,9 +649,14 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
               <button v-if="!ohMyOpenCodeStatus.installed" class="btn-install" @click="installOhMyOpenCode" :disabled="pluginLoading">
                 {{ pluginLoadingName === 'oh-my-opencode' ? t('common.loading') + '...' : t('settings.mcp.install') }}
               </button>
-              <button v-else class="btn-uninstall" @click="uninstallOhMyOpenCode" :disabled="pluginLoading">
-                {{ pluginLoadingName === 'oh-my-opencode' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
-              </button>
+              <template v-else>
+                <button class="btn-fix" @click="fixOhMyOpenCode" :disabled="pluginLoading">
+                  {{ pluginLoadingName === 'oh-my-opencode-fix' ? t('common.loading') + '...' : t('settings.plugins.fix') }}
+                </button>
+                <button class="btn-uninstall" @click="uninstallOhMyOpenCode" :disabled="pluginLoading">
+                  {{ pluginLoadingName === 'oh-my-opencode' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
+                </button>
+              </template>
               <a class="btn-docs" href="https://github.com/code-yeongyu/oh-my-opencode" target="_blank" @click.prevent="openDocs('https://github.com/code-yeongyu/oh-my-opencode')">
                 {{ t('settings.mcp.viewDocs') }}
               </a>
@@ -684,6 +720,17 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
               <div class="tip-text">{{ t('settings.plugins.authTipText') }}</div>
             </div>
           </div>
+        </div>
+        
+        <!-- 重启 OpenCode -->
+        <div class="restart-section">
+          <button class="btn-restart" @click="restartOpenCode" :disabled="pluginLoading">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            {{ pluginLoadingName === 'restart' ? t('settings.plugins.restarting') : t('settings.plugins.restartOpenCode') }}
+          </button>
+          <div class="restart-hint">{{ t('settings.plugins.restartHint') }}</div>
         </div>
       </div>
       </div>
@@ -969,6 +1016,13 @@ input:checked + .slider:before { transform: translateX(16px); }
 .plugin-actions button, .plugin-actions a { flex: 1; text-align: center; }
 .btn-uninstall { padding: 6px 12px; background: transparent; border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
 .btn-uninstall:hover { background: var(--red); color: white; border-color: var(--red); }
+.btn-fix { padding: 6px 12px; background: var(--yellow); border: none; border-radius: 4px; color: #000; font-size: 12px; cursor: pointer; }
+.btn-fix:hover { opacity: 0.9; }
+.btn-restart { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: var(--accent-primary); border: none; border-radius: 6px; color: white; font-size: 13px; cursor: pointer; font-weight: 500; }
+.btn-restart:hover { opacity: 0.9; }
+.btn-restart:disabled { opacity: 0.5; cursor: not-allowed; }
+.restart-section { margin-top: 16px; padding: 16px; background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border-subtle); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.restart-hint { font-size: 11px; color: var(--text-muted); }
 .btn-auth { padding: 6px 12px; background: var(--accent-primary); border: none; border-radius: 4px; color: white; font-size: 12px; cursor: pointer; }
 .btn-auth:hover { opacity: 0.9; }
 .btn-docs { padding: 6px 12px; background: transparent; border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-secondary); font-size: 12px; cursor: pointer; text-decoration: none; display: inline-block; }

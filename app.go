@@ -821,6 +821,33 @@ func (a *App) UninstallOhMyOpenCode() error {
 	return nil
 }
 
+// FixOhMyOpenCode 修复 oh-my-opencode 配置（禁用 Google 认证）
+func (a *App) FixOhMyOpenCode() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(homeDir, ".config", "opencode", "oh-my-opencode.json")
+	
+	// 创建配置：禁用 Google 认证
+	config := map[string]interface{}{
+		"google_auth": false,
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return err
+	}
+
+	runtime.EventsEmit(a.ctx, "output-log", "oh-my-opencode 已修复：禁用 Google 认证")
+	return nil
+}
+
 // InstallAntigravityAuth 安装 opencode-antigravity-auth
 func (a *App) InstallAntigravityAuth() error {
 	runtime.EventsEmit(a.ctx, "output-log", "正在安装 opencode-antigravity-auth...")
@@ -1029,6 +1056,30 @@ func (a *App) UninstallAntigravityAuth() error {
 	os.Remove(antigravityAccountsPath)
 
 	runtime.EventsEmit(a.ctx, "output-log", "opencode-antigravity-auth 已卸载")
+	return nil
+}
+
+// RestartOpenCode 重启 OpenCode 服务
+func (a *App) RestartOpenCode() error {
+	runtime.EventsEmit(a.ctx, "output-log", "正在重启 OpenCode...")
+	
+	// 发送连接断开事件
+	runtime.EventsEmit(a.ctx, "opencode-status", "restarting")
+	
+	// 先停止当前目录的 OpenCode 实例
+	a.openCode.Stop()
+	
+	// 等待进程完全退出
+	time.Sleep(2 * time.Second)
+	
+	// 重新启动
+	if err := a.openCode.Start(); err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("重启失败: %v", err))
+		runtime.EventsEmit(a.ctx, "opencode-status", "error")
+		return err
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", "OpenCode 正在启动，请等待连接...")
 	return nil
 }
 
@@ -1814,14 +1865,11 @@ func (a *App) GetMCPTools() ([]MCPTool, error) {
 		defer resp.Body.Close()
 		var tools []MCPTool
 		if err := json.NewDecoder(resp.Body).Decode(&tools); err == nil && len(tools) > 0 {
-			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("从 API 获取到 %d 个 MCP 工具", len(tools)))
 			return tools, nil
 		}
 	}
 
 	// 2. 如果 API 获取失败，回退到从配置文件读取并使用硬编码列表（保持兼容性）
-	runtime.EventsEmit(a.ctx, "output-log", "无法从 API 获取工具列表，使用本地预定义列表")
-	
 	config, err := a.GetMCPConfig()
 	if err != nil {
 		return nil, err
@@ -1980,4 +2028,117 @@ func (a *App) OpenInFinder(path string) error {
 func (a *App) CopyToClipboard(text string) error {
 	runtime.ClipboardSetText(a.ctx, text)
 	return nil
+}
+
+// ConfigModel 配置文件中的模型信息
+type ConfigModel struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Provider   string `json:"provider"`
+	ContextLen int    `json:"contextLen,omitempty"`
+	OutputLen  int    `json:"outputLen,omitempty"`
+}
+
+// GetConfigModels 从 opencode.json 配置文件读取模型列表
+func (a *App) GetConfigModels() ([]ConfigModel, error) {
+	var models []ConfigModel
+
+	// 1. 先读取用户级配置 ~/.config/opencode/opencode.json
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		userConfigPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+		if userModels, err := a.readModelsFromConfig(userConfigPath); err == nil {
+			models = append(models, userModels...)
+		}
+	}
+
+	// 2. 再读取项目级配置 {workDir}/opencode.json
+	workDir := a.openCode.GetWorkDir()
+	if workDir != "" {
+		projectConfigPath := filepath.Join(workDir, "opencode.json")
+		if projectModels, err := a.readModelsFromConfig(projectConfigPath); err == nil {
+			// 项目配置优先，去重
+			for _, pm := range projectModels {
+				found := false
+				for i, m := range models {
+					if m.ID == pm.ID {
+						models[i] = pm // 覆盖
+						found = true
+						break
+					}
+				}
+				if !found {
+					models = append(models, pm)
+				}
+			}
+		}
+	}
+
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("从配置文件读取到 %d 个模型", len(models)))
+	return models, nil
+}
+
+// readModelsFromConfig 从单个配置文件读取模型
+func (a *App) readModelsFromConfig(configPath string) ([]ConfigModel, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	var models []ConfigModel
+
+	// 解析 provider 配置
+	provider, ok := config["provider"].(map[string]interface{})
+	if !ok {
+		return models, nil
+	}
+
+	for providerID, providerConfig := range provider {
+		pc, ok := providerConfig.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		modelsConfig, ok := pc["models"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		for modelID, modelConfig := range modelsConfig {
+			mc, ok := modelConfig.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			model := ConfigModel{
+				ID:       fmt.Sprintf("%s/%s", providerID, modelID),
+				Provider: providerID,
+			}
+
+			if name, ok := mc["name"].(string); ok {
+				model.Name = name
+			} else {
+				model.Name = modelID
+			}
+
+			// 解析 limit
+			if limit, ok := mc["limit"].(map[string]interface{}); ok {
+				if ctx, ok := limit["context"].(float64); ok {
+					model.ContextLen = int(ctx)
+				}
+				if out, ok := limit["output"].(float64); ok {
+					model.OutputLen = int(out)
+				}
+			}
+
+			models = append(models, model)
+		}
+	}
+
+	return models, nil
 }

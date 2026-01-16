@@ -32,9 +32,13 @@ export function DeletePath(arg1:string):Promise<void>;
 
 export function DisconnectMCPServer(arg1:string):Promise<void>;
 
+export function FixOhMyOpenCode():Promise<void>;
+
 export function GetAntigravityAuthStatus():Promise<main.AntigravityAuthStatus>;
 
 export function GetConfig():Promise<main.ConfigInfo>;
+
+export function GetConfigModels():Promise<Array<main.ConfigModel>>;
 
 export function GetMCPConfig():Promise<main.MCPConfig>;
 
@@ -87,6 +91,8 @@ export function RemoveMCPServer(arg1:string):Promise<void>;
 export function RenamePath(arg1:string,arg2:string):Promise<string>;
 
 export function ResizeTerminal(arg1:number,arg2:number,arg3:number):Promise<void>;
+
+export function RestartOpenCode():Promise<void>;
 
 export function RunFile(arg1:string):Promise<string>;
 

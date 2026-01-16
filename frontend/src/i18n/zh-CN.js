@@ -83,6 +83,7 @@ export default {
     premium: '付费',
     freeModels: '免费模型',
     premiumModels: '付费模型',
+    customModels: '自定义模型',
   },
   terminal: {
     title: '终端',
@@ -186,6 +187,11 @@ export default {
       authTipTitle: '认证提示',
       authTipText: '安装后点击"认证"按钮，在终端菜单中选择 Google 完成账号认证。',
       authenticate: '认证',
+      restartOpenCode: '重启 OpenCode',
+      restarting: '正在重启...',
+      restartHint: '修改插件配置后需要重启 OpenCode 才能生效',
+      fix: '修复',
+      fixHint: '禁用 Google 认证，避免与 Antigravity Auth 冲突',
     },
   },
   maven: {

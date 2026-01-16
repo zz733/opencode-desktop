@@ -62,12 +62,20 @@ export function DisconnectMCPServer(arg1) {
   return window['go']['main']['App']['DisconnectMCPServer'](arg1);
 }
 
+export function FixOhMyOpenCode() {
+  return window['go']['main']['App']['FixOhMyOpenCode']();
+}
+
 export function GetAntigravityAuthStatus() {
   return window['go']['main']['App']['GetAntigravityAuthStatus']();
 }
 
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
+}
+
+export function GetConfigModels() {
+  return window['go']['main']['App']['GetConfigModels']();
 }
 
 export function GetMCPConfig() {
@@ -172,6 +180,10 @@ export function RenamePath(arg1, arg2) {
 
 export function ResizeTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeTerminal'](arg1, arg2, arg3);
+}
+
+export function RestartOpenCode() {
+  return window['go']['main']['App']['RestartOpenCode']();
 }
 
 export function RunFile(arg1) {

@@ -3,7 +3,7 @@ import {
   GetServerURL, SetServerURL, CheckConnection,
   GetSessions, CreateSession, SendMessage, SendMessageWithModel, 
   SubscribeEvents, GetOpenCodeStatus, AutoStartOpenCode, InstallOpenCode,
-  CancelSession, GetSessionMessages, GetMCPToolsPrompt, GetProviders
+  CancelSession, GetSessionMessages, GetMCPToolsPrompt, GetProviders, GetConfigModels
 } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsEmit } from '../../wailsjs/runtime/runtime'
 import { i18n } from '../i18n'
@@ -32,6 +32,17 @@ EventsOn('output-log', (message) => {
   // 避免重复添加（简单判断，如果需要在前端显示后端发回的前端日志，可能需要更复杂的去重）
   // 这里假设 EventsOn 收到的都是后端主动发送的系统日志
   outputLogs.value.push(`[${timestamp}] ${message}`)
+})
+
+// 监听 Antigravity 模型变化事件
+EventsOn('antigravity-models-changed', async (installed) => {
+  if (installed) {
+    log('Antigravity Auth 已安装，重新加载模型列表...')
+    await fetchModels()
+  } else {
+    log('Antigravity Auth 已卸载，清空 Antigravity 模型列表')
+    dynamicModels.value = []
+  }
 })
 
 const connected = ref(false)
@@ -73,41 +84,67 @@ const models = [
 // 从后端动态获取模型列表
 async function fetchModels() {
   try {
+    // 1. 先尝试从 OpenCode API 获取
     const providerInfo = await GetProviders()
-    
-    if (!providerInfo) return
     
     const fetchedModels = []
     
-    // providerInfo 结构: {all: [...providers], default: {...}, connected: [...]}
-    const providers = providerInfo.all || []
-    
-    for (const provider of providers) {
-      if (!provider.models) continue
+    if (providerInfo) {
+      const providers = providerInfo.all || []
       
-      const providerId = provider.id
-      const providerName = provider.name || providerId
-      
-      // 遍历该 provider 的所有模型
-      for (const [modelId, modelInfo] of Object.entries(provider.models)) {
-        // 只添加 google provider 的 antigravity 模型（需要认证的）
-        if (providerId === 'google' && modelId.startsWith('antigravity-')) {
-          fetchedModels.push({
-            id: `${providerId}/${modelId}`,
-            name: modelInfo.name || modelId,
-            free: true,
-            builtin: false,
-            provider: providerId
-          })
+      for (const provider of providers) {
+        if (!provider.models) continue
+        
+        const providerId = provider.id
+        
+        for (const [modelId, modelInfo] of Object.entries(provider.models)) {
+          // Antigravity 模型 (antigravity- 前缀)
+          if (providerId === 'google' && modelId.startsWith('antigravity-')) {
+            fetchedModels.push({
+              id: `${providerId}/${modelId}`,
+              name: modelInfo.name || modelId,
+              free: true,
+              builtin: false,
+              provider: providerId,
+              category: 'antigravity'
+            })
+          }
+          // Gemini CLI 模型 (-preview 后缀，不需要 Antigravity 权限)
+          if (providerId === 'google' && (modelId.includes('-preview') || modelId === 'gemini-2.5-flash' || modelId === 'gemini-2.5-pro')) {
+            fetchedModels.push({
+              id: `${providerId}/${modelId}`,
+              name: modelInfo.name || modelId,
+              free: true,
+              builtin: false,
+              provider: providerId,
+              category: 'gemini-cli'
+            })
+          }
         }
       }
     }
     
     if (fetchedModels.length > 0) {
       dynamicModels.value = fetchedModels
-      log(`动态加载了 ${fetchedModels.length} 个 Antigravity 模型`)
+      log(`从 API 加载了 ${fetchedModels.length} 个 Antigravity 模型`)
+      return
+    }
+    
+    // 2. API 没有返回模型，从配置文件读取
+    log('API 未返回 Antigravity 模型，从配置文件读取...')
+    const configModels = await GetConfigModels()
+    
+    if (configModels && configModels.length > 0) {
+      dynamicModels.value = configModels.map(m => ({
+        id: m.id,
+        name: m.name,
+        free: true,
+        builtin: false,
+        provider: m.provider
+      }))
+      log(`从配置文件加载了 ${configModels.length} 个模型`)
     } else {
-      log('未找到 Antigravity 模型，请确保已安装 opencode-antigravity-auth 插件并配置 google provider')
+      log('配置文件中也没有找到自定义模型')
     }
   } catch (e) {
     log(`获取模型列表失败: ${e}`)
@@ -228,6 +265,9 @@ async function onConnected() {
   await loadSessions()
   setupEventListeners()
   
+  // 启动连接状态检查
+  startConnectionCheck()
+  
   // 动态获取模型列表
   log('正在获取可用模型列表...')
   await fetchModels()
@@ -242,14 +282,63 @@ async function onConnected() {
 function setupOpenCodeEvents() {
   EventsOn('opencode-status', (status) => {
     openCodeStatus.value = status
+    log(`OpenCode 状态变化: ${status}`)
+    
     if (status === 'connected') {
       onConnected()
+    } else if (status === 'restarting' || status === 'error' || status === 'timeout') {
+      connected.value = false
+      connecting.value = status === 'restarting'
     }
   })
   
   EventsOn('opencode-installed', () => {
     autoConnect()
   })
+  
+  // 监听连接错误事件
+  EventsOn('connection-error', (error) => {
+    log(`连接错误: ${error}`)
+    connected.value = false
+    // 3秒后自动重连
+    setTimeout(() => {
+      if (!connected.value && !connecting.value) {
+        log('尝试自动重连...')
+        autoConnect()
+      }
+    }, 3000)
+  })
+}
+
+// 持续检查连接状态
+let connectionCheckInterval = null
+
+function startConnectionCheck() {
+  if (connectionCheckInterval) return
+  
+  connectionCheckInterval = setInterval(async () => {
+    try {
+      const status = await GetOpenCodeStatus()
+      const wasConnected = connected.value
+      
+      if (status.connected && !wasConnected) {
+        log('检测到 OpenCode 已连接')
+        await onConnected()
+      } else if (!status.connected && wasConnected) {
+        log('检测到 OpenCode 连接断开')
+        connected.value = false
+      }
+    } catch (e) {
+      // 忽略检查错误
+    }
+  }, 3000) // 每3秒检查一次
+}
+
+function stopConnectionCheck() {
+  if (connectionCheckInterval) {
+    clearInterval(connectionCheckInterval)
+    connectionCheckInterval = null
+  }
 }
 
 async function loadSessions() {
@@ -526,13 +615,46 @@ function handleEvent(event) {
   
   // 处理错误事件
   if (event.type === 'session.error' || event.type === 'error') {
-    const error = event.properties?.error || event.properties?.message || '未知错误'
-    console.error('收到错误事件:', error)
+    let errorMsg = '未知错误'
+    const error = event.properties?.error || event.properties?.message
+    
+    if (error) {
+      if (typeof error === 'string') {
+        errorMsg = error
+      } else if (error.data?.message) {
+        // 提取简洁的错误信息
+        let msg = error.data.message
+        // 处理 "Not Found: [{...}]" 格式
+        if (msg.startsWith('Not Found:') || msg.includes('Requested entity was not found')) {
+          errorMsg = 'Google API 返回 404：模型不可用。可能原因：1) 账号无 Antigravity 权限 2) 服务暂时不可用 3) 请尝试其他模型'
+        } else if (msg.includes('401') || msg.includes('Unauthorized')) {
+          errorMsg = '认证失败，请运行 opencode auth login 重新认证'
+        } else if (msg.includes('403') || msg.includes('Forbidden')) {
+          errorMsg = '访问被拒绝，账号可能没有该模型的访问权限'
+        } else if (msg.includes('429') || msg.includes('rate limit')) {
+          errorMsg = '请求过于频繁，请稍后再试'
+        } else if (msg.includes('500') || msg.includes('Internal')) {
+          errorMsg = '服务器内部错误，请稍后再试'
+        } else {
+          // 截取前100个字符
+          errorMsg = msg.length > 100 ? msg.substring(0, 100) + '...' : msg
+        }
+      } else if (error.message) {
+        errorMsg = error.message.length > 100 ? error.message.substring(0, 100) + '...' : error.message
+      } else if (error.name) {
+        errorMsg = error.name
+      } else {
+        const str = JSON.stringify(error)
+        errorMsg = str.length > 100 ? str.substring(0, 100) + '...' : str
+      }
+    }
+    
+    console.error('收到错误事件:', errorMsg)
     
     // 更新最后一条 assistant 消息显示错误
     let last = messages.value[messages.value.length - 1]
     if (last && last.role === 'assistant') {
-      last.content = `❌ ${error}`
+      last.content = `❌ ${errorMsg}`
     }
     
     sending.value = false
@@ -541,12 +663,32 @@ function handleEvent(event) {
   
   // 处理消息错误
   if (event.type === 'message.error') {
-    const error = event.properties?.error || '消息处理失败'
-    console.error('消息错误:', error)
+    let errorMsg = '消息处理失败'
+    const error = event.properties?.error
+    
+    if (error) {
+      if (typeof error === 'string') {
+        errorMsg = error.length > 100 ? error.substring(0, 100) + '...' : error
+      } else if (error.data?.message) {
+        let msg = error.data.message
+        if (msg.startsWith('Not Found:') || msg.includes('Requested entity was not found')) {
+          errorMsg = 'Google API 返回 404：模型不可用。可能原因：1) 账号无 Antigravity 权限 2) 服务暂时不可用 3) 请尝试其他模型'
+        } else {
+          errorMsg = msg.length > 100 ? msg.substring(0, 100) + '...' : msg
+        }
+      } else if (error.message) {
+        errorMsg = error.message.length > 100 ? error.message.substring(0, 100) + '...' : error.message
+      } else {
+        const str = JSON.stringify(error)
+        errorMsg = str.length > 100 ? str.substring(0, 100) + '...' : str
+      }
+    }
+    
+    console.error('消息错误:', errorMsg)
     
     let last = messages.value[messages.value.length - 1]
     if (last && last.role === 'assistant') {
-      last.content = `❌ ${error}`
+      last.content = `❌ ${errorMsg}`
     }
     
     sending.value = false

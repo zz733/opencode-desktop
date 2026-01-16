@@ -265,7 +265,12 @@ func (m *OpenCodeManager) waitForReadyOnPort(port int) {
 }
 
 func (m *OpenCodeManager) Stop() {
-	m.StopForDir(m.GetWorkDir())
+	dir := m.GetWorkDir()
+	m.StopForDir(dir)
+	// 确保实例被清理
+	m.mu.Lock()
+	delete(m.instances, dir)
+	m.mu.Unlock()
 }
 
 func (m *OpenCodeManager) StopForDir(dir string) {
@@ -274,7 +279,9 @@ func (m *OpenCodeManager) StopForDir(dir string) {
 	if inst, ok := m.instances[dir]; ok {
 		if inst.cmd != nil && inst.cmd.Process != nil {
 			inst.cmd.Process.Kill()
+			inst.cmd.Wait() // 等待进程退出
 		}
+		inst.running = false
 		delete(m.instances, dir)
 	}
 }

@@ -83,6 +83,7 @@ export default {
     premium: 'Premium',
     freeModels: 'Free Models',
     premiumModels: 'Premium Models',
+    customModels: 'Custom Models',
   },
   terminal: {
     title: 'Terminal',
@@ -186,6 +187,11 @@ export default {
       authTipTitle: 'Authentication Tip',
       authTipText: 'After installation, click "Authenticate" button and select Google from the menu to complete authentication.',
       authenticate: 'Authenticate',
+      restartOpenCode: 'Restart OpenCode',
+      restarting: 'Restarting...',
+      restartHint: 'Restart OpenCode after changing plugin settings',
+      fix: 'Fix',
+      fixHint: 'Disable Google auth to avoid conflict with Antigravity Auth',
     },
   },
   maven: {
