@@ -58,7 +58,8 @@ func main() {
 			Theme:                             windows.Dark,
 			DisableFramelessWindowDecorations: false,
 		},
-		Frameless: frameless,
+		Frameless:                frameless,
+		EnableDefaultContextMenu: false,
 	})
 
 	if err != nil {

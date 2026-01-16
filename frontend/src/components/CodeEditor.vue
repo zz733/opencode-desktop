@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, shallowRef, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
@@ -9,6 +10,8 @@ import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 import { ReadFileContent, WriteFileContent, WatchFile, UnwatchFile, CodeCompletion, RunFile, WriteTerminal, CreateTerminal } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
 import { useFileEdits } from '../composables/useFileEdits'
+
+const { t } = useI18n()
 
 // 配置 Monaco workers
 self.MonacoEnvironment = {
@@ -42,6 +45,89 @@ const running = ref(false)
 const completing = ref(false)
 const ghostText = ref('')
 const ghostDecoration = ref([])
+
+// 右键菜单状态
+const contextMenu = ref({
+  visible: false,
+  x: 0,
+  y: 0
+})
+
+// 判断是否是 Mac
+const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+
+// 获取快捷键显示文本
+const getShortcut = (key) => {
+  const mod = isMac ? '⌘' : 'Ctrl+'
+  const shortcuts = {
+    cut: `${mod}X`,
+    copy: `${mod}C`,
+    paste: `${mod}V`,
+    delete: 'Del',
+    selectAll: `${mod}A`,
+    undo: `${mod}Z`,
+    redo: isMac ? '⇧⌘Z' : 'Ctrl+Y',
+    find: `${mod}F`,
+    replace: isMac ? '⌥⌘F' : 'Ctrl+H',
+    goToLine: `${mod}G`,
+    format: isMac ? '⇧⌥F' : 'Shift+Alt+F',
+    comment: `${mod}/`,
+  }
+  return shortcuts[key] || ''
+}
+
+// 右键菜单操作
+const menuActions = {
+  undo: () => editor.value?.trigger('contextmenu', 'undo', null),
+  redo: () => editor.value?.trigger('contextmenu', 'redo', null),
+  cut: () => {
+    editor.value?.focus()
+    document.execCommand('cut')
+  },
+  copy: () => {
+    editor.value?.focus()
+    document.execCommand('copy')
+  },
+  paste: async () => {
+    editor.value?.focus()
+    try {
+      const text = await navigator.clipboard.readText()
+      editor.value?.trigger('contextmenu', 'paste', { text })
+    } catch (e) {
+      document.execCommand('paste')
+    }
+  },
+  delete: () => editor.value?.trigger('contextmenu', 'deleteRight', null),
+  selectAll: () => editor.value?.trigger('contextmenu', 'selectAll', null),
+  find: () => editor.value?.trigger('contextmenu', 'actions.find', null),
+  replace: () => editor.value?.trigger('contextmenu', 'editor.action.startFindReplaceAction', null),
+  goToLine: () => editor.value?.trigger('contextmenu', 'editor.action.gotoLine', null),
+  format: () => editor.value?.trigger('contextmenu', 'editor.action.formatDocument', null),
+  comment: () => editor.value?.trigger('contextmenu', 'editor.action.commentLine', null),
+}
+
+// 显示右键菜单
+const showContextMenu = (e) => {
+  e.preventDefault()
+  contextMenu.value = {
+    visible: true,
+    x: e.clientX,
+    y: e.clientY
+  }
+}
+
+// 隐藏右键菜单
+const hideContextMenu = () => {
+  contextMenu.value.visible = false
+}
+
+// 执行菜单操作
+const executeMenuAction = (action) => {
+  hideContextMenu()
+  if (menuActions[action]) {
+    menuActions[action]()
+  }
+}
 
 const getLanguage = (filename) => {
   const ext = filename?.split('.').pop()?.toLowerCase()
@@ -330,7 +416,33 @@ const initEditor = () => {
     tabCompletion: 'on',
     wordBasedSuggestions: 'currentDocument',
     snippetSuggestions: 'inline',
+    // 禁用默认右键菜单
+    contextmenu: false,
   })
+  
+  // 使用 Monaco 的鼠标事件检测右键
+  editor.value.onMouseDown((e) => {
+    if (e.event.rightButton) {
+      e.event.preventDefault()
+      e.event.stopPropagation()
+      contextMenu.value = {
+        visible: true,
+        x: e.event.posx,
+        y: e.event.posy
+      }
+    }
+  })
+  
+  // 阻止编辑器区域的默认右键菜单
+  editor.value.getDomNode()?.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    contextMenu.value = {
+      visible: true,
+      x: e.clientX,
+      y: e.clientY
+    }
+  }, true)
   
   // 自动保存：内容变化后延迟保存
   let saveTimeout = null
@@ -402,6 +514,10 @@ onMounted(() => {
   if (props.file) loadFile()
   EventsOn('file-changed', handleFileChanged)
   
+  // 点击外部关闭右键菜单
+  document.addEventListener('click', hideContextMenu)
+  document.addEventListener('contextmenu', hideContextMenu)
+  
   // 添加幽灵文本样式（全局样式，因为 Monaco 在 shadow DOM 外）
   if (!document.getElementById('ghost-text-style')) {
     const style = document.createElement('style')
@@ -422,6 +538,8 @@ onUnmounted(() => {
   if (props.file?.path) UnwatchFile(props.file.path)
   EventsOff('file-changed')
   if (completionTimeout) clearTimeout(completionTimeout)
+  document.removeEventListener('click', hideContextMenu)
+  document.removeEventListener('contextmenu', hideContextMenu)
 })
 
 const lineCount = () => editor.value?.getModel()?.getLineCount() || content.value.split('\n').length
@@ -449,6 +567,69 @@ defineExpose({ reloadFile })
         运行
       </button>
     </div>
+    
+    <!-- 右键菜单 -->
+    <Teleport to="body">
+      <div 
+        v-if="contextMenu.visible" 
+        class="context-menu"
+        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+        @click.stop
+      >
+        <div class="menu-item" @click="executeMenuAction('undo')">
+          <span class="menu-label">{{ t('editor.undo') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('undo') }}</span>
+        </div>
+        <div class="menu-item" @click="executeMenuAction('redo')">
+          <span class="menu-label">{{ t('editor.redo') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('redo') }}</span>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-item" @click="executeMenuAction('cut')">
+          <span class="menu-label">{{ t('editor.cut') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('cut') }}</span>
+        </div>
+        <div class="menu-item" @click="executeMenuAction('copy')">
+          <span class="menu-label">{{ t('editor.copy') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('copy') }}</span>
+        </div>
+        <div class="menu-item" @click="executeMenuAction('paste')">
+          <span class="menu-label">{{ t('editor.paste') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('paste') }}</span>
+        </div>
+        <div class="menu-item" @click="executeMenuAction('delete')">
+          <span class="menu-label">{{ t('editor.delete') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('delete') }}</span>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-item" @click="executeMenuAction('selectAll')">
+          <span class="menu-label">{{ t('editor.selectAll') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('selectAll') }}</span>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-item" @click="executeMenuAction('find')">
+          <span class="menu-label">{{ t('editor.find') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('find') }}</span>
+        </div>
+        <div class="menu-item" @click="executeMenuAction('replace')">
+          <span class="menu-label">{{ t('editor.replace') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('replace') }}</span>
+        </div>
+        <div class="menu-item" @click="executeMenuAction('goToLine')">
+          <span class="menu-label">{{ t('editor.goToLine') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('goToLine') }}</span>
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-item" @click="executeMenuAction('comment')">
+          <span class="menu-label">{{ t('editor.comment') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('comment') }}</span>
+        </div>
+        <div class="menu-item" @click="executeMenuAction('format')">
+          <span class="menu-label">{{ t('editor.format') }}</span>
+          <span class="menu-shortcut">{{ getShortcut('format') }}</span>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -480,4 +661,48 @@ defineExpose({ reloadFile })
 }
 .btn-run:hover { background: #60d090; }
 .btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+
+<style>
+/* 右键菜单样式（全局，因为使用 Teleport） */
+.context-menu {
+  position: fixed;
+  min-width: 200px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 4px 0;
+  z-index: 10000;
+  font-size: 13px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.menu-label {
+  flex: 1;
+}
+
+.menu-shortcut {
+  margin-left: 24px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.menu-divider {
+  height: 1px;
+  background: var(--border-default);
+  margin: 4px 0;
+}
 </style>
