@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Environment, EventsOn } from '../wailsjs/runtime/runtime'
 import TitleBar from './components/TitleBar.vue'
@@ -58,21 +58,16 @@ const editorAreaRef = ref(null)
 // OpenCode
 const {
   connected, connecting, sessions, currentSession, messages,
-  sending, currentModel, models, getAllModels, autoConnect,
+  sending, currentModel, models, dynamicModels, getAllModels, fetchModels, autoConnect,
   selectSession, createSession, sendMessage, setModel, cancelMessage,
   switchWorkDir, setActiveFile
 } = useOpenCode()
 
-// 动态模型列表（响应自定义模型变化）
-const allModels = ref(getAllModels())
+// 动态模型列表（响应自定义模型变化和动态模型更新）
+const allModels = computed(() => getAllModels())
 
 onMounted(async () => {
   initTheme()
-  
-  // 监听模型列表更新事件
-  EventsOn('models-updated', () => {
-    allModels.value = getAllModels()
-  })
   
   // 如果有保存的工作目录，先通过后端设置它（不重启，只设置目录）
   if (workDir.value) {

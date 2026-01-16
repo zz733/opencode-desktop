@@ -3,7 +3,7 @@ import {
   GetServerURL, SetServerURL, CheckConnection,
   GetSessions, CreateSession, SendMessage, SendMessageWithModel, 
   SubscribeEvents, GetOpenCodeStatus, AutoStartOpenCode, InstallOpenCode,
-  CancelSession, GetSessionMessages, GetMCPToolsPrompt
+  CancelSession, GetSessionMessages, GetMCPToolsPrompt, GetProviders
 } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsEmit } from '../../wailsjs/runtime/runtime'
 import { i18n } from '../i18n'
@@ -45,6 +45,9 @@ const currentModel = ref(localStorage.getItem('selectedModel') || 'opencode/clau
 const openCodeStatus = ref(null) // 'not-installed', 'installing', 'starting', 'connected'
 const currentWorkDir = ref('') // 当前工作目录
 
+// 动态模型列表（从后端获取）
+const dynamicModels = ref([])
+
 // 目录 -> 会话ID 的映射
 const dirSessionMap = ref(JSON.parse(localStorage.getItem('dirSessionMap') || '{}'))
 
@@ -65,18 +68,54 @@ const models = [
   { id: 'opencode/claude-opus-4-5', name: 'Claude Opus 4.5', free: false, builtin: true },
   { id: 'opencode/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', free: false, builtin: true },
   { id: 'opencode/gpt-5.1-codex', name: 'GPT 5.1 Codex', free: false, builtin: true },
-  // Antigravity 模型（需要 Google OAuth 认证）
-  { id: 'google/antigravity-gemini-3-pro', name: 'Gemini 3 Pro (Antigravity)', free: true, builtin: true, provider: 'antigravity' },
-  { id: 'google/antigravity-gemini-3-flash', name: 'Gemini 3 Flash (Antigravity)', free: true, builtin: true, provider: 'antigravity' },
-  { id: 'google/antigravity-claude-sonnet-4-5', name: 'Claude Sonnet 4.5 (Antigravity)', free: true, builtin: true, provider: 'antigravity' },
-  { id: 'google/antigravity-claude-sonnet-4-5-thinking', name: 'Claude Sonnet 4.5 Thinking (Antigravity)', free: true, builtin: true, provider: 'antigravity' },
-  { id: 'google/antigravity-claude-opus-4-5-thinking', name: 'Claude Opus 4.5 Thinking (Antigravity)', free: true, builtin: true, provider: 'antigravity' },
 ]
 
-// 获取所有模型（内置 + 自定义）
+// 从后端动态获取模型列表
+async function fetchModels() {
+  try {
+    const providerInfo = await GetProviders()
+    log(`获取到 provider 信息: ${JSON.stringify(providerInfo)}`)
+    
+    if (!providerInfo) return
+    
+    const fetchedModels = []
+    
+    // 遍历已连接的 provider
+    if (providerInfo.connected && Array.isArray(providerInfo.connected)) {
+      for (const providerId of providerInfo.connected) {
+        // 查找 provider 详情
+        const provider = providerInfo.all?.find(p => p.id === providerId)
+        const providerName = provider?.name || providerId
+        
+        // 从 default 中获取该 provider 的默认模型
+        if (providerInfo.default && providerInfo.default[providerId]) {
+          const modelId = providerInfo.default[providerId]
+          fetchedModels.push({
+            id: `${providerId}/${modelId}`,
+            name: `${modelId} (${providerName})`,
+            free: true,
+            builtin: false,
+            provider: providerId
+          })
+        }
+      }
+    }
+    
+    if (fetchedModels.length > 0) {
+      dynamicModels.value = fetchedModels
+      log(`动态加载了 ${fetchedModels.length} 个模型`)
+    }
+  } catch (e) {
+    log(`获取模型列表失败: ${e}`)
+  }
+}
+
+// 获取所有模型（内置 + 动态 + 自定义）
 function getAllModels() {
   const customModels = JSON.parse(localStorage.getItem('customModels') || '[]')
-  return [...models, ...customModels]
+  // 合并：内置模型 + 动态模型 + 自定义模型
+  // 动态模型放在前面，因为它们是用户已认证可用的
+  return [...dynamicModels.value, ...models, ...customModels]
 }
 
 // 自动连接（包含检测、安装、启动）
@@ -184,6 +223,10 @@ async function onConnected() {
   log('正在加载会话列表...')
   await loadSessions()
   setupEventListeners()
+  
+  // 动态获取模型列表
+  log('正在获取可用模型列表...')
+  await fetchModels()
   
   // 只在首次连接时订阅事件
   log('订阅服务器事件...')
@@ -604,7 +647,9 @@ export function useOpenCode() {
     sending,
     currentModel,
     models,
+    dynamicModels,
     getAllModels,
+    fetchModels,
     openCodeStatus,
     currentWorkDir,
     activeFilePath,
