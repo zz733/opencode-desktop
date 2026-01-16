@@ -62,6 +62,10 @@ export function DisconnectMCPServer(arg1) {
   return window['go']['main']['App']['DisconnectMCPServer'](arg1);
 }
 
+export function GetAntigravityAuthStatus() {
+  return window['go']['main']['App']['GetAntigravityAuthStatus']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
@@ -90,6 +94,10 @@ export function GetMCPToolsPrompt() {
   return window['go']['main']['App']['GetMCPToolsPrompt']();
 }
 
+export function GetOhMyOpenCodeStatus() {
+  return window['go']['main']['App']['GetOhMyOpenCodeStatus']();
+}
+
 export function GetOpenCodeStatus() {
   return window['go']['main']['App']['GetOpenCodeStatus']();
 }
@@ -116,6 +124,14 @@ export function GetTerminals() {
 
 export function GetWorkDir() {
   return window['go']['main']['App']['GetWorkDir']();
+}
+
+export function InstallAntigravityAuth() {
+  return window['go']['main']['App']['InstallAntigravityAuth']();
+}
+
+export function InstallOhMyOpenCode() {
+  return window['go']['main']['App']['InstallOhMyOpenCode']();
 }
 
 export function InstallOpenCode() {
@@ -208,6 +224,14 @@ export function SubscribeEvents() {
 
 export function ToggleMCPServer(arg1, arg2) {
   return window['go']['main']['App']['ToggleMCPServer'](arg1, arg2);
+}
+
+export function UninstallAntigravityAuth() {
+  return window['go']['main']['App']['UninstallAntigravityAuth']();
+}
+
+export function UninstallOhMyOpenCode() {
+  return window['go']['main']['App']['UninstallOhMyOpenCode']();
 }
 
 export function UnwatchFile(arg1) {

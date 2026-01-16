@@ -311,6 +311,32 @@ async function sendMessage(text, images = []) {
   messages.value.push(userMessage)
   messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {} })
   
+  // 设置超时检测（30秒无响应则提示）
+  let responseReceived = false
+  const timeoutId = setTimeout(() => {
+    if (!responseReceived && sending.value) {
+      const last = messages.value[messages.value.length - 1]
+      if (last && last.role === 'assistant' && !last.content) {
+        last.content = '⚠️ 请求超时，可能是 API Key 未配置或配置错误。请检查 OpenCode 的模型配置。'
+        sending.value = false
+      }
+    }
+  }, 30000)
+  
+  // 监听响应
+  const checkResponse = setInterval(() => {
+    const last = messages.value[messages.value.length - 1]
+    if (last && last.role === 'assistant' && (last.content || last.reasoning)) {
+      responseReceived = true
+      clearTimeout(timeoutId)
+      clearInterval(checkResponse)
+    }
+    if (!sending.value) {
+      clearTimeout(timeoutId)
+      clearInterval(checkResponse)
+    }
+  }, 500)
+  
   // 根据当前语言添加提示（只发送给 AI，不显示在界面）
   const currentLocale = i18n.global.locale.value
   const langName = languageNames[currentLocale] || 'English'
@@ -441,6 +467,34 @@ function handleEvent(event) {
     console.log('收到 session.idle 事件')
     sending.value = false
     currentAssistantMessageId = null
+  }
+  
+  // 处理错误事件
+  if (event.type === 'session.error' || event.type === 'error') {
+    const error = event.properties?.error || event.properties?.message || '未知错误'
+    console.error('收到错误事件:', error)
+    
+    // 更新最后一条 assistant 消息显示错误
+    let last = messages.value[messages.value.length - 1]
+    if (last && last.role === 'assistant') {
+      last.content = `❌ ${error}`
+    }
+    
+    sending.value = false
+    currentAssistantMessageId = null
+  }
+  
+  // 处理消息错误
+  if (event.type === 'message.error') {
+    const error = event.properties?.error || '消息处理失败'
+    console.error('消息错误:', error)
+    
+    let last = messages.value[messages.value.length - 1]
+    if (last && last.role === 'assistant') {
+      last.content = `❌ ${error}`
+    }
+    
+    sending.value = false
   }
 }
 

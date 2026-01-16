@@ -232,7 +232,7 @@ const startDrag = (type, e) => {
       
       <!-- 侧边栏 -->
       <div v-if="showSidebar && !editorMaximized" class="sidebar-container" :style="{ width: sidebarWidth + 'px' }">
-        <SettingsPanel v-if="showSettings" @close="showSettings = false; showSidebar = false" @open-file="handleOpenFile" />
+        <SettingsPanel v-if="showSettings" @close="showSettings = false; showSidebar = false" @open-file="handleOpenFile" @runCommand="handleRunCommand" />
         <Sidebar v-else :activeTab="activeTab" :workDir="workDir" @openFile="handleOpenFile" @update:workDir="handleWorkDirChange" @runCommand="handleRunCommand" />
         <div class="resize-handle" @mousedown="startDrag('sidebar', $event)"></div>
       </div>

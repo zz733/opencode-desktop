@@ -32,6 +32,8 @@ export function DeletePath(arg1:string):Promise<void>;
 
 export function DisconnectMCPServer(arg1:string):Promise<void>;
 
+export function GetAntigravityAuthStatus():Promise<main.AntigravityAuthStatus>;
+
 export function GetConfig():Promise<main.ConfigInfo>;
 
 export function GetMCPConfig():Promise<main.MCPConfig>;
@@ -46,6 +48,8 @@ export function GetMCPTools():Promise<Array<main.MCPTool>>;
 
 export function GetMCPToolsPrompt():Promise<string>;
 
+export function GetOhMyOpenCodeStatus():Promise<main.OhMyOpenCodeStatus>;
+
 export function GetOpenCodeStatus():Promise<main.OpenCodeStatus>;
 
 export function GetProviders():Promise<main.ProviderInfo>;
@@ -59,6 +63,10 @@ export function GetSessions():Promise<Array<main.Session>>;
 export function GetTerminals():Promise<Array<number>>;
 
 export function GetWorkDir():Promise<string>;
+
+export function InstallAntigravityAuth():Promise<void>;
+
+export function InstallOhMyOpenCode():Promise<void>;
 
 export function InstallOpenCode():Promise<void>;
 
@@ -105,6 +113,10 @@ export function StopOpenCode():Promise<void>;
 export function SubscribeEvents():Promise<void>;
 
 export function ToggleMCPServer(arg1:string,arg2:boolean):Promise<void>;
+
+export function UninstallAntigravityAuth():Promise<void>;
+
+export function UninstallOhMyOpenCode():Promise<void>;
 
 export function UnwatchFile(arg1:string):Promise<void>;
 

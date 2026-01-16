@@ -25,6 +25,8 @@ const select = (id) => {
 
 <template>
   <div class="model-selector">
+    <div v-if="show" class="backdrop" @click="show = false"></div>
+    
     <button class="trigger" @click="show = !show">
       <span>{{ currentModelName() }}</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -32,7 +34,7 @@ const select = (id) => {
       </svg>
     </button>
     
-    <div v-if="show" class="dropdown">
+    <div v-if="show" class="dropdown" @click.stop>
       <div class="header">{{ t('model.select') }}</div>
       
       <div class="group">
@@ -59,8 +61,6 @@ const select = (id) => {
         </div>
       </div>
     </div>
-    
-    <div v-if="show" class="backdrop" @click="show = false"></div>
   </div>
 </template>
 

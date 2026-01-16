@@ -508,7 +508,8 @@ const focusEditor = () => {
 const handleEscapeKey = (e) => {
   const isEscape = e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27
   if (!isEscape) return
-  if (!editor.value?.hasTextFocus?.()) return
+  // 使用 hasWidgetFocus 替代 hasTextFocus，这样当焦点在查找框输入框时也能触发
+  if (!editor.value?.hasWidgetFocus?.()) return
   const root = editor.value?.getDomNode()
   if (!root) return
   const widget = root.querySelector('.find-widget')

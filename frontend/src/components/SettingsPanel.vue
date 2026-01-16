@@ -6,16 +6,18 @@ import { useTheme } from '../composables/useTheme'
 import { 
   GetMCPConfig, SaveMCPConfig, GetMCPMarket, AddMCPServer, RemoveMCPServer, 
   ToggleMCPServer, OpenMCPConfigFile, GetMCPStatus, ConnectMCPServer, 
-  DisconnectMCPServer, GetMCPTools 
+  DisconnectMCPServer, GetMCPTools,
+  GetOhMyOpenCodeStatus, InstallOhMyOpenCode, UninstallOhMyOpenCode,
+  GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
 import { EventsEmit } from '../../wailsjs/runtime/runtime'
 
 const { t, locale } = useI18n()
 const { currentTheme, themes, setTheme } = useTheme()
-const emit = defineEmits(['close', 'open-file'])
+const emit = defineEmits(['close', 'open-file', 'runCommand'])
 
-const activeCategory = ref('general')
+const activeCategory = ref('theme')
 const mcpConfig = ref({ mcp: {} })
 const mcpMarket = ref([])
 const mcpStatus = ref({})
@@ -124,6 +126,82 @@ function confirmRemoveModel() {
 }
 
 const allModels = computed(() => [...defaultModels, ...customModels.value])
+
+// ========== 插件管理 ==========
+const ohMyOpenCodeStatus = ref({ installed: false, version: '' })
+const antigravityAuthStatus = ref({ installed: false, version: '' })
+const pluginLoading = ref(false)
+const pluginLoadingName = ref('')
+
+async function loadPluginStatus() {
+  try {
+    ohMyOpenCodeStatus.value = await GetOhMyOpenCodeStatus() || { installed: false, version: '' }
+    antigravityAuthStatus.value = await GetAntigravityAuthStatus() || { installed: false, version: '' }
+  } catch (e) {
+    console.error('获取插件状态失败:', e)
+  }
+}
+
+async function installOhMyOpenCode() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'oh-my-opencode'
+  try {
+    await InstallOhMyOpenCode()
+    await loadPluginStatus()
+  } catch (e) {
+    console.error('安装失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+async function uninstallOhMyOpenCode() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'oh-my-opencode'
+  try {
+    await UninstallOhMyOpenCode()
+    await loadPluginStatus()
+  } catch (e) {
+    console.error('卸载失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+async function installAntigravityAuth() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'antigravity-auth'
+  try {
+    await InstallAntigravityAuth()
+    await loadPluginStatus()
+  } catch (e) {
+    console.error('安装失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+async function uninstallAntigravityAuth() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'antigravity-auth'
+  try {
+    await UninstallAntigravityAuth()
+    await loadPluginStatus()
+  } catch (e) {
+    console.error('卸载失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+function runAntigravityAuth() {
+  // 发送命令到终端执行
+  emit('runCommand', 'opencode auth login google/antigravity')
+}
 
 const changeLanguage = (code) => setLocale(code)
 const changeTheme = (themeId) => setTheme(themeId)
@@ -314,6 +392,7 @@ function openDocs(url) {
 
 onMounted(() => {
   loadMCPConfig()
+  loadPluginStatus()
   statusInterval = setInterval(refreshStatus, 5000)
 })
 onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
@@ -326,11 +405,17 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
     <div class="settings-body">
       <!-- 左侧导航 -->
       <div class="settings-nav">
-        <div :class="['nav-item', { active: activeCategory === 'general' }]" @click="activeCategory = 'general'">
+        <div :class="['nav-item', { active: activeCategory === 'theme' }]" @click="activeCategory = 'theme'">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
           </svg>
-          <span>{{ t('settings.general') }}</span>
+          <span>{{ t('settings.theme') }}</span>
+        </div>
+        <div :class="['nav-item', { active: activeCategory === 'language' }]" @click="activeCategory = 'language'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+          <span>{{ t('settings.language') }}</span>
         </div>
         <div :class="['nav-item', { active: activeCategory === 'models' }]" @click="activeCategory = 'models'">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -344,11 +429,18 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
           </svg>
           <span>MCP</span>
         </div>
+        <div :class="['nav-item', { active: activeCategory === 'plugins' }]" @click="activeCategory = 'plugins'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+          </svg>
+          <span>{{ t('settings.plugins.title') }}</span>
+        </div>
       </div>
       
       <!-- 右侧内容 -->
       <div class="settings-content">
-      <div v-if="activeCategory === 'general'" class="settings-section">
+      <!-- 主题设置 -->
+      <div v-if="activeCategory === 'theme'" class="settings-section">
         <div class="setting-item">
           <div class="setting-label">{{ t('settings.theme') }}</div>
           <div class="setting-control">
@@ -357,6 +449,10 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
             </select>
           </div>
         </div>
+      </div>
+      
+      <!-- 语言设置 -->
+      <div v-if="activeCategory === 'language'" class="settings-section">
         <div class="setting-item">
           <div class="setting-label">{{ t('settings.language') }}</div>
           <div class="setting-control">
@@ -492,6 +588,104 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
           </template>
         </div>
       </div>
+      
+      <!-- 插件管理 -->
+      <div v-if="activeCategory === 'plugins'" class="settings-section plugins-section">
+        <!-- Oh My OpenCode -->
+        <div class="plugin-card">
+          <div class="plugin-header">
+            <div class="plugin-icon">🚀</div>
+            <div class="plugin-info">
+              <div class="plugin-name">Oh My OpenCode</div>
+              <div class="plugin-desc">{{ t('settings.plugins.ohMyOpenCodeDesc') }}</div>
+            </div>
+          </div>
+          <div class="plugin-features">
+            <div class="feature-item">✨ Sisyphus Agent - {{ t('settings.plugins.sisyphusDesc') }}</div>
+            <div class="feature-item">🔧 {{ t('settings.plugins.multiAgent') }}</div>
+            <div class="feature-item">⚡ {{ t('settings.plugins.ultrawork') }}</div>
+            <div class="feature-item">🔌 {{ t('settings.plugins.claudeCompat') }}</div>
+          </div>
+          <div class="plugin-footer">
+            <div v-if="ohMyOpenCodeStatus.installed" class="plugin-status installed">
+              <span class="status-badge">✓ {{ t('settings.plugins.installed') }}</span>
+              <span v-if="ohMyOpenCodeStatus.version" class="version">v{{ ohMyOpenCodeStatus.version }}</span>
+            </div>
+            <div v-else class="plugin-status">
+              <span class="status-badge not-installed">{{ t('settings.plugins.notInstalled') }}</span>
+            </div>
+            <div class="plugin-actions">
+              <button v-if="!ohMyOpenCodeStatus.installed" class="btn-install" @click="installOhMyOpenCode" :disabled="pluginLoading">
+                {{ pluginLoadingName === 'oh-my-opencode' ? t('common.loading') + '...' : t('settings.mcp.install') }}
+              </button>
+              <button v-else class="btn-uninstall" @click="uninstallOhMyOpenCode" :disabled="pluginLoading">
+                {{ pluginLoadingName === 'oh-my-opencode' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
+              </button>
+              <a class="btn-docs" href="https://github.com/code-yeongyu/oh-my-opencode" target="_blank" @click.prevent="openDocs('https://github.com/code-yeongyu/oh-my-opencode')">
+                {{ t('settings.mcp.viewDocs') }}
+              </a>
+            </div>
+          </div>
+          <!-- Oh My OpenCode 使用提示 -->
+          <div class="plugin-tip-inline">
+            <div class="tip-icon">💡</div>
+            <div class="tip-content">
+              <div class="tip-title">{{ t('settings.plugins.tipTitle') }}</div>
+              <div class="tip-text">{{ t('settings.plugins.tipText') }}</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Antigravity Auth -->
+        <div class="plugin-card">
+          <div class="plugin-header">
+            <div class="plugin-icon">🔐</div>
+            <div class="plugin-info">
+              <div class="plugin-name">Antigravity Auth</div>
+              <div class="plugin-desc">{{ t('settings.plugins.antigravityDesc') }}</div>
+            </div>
+          </div>
+          <div class="plugin-features">
+            <div class="feature-item">🌐 {{ t('settings.plugins.googleOAuth') }}</div>
+            <div class="feature-item">💎 {{ t('settings.plugins.geminiModels') }}</div>
+            <div class="feature-item">🤖 {{ t('settings.plugins.claudeModels') }}</div>
+            <div class="feature-item">♾️ {{ t('settings.plugins.multiAccount') }}</div>
+          </div>
+          <div class="plugin-footer">
+            <div v-if="antigravityAuthStatus.installed" class="plugin-status installed">
+              <span class="status-badge">✓ {{ t('settings.plugins.installed') }}</span>
+              <span v-if="antigravityAuthStatus.version" class="version">v{{ antigravityAuthStatus.version }}</span>
+            </div>
+            <div v-else class="plugin-status">
+              <span class="status-badge not-installed">{{ t('settings.plugins.notInstalled') }}</span>
+            </div>
+            <div class="plugin-actions">
+              <button v-if="!antigravityAuthStatus.installed" class="btn-install" @click="installAntigravityAuth" :disabled="pluginLoading">
+                {{ pluginLoadingName === 'antigravity-auth' ? t('common.loading') + '...' : t('settings.mcp.install') }}
+              </button>
+              <template v-else>
+                <button class="btn-auth" @click="runAntigravityAuth">
+                  {{ t('settings.plugins.authenticate') }}
+                </button>
+                <button class="btn-uninstall" @click="uninstallAntigravityAuth" :disabled="pluginLoading">
+                  {{ pluginLoadingName === 'antigravity-auth' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
+                </button>
+              </template>
+              <a class="btn-docs" href="https://github.com/NoeFabris/opencode-antigravity-auth" target="_blank" @click.prevent="openDocs('https://github.com/NoeFabris/opencode-antigravity-auth')">
+                {{ t('settings.mcp.viewDocs') }}
+              </a>
+            </div>
+          </div>
+          <!-- Antigravity Auth 认证提示 -->
+          <div class="plugin-tip-inline">
+            <div class="tip-icon">🔑</div>
+            <div class="tip-content">
+              <div class="tip-title">{{ t('settings.plugins.authTipTitle') }}</div>
+              <div class="tip-text">{{ t('settings.plugins.authTipText') }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
       </div>
     </div>
 
@@ -607,9 +801,6 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
           <div class="form-group">
             <label>{{ t('settings.models.apiKey') }}</label>
             <input v-model="modelForm.apiKey" type="password" :placeholder="t('settings.models.apiKeyPlaceholder')" autocapitalize="off" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="form-group checkbox-group">
-            <label><input v-model="modelForm.free" type="checkbox"> {{ t('settings.models.isFree') }}</label>
           </div>
           <div class="form-group checkbox-group">
             <label><input v-model="modelForm.supportsImage" type="checkbox"> {{ t('settings.models.supportsImage') }}</label>
@@ -754,6 +945,41 @@ input:checked + .slider:before { transform: translateX(16px); }
 .model-actions { display: flex; align-items: center; gap: 8px; }
 .builtin-header { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
 .builtin-list { opacity: 0.7; }
-.model-dialog { width: 450px; }
+.model-dialog { width: 420px; }
 .required { color: var(--red); }
+.form-group input[type="password"] { padding: 8px 10px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-primary); font-size: 13px; outline: none; }
+
+/* 插件管理样式 */
+.plugins-section { gap: 16px; }
+.plugin-card { background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border-subtle); overflow: hidden; }
+.plugin-header { display: flex; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border-subtle); }
+.plugin-icon { font-size: 32px; }
+.plugin-info { flex: 1; }
+.plugin-name { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.plugin-desc { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.plugin-features { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+.feature-item { font-size: 12px; color: var(--text-secondary); }
+.plugin-footer { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; background: var(--bg-surface); border-top: 1px solid var(--border-subtle); }
+.plugin-status { display: flex; align-items: center; gap: 8px; }
+.status-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+.status-badge.not-installed { background: var(--bg-hover); color: var(--text-muted); }
+.plugin-status.installed .status-badge { background: rgba(128, 255, 181, 0.15); color: var(--green); }
+.version { font-size: 11px; color: var(--text-muted); }
+.plugin-actions { display: flex; gap: 8px; }
+.plugin-actions button, .plugin-actions a { flex: 1; text-align: center; }
+.btn-uninstall { padding: 6px 12px; background: transparent; border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+.btn-uninstall:hover { background: var(--red); color: white; border-color: var(--red); }
+.btn-auth { padding: 6px 12px; background: var(--accent-primary); border: none; border-radius: 4px; color: white; font-size: 12px; cursor: pointer; }
+.btn-auth:hover { opacity: 0.9; }
+.btn-docs { padding: 6px 12px; background: transparent; border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-secondary); font-size: 12px; cursor: pointer; text-decoration: none; display: inline-block; }
+.btn-docs:hover { background: var(--bg-hover); color: var(--text-primary); }
+.plugin-tip { display: flex; gap: 12px; padding: 12px 16px; background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border-subtle); }
+.plugin-tip-inline { display: flex; gap: 10px; padding: 10px 16px; background: var(--bg-surface); border-top: 1px solid var(--border-subtle); }
+.plugin-tip-inline .tip-icon { font-size: 16px; }
+.plugin-tip-inline .tip-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.plugin-tip-inline .tip-text { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.tip-icon { font-size: 20px; }
+.tip-content { flex: 1; }
+.tip-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.tip-text { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
 </style>

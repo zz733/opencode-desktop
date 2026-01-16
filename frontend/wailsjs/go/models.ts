@@ -1,5 +1,19 @@
 export namespace main {
 	
+	export class AntigravityAuthStatus {
+	    installed: boolean;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AntigravityAuthStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.version = source["version"];
+	    }
+	}
 	export class ConfigInfo {
 	    model: string;
 	
@@ -171,6 +185,20 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.role = source["role"];
 	        this.content = source["content"];
+	    }
+	}
+	export class OhMyOpenCodeStatus {
+	    installed: boolean;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OhMyOpenCodeStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.version = source["version"];
 	    }
 	}
 	export class OpenCodeStatus {
