@@ -63,8 +63,12 @@ const {
   switchWorkDir, setActiveFile
 } = useOpenCode()
 
-// 动态模型列表（响应自定义模型变化和动态模型更新）
-const allModels = computed(() => getAllModels())
+// 动态模型列表（响应动态模型更新）
+// 直接依赖 dynamicModels.value 以确保响应式更新
+const allModels = computed(() => {
+  const customModels = JSON.parse(localStorage.getItem('customModels') || '[]')
+  return [...dynamicModels.value, ...models, ...customModels]
+})
 
 onMounted(async () => {
   initTheme()
