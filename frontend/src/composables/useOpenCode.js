@@ -74,36 +74,41 @@ const models = [
 async function fetchModels() {
   try {
     const providerInfo = await GetProviders()
-    log(`获取到 provider 信息: ${JSON.stringify(providerInfo)}`)
     
     if (!providerInfo) return
     
     const fetchedModels = []
+    const connectedSet = new Set(providerInfo.connected || [])
     
-    // 遍历已连接的 provider
-    if (providerInfo.connected && Array.isArray(providerInfo.connected)) {
-      for (const providerId of providerInfo.connected) {
-        // 查找 provider 详情
-        const provider = providerInfo.all?.find(p => p.id === providerId)
-        const providerName = provider?.name || providerId
+    // providerInfo 是一个数组，遍历所有 provider
+    if (Array.isArray(providerInfo)) {
+      for (const provider of providerInfo) {
+        if (!provider.models) continue
         
-        // 从 default 中获取该 provider 的默认模型
-        if (providerInfo.default && providerInfo.default[providerId]) {
-          const modelId = providerInfo.default[providerId]
-          fetchedModels.push({
-            id: `${providerId}/${modelId}`,
-            name: `${modelId} (${providerName})`,
-            free: true,
-            builtin: false,
-            provider: providerId
-          })
+        const providerId = provider.id
+        const providerName = provider.name || providerId
+        
+        // 遍历该 provider 的所有模型
+        for (const [modelId, modelInfo] of Object.entries(provider.models)) {
+          // 只添加 google provider 的 antigravity 模型（需要认证的）
+          if (providerId === 'google' && modelId.startsWith('antigravity-')) {
+            fetchedModels.push({
+              id: `${providerId}/${modelId}`,
+              name: modelInfo.name || modelId,
+              free: true,
+              builtin: false,
+              provider: providerId
+            })
+          }
         }
       }
     }
     
     if (fetchedModels.length > 0) {
       dynamicModels.value = fetchedModels
-      log(`动态加载了 ${fetchedModels.length} 个模型`)
+      log(`动态加载了 ${fetchedModels.length} 个 Antigravity 模型`)
+    } else {
+      log('未找到 Antigravity 模型，请确保已安装 opencode-antigravity-auth 插件并配置 google provider')
     }
   } catch (e) {
     log(`获取模型列表失败: ${e}`)
