@@ -16,9 +16,19 @@ export function CodeCompletion(arg1:string,arg2:string,arg3:string,arg4:string):
 
 export function ConnectMCPServer(arg1:string):Promise<void>;
 
+export function CopyPath(arg1:string,arg2:string):Promise<string>;
+
+export function CopyToClipboard(arg1:string):Promise<void>;
+
+export function CreateNewFile(arg1:string,arg2:string):Promise<string>;
+
+export function CreateNewFolder(arg1:string,arg2:string):Promise<string>;
+
 export function CreateSession():Promise<main.Session>;
 
 export function CreateTerminal():Promise<number>;
+
+export function DeletePath(arg1:string):Promise<void>;
 
 export function DisconnectMCPServer(arg1:string):Promise<void>;
 
@@ -54,13 +64,19 @@ export function InstallOpenCode():Promise<void>;
 
 export function ListDir(arg1:string):Promise<Array<main.FileInfo>>;
 
+export function MovePath(arg1:string,arg2:string):Promise<string>;
+
 export function OpenFolder():Promise<string>;
+
+export function OpenInFinder(arg1:string):Promise<void>;
 
 export function OpenMCPConfigFile():Promise<string>;
 
 export function ReadFileContent(arg1:string):Promise<string>;
 
 export function RemoveMCPServer(arg1:string):Promise<void>;
+
+export function RenamePath(arg1:string,arg2:string):Promise<string>;
 
 export function ResizeTerminal(arg1:number,arg2:number,arg3:number):Promise<void>;
 

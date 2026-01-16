@@ -1478,3 +1478,46 @@ func (a *App) OpenFolder() (string, error) {
 	}
 	return dir, nil
 }
+
+// --- 文件操作（右键菜单） ---
+
+// DeletePath 删除文件或文件夹
+func (a *App) DeletePath(path string) error {
+	return a.fileMgr.DeletePath(path)
+}
+
+// RenamePath 重命名文件或文件夹
+func (a *App) RenamePath(oldPath, newName string) (string, error) {
+	return a.fileMgr.RenamePath(oldPath, newName)
+}
+
+// CopyPath 复制文件或文件夹
+func (a *App) CopyPath(src, destDir string) (string, error) {
+	return a.fileMgr.CopyPath(src, destDir)
+}
+
+// MovePath 移动文件或文件夹
+func (a *App) MovePath(src, destDir string) (string, error) {
+	return a.fileMgr.MovePath(src, destDir)
+}
+
+// CreateNewFile 创建新文件
+func (a *App) CreateNewFile(dir, name string) (string, error) {
+	return a.fileMgr.CreateFile(dir, name)
+}
+
+// CreateNewFolder 创建新文件夹
+func (a *App) CreateNewFolder(dir, name string) (string, error) {
+	return a.fileMgr.CreateFolder(dir, name)
+}
+
+// OpenInFinder 在访达/资源管理器中打开
+func (a *App) OpenInFinder(path string) error {
+	return openInFileManager(path)
+}
+
+// CopyToClipboard 复制文本到剪贴板
+func (a *App) CopyToClipboard(text string) error {
+	runtime.ClipboardSetText(a.ctx, text)
+	return nil
+}

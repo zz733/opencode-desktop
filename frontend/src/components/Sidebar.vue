@@ -148,6 +148,12 @@ const openFile = (item) => {
   }
 }
 
+// 刷新文件树
+const refreshFileTree = async () => {
+  expandedFolders.value.clear()
+  await loadDir()
+}
+
 const selectFolder = async () => {
   const dir = await OpenFolder()
   if (dir) {
@@ -200,6 +206,7 @@ const getDirName = () => {
             :expandedFolders="expandedFolders"
             @openFile="openFile"
             @toggleFolder="toggleFolder"
+            @refresh="refreshFileTree"
           />
         </div>
         <div v-else-if="!loading" class="empty-files"><p>{{ t('sidebar.emptyFolder') }}</p></div>

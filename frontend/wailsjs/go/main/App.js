@@ -30,12 +30,32 @@ export function ConnectMCPServer(arg1) {
   return window['go']['main']['App']['ConnectMCPServer'](arg1);
 }
 
+export function CopyPath(arg1, arg2) {
+  return window['go']['main']['App']['CopyPath'](arg1, arg2);
+}
+
+export function CopyToClipboard(arg1) {
+  return window['go']['main']['App']['CopyToClipboard'](arg1);
+}
+
+export function CreateNewFile(arg1, arg2) {
+  return window['go']['main']['App']['CreateNewFile'](arg1, arg2);
+}
+
+export function CreateNewFolder(arg1, arg2) {
+  return window['go']['main']['App']['CreateNewFolder'](arg1, arg2);
+}
+
 export function CreateSession() {
   return window['go']['main']['App']['CreateSession']();
 }
 
 export function CreateTerminal() {
   return window['go']['main']['App']['CreateTerminal']();
+}
+
+export function DeletePath(arg1) {
+  return window['go']['main']['App']['DeletePath'](arg1);
 }
 
 export function DisconnectMCPServer(arg1) {
@@ -106,8 +126,16 @@ export function ListDir(arg1) {
   return window['go']['main']['App']['ListDir'](arg1);
 }
 
+export function MovePath(arg1, arg2) {
+  return window['go']['main']['App']['MovePath'](arg1, arg2);
+}
+
 export function OpenFolder() {
   return window['go']['main']['App']['OpenFolder']();
+}
+
+export function OpenInFinder(arg1) {
+  return window['go']['main']['App']['OpenInFinder'](arg1);
 }
 
 export function OpenMCPConfigFile() {
@@ -120,6 +148,10 @@ export function ReadFileContent(arg1) {
 
 export function RemoveMCPServer(arg1) {
   return window['go']['main']['App']['RemoveMCPServer'](arg1);
+}
+
+export function RenamePath(arg1, arg2) {
+  return window['go']['main']['App']['RenamePath'](arg1, arg2);
 }
 
 export function ResizeTerminal(arg1, arg2, arg3) {
