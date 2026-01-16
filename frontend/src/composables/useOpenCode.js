@@ -78,28 +78,27 @@ async function fetchModels() {
     if (!providerInfo) return
     
     const fetchedModels = []
-    const connectedSet = new Set(providerInfo.connected || [])
     
-    // providerInfo 是一个数组，遍历所有 provider
-    if (Array.isArray(providerInfo)) {
-      for (const provider of providerInfo) {
-        if (!provider.models) continue
-        
-        const providerId = provider.id
-        const providerName = provider.name || providerId
-        
-        // 遍历该 provider 的所有模型
-        for (const [modelId, modelInfo] of Object.entries(provider.models)) {
-          // 只添加 google provider 的 antigravity 模型（需要认证的）
-          if (providerId === 'google' && modelId.startsWith('antigravity-')) {
-            fetchedModels.push({
-              id: `${providerId}/${modelId}`,
-              name: modelInfo.name || modelId,
-              free: true,
-              builtin: false,
-              provider: providerId
-            })
-          }
+    // providerInfo 结构: {all: [...providers], default: {...}, connected: [...]}
+    const providers = providerInfo.all || []
+    
+    for (const provider of providers) {
+      if (!provider.models) continue
+      
+      const providerId = provider.id
+      const providerName = provider.name || providerId
+      
+      // 遍历该 provider 的所有模型
+      for (const [modelId, modelInfo] of Object.entries(provider.models)) {
+        // 只添加 google provider 的 antigravity 模型（需要认证的）
+        if (providerId === 'google' && modelId.startsWith('antigravity-')) {
+          fetchedModels.push({
+            id: `${providerId}/${modelId}`,
+            name: modelInfo.name || modelId,
+            free: true,
+            builtin: false,
+            provider: providerId
+          })
         }
       }
     }
