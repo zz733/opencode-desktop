@@ -254,7 +254,9 @@ async function selectSession(session) {
 
 async function createSession() {
   try {
-    const session = await CreateSession()
+    const response = await CreateSession()
+    // OpenCode API 直接返回会话对象，不是 {info: session}
+    const session = response.info || response
     sessions.value.unshift(session)
     selectSession(session)
     
@@ -279,9 +281,9 @@ function setActiveFile(path) {
   log(`当前活动文件: ${path}`)
 }
 
-async function sendMessage(text) {
-  console.log('sendMessage called:', text, 'sending:', sending.value, 'connected:', connected.value)
-  if (!text.trim() || sending.value) return
+async function sendMessage(text, images = []) {
+  console.log('sendMessage called:', text, 'images:', images?.length, 'sending:', sending.value, 'connected:', connected.value)
+  if ((!text.trim() && !images.length) || sending.value) return
   
   // 如果没有会话，自动创建
   let session = currentSession.value
@@ -295,8 +297,12 @@ async function sendMessage(text) {
   }
   
   sending.value = true
-  // 界面显示原始消息
-  messages.value.push({ role: 'user', content: text })
+  // 界面显示原始消息（包含图片）
+  const userMessage = { role: 'user', content: text }
+  if (images && images.length > 0) {
+    userMessage.images = images
+  }
+  messages.value.push(userMessage)
   messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {} })
   
   // 根据当前语言添加提示（只发送给 AI，不显示在界面）
@@ -311,12 +317,11 @@ async function sendMessage(text) {
   messageToSend += `\n\n${text}`
   
   try {
-    console.log('calling SendMessageWithModel:', session.id, currentModel.value)
-    await SendMessageWithModel(session.id, messageToSend, currentModel.value)
-    setTimeout(() => { if (sending.value) sending.value = false }, 60000)
+    console.log('calling SendMessageWithModel:', session.id, currentModel.value, 'with', images?.length || 0, 'images')
+    await SendMessageWithModel(session.id, messageToSend, currentModel.value, images || [])
   } catch (e) {
     console.error('SendMessageWithModel error:', e)
-    messages.value[messages.value.length - 1].content = '错误: ' + e
+    messages.value[messages.value.length - 1].content = '❌ 发送失败: ' + e
     sending.value = false
   }
 }
@@ -342,45 +347,43 @@ function setupEventListeners() {
 let currentAssistantMessageId = null
 
 function handleEvent(event) {
-  console.log('处理事件:', event.type, JSON.stringify(event.properties || {}).substring(0, 200))
+  console.log('处理事件:', event.type, JSON.stringify(event.properties || {}).substring(0, 300))
   
   if (event.type === 'message.part.updated') {
     const part = event.properties?.part
-    const messageInfo = event.properties?.message
     
-    if (!part) return
-    
-    // 检查消息角色 - 只处理 assistant 消息
-    if (messageInfo?.role && messageInfo.role !== 'assistant') {
-      console.log('跳过非 assistant 消息:', messageInfo.role)
+    if (!part) {
+      console.log('事件没有 part 数据')
       return
     }
     
-    // 如果有消息 ID，检查是否是新的 assistant 消息
-    if (messageInfo?.id) {
-      if (currentAssistantMessageId && messageInfo.id !== currentAssistantMessageId) {
-        // 不同的消息 ID，可能是用户消息的回显
-        if (messageInfo.role !== 'assistant') {
-          console.log('跳过不同 ID 的非 assistant 消息')
-          return
-        }
-      }
-      currentAssistantMessageId = messageInfo.id
-    }
-    
-    const last = messages.value[messages.value.length - 1]
-    if (!last || last.role !== 'assistant') return
-    
-    if (part.type === 'text' && part.text !== undefined) {
-      // 过滤掉可能是用户消息的内容（包含语言提示前缀）
-      const text = part.text || ''
-      if (text.includes('[Please respond in')) {
-        console.log('跳过包含语言提示的文本（可能是用户消息回显）')
+    // 检查是否是用户消息的回显（包含语言提示前缀或文件路径前缀）
+    if (part.type === 'text' && part.text) {
+      const text = part.text
+      if (text.includes('[Please respond in') || text.includes('[Current active file:')) {
+        console.log('跳过用户消息回显')
         return
       }
+    }
+    
+    // 查找或创建 assistant 消息
+    let last = messages.value[messages.value.length - 1]
+    
+    // 如果最后一条不是 assistant 消息，或者消息 ID 不匹配，可能需要创建新消息
+    if (!last || last.role !== 'assistant') {
+      console.log('没有待更新的 assistant 消息，创建新消息')
+      messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {} })
+      last = messages.value[messages.value.length - 1]
+    }
+    
+    if (part.type === 'text' && part.text !== undefined) {
+      const text = part.text || ''
+      // 移除开头的换行符
       last.content = text.replace(/^\n+/, '')
+      console.log('更新 assistant 消息:', last.content.substring(0, 100))
     } else if (part.type === 'reasoning' && part.text) {
       last.reasoning = part.text
+      console.log('更新 reasoning:', part.text.substring(0, 50))
     } else if (part.type === 'tool') {
       if (!last.tools) last.tools = {}
       const toolInfo = {
@@ -391,25 +394,36 @@ function handleEvent(event) {
         output: part.state?.output || null
       }
       last.tools[part.id] = toolInfo
+      console.log('更新 tool:', part.tool)
     }
   }
   
-  if (event.type === 'message.updated' || event.type === 'session.status') {
+  if (event.type === 'message.updated') {
     const info = event.properties?.info
+    console.log('message.updated - role:', info?.role, 'completed:', info?.time?.completed)
+    // 不在这里停止 sending，等待 session.status === 'idle'
+  }
+  
+  if (event.type === 'session.status') {
     const status = event.properties?.status
+    console.log('session.status:', status)
     
-    // 只有当 session 状态变为 idle 时才停止 sending
-    // message.updated 可能在工具执行过程中多次触发，不应该停止
-    if (status === 'idle') {
+    // status 是对象 {type: "idle"} 或 {type: "busy"}
+    const statusType = status?.type || status
+    
+    // 只在 session 状态变为 idle 时停止 sending（表示所有工具都执行完毕）
+    if (statusType === 'idle') {
+      console.log('session 变为 idle')
       sending.value = false
       currentAssistantMessageId = null
     }
-    
-    // 或者消息明确标记为完成
-    if (info?.time?.completed && info?.finish) {
-      sending.value = false
-      currentAssistantMessageId = null
-    }
+  }
+  
+  // session.idle 事件也表示完成
+  if (event.type === 'session.idle') {
+    console.log('收到 session.idle 事件')
+    sending.value = false
+    currentAssistantMessageId = null
   }
 }
 

@@ -125,6 +125,13 @@ const formatToolInput = (tool) => {
     <div class="content">
       <div class="role-name">{{ message.role === 'user' ? t('chat.you') : t('chat.assistant') }}</div>
       
+      <!-- 用户消息中的图片 -->
+      <div v-if="message.role === 'user' && message.images && message.images.length" class="message-images">
+        <div v-for="img in message.images" :key="img.id" class="message-image">
+          <img :src="img.data" :alt="img.name" />
+        </div>
+      </div>
+      
       <!-- 工具调用 -->
       <div v-if="message.tools && Object.keys(message.tools).length" class="tools">
         <div 
@@ -266,6 +273,28 @@ const formatToolInput = (tool) => {
   font-weight: 500;
   color: var(--text-primary);
   margin-bottom: 4px;
+}
+
+/* 消息中的图片 */
+.message-images {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.message-image {
+  max-width: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.message-image img {
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
 /* 工具卡片 */

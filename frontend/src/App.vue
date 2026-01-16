@@ -61,6 +61,20 @@ const {
 
 onMounted(async () => {
   initTheme()
+  
+  // 如果有保存的工作目录，先通过后端设置它（不重启，只设置目录）
+  if (workDir.value) {
+    try {
+      const { SetWorkDir } = await import('../wailsjs/go/main/App')
+      await SetWorkDir(workDir.value)
+      // 同时设置 OpenCode 的工作目录
+      const { SetOpenCodeWorkDir } = await import('../wailsjs/go/main/App')
+      await SetOpenCodeWorkDir(workDir.value)
+    } catch (e) {
+      console.log('设置工作目录失败:', e)
+    }
+  }
+  
   autoConnect()
   try {
     const env = await Environment()

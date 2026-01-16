@@ -26,6 +26,9 @@ const { fileEdits, revertEdit } = useFileEdits()
 const inputText = ref('')
 const messagesContainer = ref(null)
 const showSessionList = ref(false)
+const attachedImages = ref([]) // 存储待发送的图片
+const fileInput = ref(null) // 文件输入框引用
+const textareaRef = ref(null) // textarea 引用
 
 // 合并消息和编辑记录，按时间排序
 const combinedItems = computed(() => {
@@ -67,10 +70,75 @@ const handleKeydown = (e) => {
 
 const send = () => {
   console.log('send called, inputText:', inputText.value, 'sending:', props.sending)
-  if (!inputText.value.trim() || props.sending) return
+  if ((!inputText.value.trim() && !attachedImages.value.length) || props.sending) return
   console.log('emitting send event')
-  emit('send', inputText.value)
+  
+  // 如果有图片，发送包含图片的消息
+  if (attachedImages.value.length > 0) {
+    emit('send', inputText.value, attachedImages.value)
+    attachedImages.value = []
+  } else {
+    emit('send', inputText.value)
+  }
+  
   inputText.value = ''
+}
+
+// 处理粘贴事件
+const handlePaste = async (e) => {
+  const items = e.clipboardData?.items
+  if (!items) return
+  
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault()
+      const file = item.getAsFile()
+      if (file) {
+        await addImage(file)
+      }
+    }
+  }
+}
+
+// 添加图片
+const addImage = async (file) => {
+  // 读取图片为 base64
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    attachedImages.value.push({
+      id: Date.now() + Math.random(),
+      name: file.name,
+      type: file.type,
+      data: e.target.result, // base64 数据
+      size: file.size
+    })
+  }
+  reader.readAsDataURL(file)
+}
+
+// 移除图片
+const removeImage = (id) => {
+  attachedImages.value = attachedImages.value.filter(img => img.id !== id)
+}
+
+// 点击附加图片按钮
+const handleAttachImage = () => {
+  fileInput.value?.click()
+}
+
+// 文件选择
+const handleFileSelect = (e) => {
+  const files = e.target.files
+  if (!files) return
+  
+  for (const file of files) {
+    if (file.type.startsWith('image/')) {
+      addImage(file)
+    }
+  }
+  
+  // 清空 input，允许重复选择同一文件
+  e.target.value = ''
 }
 
 const cancel = () => {
@@ -182,13 +250,39 @@ watch(() => fileEdits.value.length, () => {
     <!-- 输入区域 -->
     <div class="input-area">
       <div class="input-box">
+        <!-- 图片预览区 -->
+        <div v-if="attachedImages.length" class="image-preview-area">
+          <div v-for="img in attachedImages" :key="img.id" class="image-preview">
+            <img :src="img.data" :alt="img.name" />
+            <button class="btn-remove-image" @click="removeImage(img.id)" title="Remove image">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+            <div class="image-name">{{ img.name }}</div>
+          </div>
+        </div>
+        
         <textarea 
+          ref="textareaRef"
           v-model="inputText"
           :placeholder="t('chat.placeholder')"
           @keydown="handleKeydown"
+          @paste="handlePaste"
           :disabled="sending"
           rows="1"
         ></textarea>
+        
+        <!-- 隐藏的文件输入框 -->
+        <input 
+          ref="fileInput"
+          type="file"
+          accept="image/*"
+          multiple
+          style="display: none"
+          @change="handleFileSelect"
+        />
         
         <!-- 底部工具栏：在输入框内 -->
         <div class="input-toolbar">
@@ -196,7 +290,7 @@ watch(() => fileEdits.value.length, () => {
             <button class="toolbar-btn" title="Add context (#)">
               <span style="font-size: 16px; font-weight: 500;">#</span>
             </button>
-            <button class="toolbar-btn" title="Attach image">
+            <button class="toolbar-btn" title="Attach image" @click="handleAttachImage">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                 <circle cx="8.5" cy="8.5" r="1.5"/>
@@ -228,8 +322,8 @@ watch(() => fileEdits.value.length, () => {
             <button 
               v-else
               @click="send" 
-              :disabled="!inputText.trim()" 
-              :class="['btn-send', { active: inputText.trim() }]"
+              :disabled="!inputText.trim() && !attachedImages.length" 
+              :class="['btn-send', { active: inputText.trim() || attachedImages.length }]"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="M12 19V5M5 12l7-7 7 7"/>
@@ -424,6 +518,69 @@ watch(() => fileEdits.value.length, () => {
 
 .input-box textarea::placeholder {
   color: var(--text-muted);
+}
+
+.image-preview-area {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.image-preview {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.btn-remove-image {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.image-preview:hover .btn-remove-image {
+  opacity: 1;
+}
+
+.btn-remove-image:hover {
+  background: var(--red);
+}
+
+.image-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .input-row {

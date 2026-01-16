@@ -50,6 +50,22 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ImageData {
+	    name: string;
+	    type: string;
+	    data: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImageData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.data = source["data"];
+	    }
+	}
 	export class Message {
 	    role: string;
 	    content: string;

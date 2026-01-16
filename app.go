@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -182,6 +183,8 @@ func (a *App) SubscribeEvents() error {
 
 			runtime.EventsEmit(a.ctx, "output-log", "事件订阅成功，等待事件...")
 			reader := bufio.NewReader(resp.Body)
+			var dataBuffer bytes.Buffer
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -193,13 +196,30 @@ func (a *App) SubscribeEvents() error {
 				line, err := reader.ReadString('\n')
 				if err != nil {
 					resp.Body.Close()
+					runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("读取事件流中断: %v", err))
 					break
 				}
-				line = strings.TrimSpace(line)
+				
+				// 处理 SSE 协议
+				// 1. 空行表示事件结束，发送累积的数据
+				if strings.TrimSpace(line) == "" {
+					if dataBuffer.Len() > 0 {
+						data := dataBuffer.String()
+						// runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("收到完整事件: %s", data[:min(100, len(data))]))
+						runtime.EventsEmit(a.ctx, "server-event", data)
+						dataBuffer.Reset()
+					}
+					continue
+				}
+
+				// 2. data 行累积数据
 				if strings.HasPrefix(line, "data:") {
 					data := strings.TrimPrefix(line, "data:")
-					data = strings.TrimSpace(data)
-					runtime.EventsEmit(a.ctx, "server-event", data)
+					// 如果有多行 data，用换行符连接
+					if dataBuffer.Len() > 0 {
+						dataBuffer.WriteString("\n")
+					}
+					dataBuffer.WriteString(strings.TrimSpace(data))
 				}
 			}
 
@@ -279,20 +299,112 @@ func (a *App) GetConfig() (*ConfigInfo, error) {
 	return &config, nil
 }
 
-// SendMessageWithModel 发送消息并指定模型
-func (a *App) SendMessageWithModel(sessionID, content, model string) error {
-	payload := map[string]interface{}{
-		"parts": []map[string]interface{}{
-			{"type": "text", "text": content},
-		},
+// ImageData 图片数据
+type ImageData struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Data string `json:"data"` // base64 编码的图片数据
+}
+
+// SaveImageToWorkDir 将图片保存到工作目录
+func (a *App) SaveImageToWorkDir(img ImageData) (string, error) {
+	workDir := a.openCode.GetWorkDir()
+	if workDir == "" {
+		// 如果工作目录未设置，使用用户主目录
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("获取主目录失败: %v", err)
+		}
+		workDir = homeDir
 	}
+
+	// 创建 .opencode-images 目录
+	imgDir := filepath.Join(workDir, ".opencode-images")
+	if err := os.MkdirAll(imgDir, 0755); err != nil {
+		return "", fmt.Errorf("创建图片目录失败: %v", err)
+	}
+
+	// 从 base64 data URL 中提取数据
+	dataURL := img.Data
+	if !strings.HasPrefix(dataURL, "data:") {
+		return "", fmt.Errorf("无效的图片数据格式")
+	}
+
+	urlParts := strings.SplitN(dataURL, ",", 2)
+	if len(urlParts) != 2 {
+		return "", fmt.Errorf("无效的 base64 数据")
+	}
+
+	// 解码 base64
+	imgData, err := base64.StdEncoding.DecodeString(urlParts[1])
+	if err != nil {
+		return "", fmt.Errorf("解码图片失败: %v", err)
+	}
+
+	// 生成文件名
+	ext := ".png"
+	if strings.Contains(img.Type, "jpeg") || strings.Contains(img.Type, "jpg") {
+		ext = ".jpg"
+	} else if strings.Contains(img.Type, "gif") {
+		ext = ".gif"
+	} else if strings.Contains(img.Type, "webp") {
+		ext = ".webp"
+	}
+	
+	filename := fmt.Sprintf("img_%d%s", time.Now().UnixNano(), ext)
+	filePath := filepath.Join(imgDir, filename)
+
+	// 写入文件
+	if err := os.WriteFile(filePath, imgData, 0644); err != nil {
+		return "", fmt.Errorf("保存图片失败: %v", err)
+	}
+
+	// 返回相对路径
+	relPath := filepath.Join(".opencode-images", filename)
+	return relPath, nil
+}
+
+// SendMessageWithModel 发送消息并指定模型（支持图片）
+func (a *App) SendMessageWithModel(sessionID, content, model string, images []ImageData) error {
+	// 构建消息内容
+	messageText := content
+	
+	// 如果有图片，保存到工作目录并在消息中引用
+	if len(images) > 0 {
+		var imagePaths []string
+		for _, img := range images {
+			relPath, err := a.SaveImageToWorkDir(img)
+			if err != nil {
+				runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("保存图片失败: %v", err))
+				continue
+			}
+			imagePaths = append(imagePaths, relPath)
+			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("图片已保存: %s", relPath))
+		}
+		
+		if len(imagePaths) > 0 {
+			messageText += "\n\n[Attached images - please read and analyze these image files:]"
+			for _, p := range imagePaths {
+				messageText += fmt.Sprintf("\n- %s", p)
+			}
+		}
+	}
+	
+	parts := []map[string]interface{}{
+		{"type": "text", "text": messageText},
+	}
+	
+	payload := map[string]interface{}{
+		"parts": parts,
+	}
+	
 	if model != "" {
 		// model 格式: provider/modelID，需要拆分成对象
-		parts := strings.SplitN(model, "/", 2)
-		if len(parts) == 2 {
+		modelParts := strings.SplitN(model, "/", 2)
+		if len(modelParts) == 2 {
 			payload["model"] = map[string]string{
-				"providerID": parts[0],
-				"modelID":    parts[1],
+				"providerID": modelParts[0],
+				"modelID":    modelParts[1],
 			}
 		}
 	}
@@ -577,13 +689,13 @@ func (a *App) AutoStartOpenCode() error {
 	return a.openCode.AutoStart()
 }
 
-// SetOpenCodeWorkDir 设置 OpenCode 工作目录并重启
+// SetOpenCodeWorkDir 设置 OpenCode 工作目录
 func (a *App) SetOpenCodeWorkDir(dir string) error {
 	a.openCode.SetWorkDir(dir)
 	// 同时更新文件管理器的根目录
 	a.fileMgr.SetRootDir(dir)
-	// 重启 OpenCode 以应用新目录
-	return a.openCode.Restart()
+	// 不自动重启，让 autoConnect 处理连接
+	return nil
 }
 
 

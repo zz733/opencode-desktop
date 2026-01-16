@@ -86,12 +86,16 @@ export function RunFile(arg1) {
   return window['go']['main']['App']['RunFile'](arg1);
 }
 
+export function SaveImageToWorkDir(arg1) {
+  return window['go']['main']['App']['SaveImageToWorkDir'](arg1);
+}
+
 export function SendMessage(arg1, arg2) {
   return window['go']['main']['App']['SendMessage'](arg1, arg2);
 }
 
-export function SendMessageWithModel(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SendMessageWithModel'](arg1, arg2, arg3);
+export function SendMessageWithModel(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SendMessageWithModel'](arg1, arg2, arg3, arg4);
 }
 
 export function SetActiveFile(arg1, arg2) {
