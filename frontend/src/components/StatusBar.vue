@@ -1,5 +1,9 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { languages, setLocale } from '../i18n'
+
+const { locale } = useI18n()
 
 const props = defineProps({
   connected: Boolean,
@@ -13,6 +17,26 @@ const connectionStatus = computed(() => {
   if (props.connecting) return { text: '连接中...', class: 'connecting' }
   return { text: '未连接', class: 'disconnected' }
 })
+
+// 语言选择器
+const showLangMenu = ref(false)
+
+const currentLang = computed(() => {
+  return languages.find(l => l.code === locale.value) || languages[0]
+})
+
+const selectLanguage = (lang) => {
+  setLocale(lang.code)
+  showLangMenu.value = false
+}
+
+const toggleLangMenu = () => {
+  showLangMenu.value = !showLangMenu.value
+}
+
+const closeLangMenu = () => {
+  showLangMenu.value = false
+}
 </script>
 
 <template>
@@ -40,10 +64,34 @@ const connectionStatus = computed(() => {
       <div class="status-item">
         <span>UTF-8</span>
       </div>
-      <div class="status-item">
-        <span>Ln 1, Col 1</span>
+      
+      <!-- 语言选择器 -->
+      <div class="status-item lang-selector" @click.stop="toggleLangMenu">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        <span>{{ currentLang.name }}</span>
+        
+        <!-- 语言菜单 -->
+        <div v-if="showLangMenu" class="lang-menu" @click.stop>
+          <div 
+            v-for="lang in languages" 
+            :key="lang.code"
+            :class="['lang-item', { active: lang.code === locale }]"
+            @click="selectLanguage(lang)"
+          >
+            <span class="lang-name">{{ lang.name }}</span>
+            <svg v-if="lang.code === locale" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+          </div>
+        </div>
       </div>
     </div>
+    
+    <!-- 点击外部关闭菜单 -->
+    <div v-if="showLangMenu" class="backdrop" @click="closeLangMenu"></div>
   </div>
 </template>
 
@@ -58,6 +106,7 @@ const connectionStatus = computed(() => {
   padding: 0 8px;
   font-size: 11px;
   color: var(--text-secondary);
+  position: relative;
 }
 
 .status-left, .status-right {
@@ -108,5 +157,60 @@ const connectionStatus = computed(() => {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* 语言选择器 */
+.lang-selector {
+  position: relative;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.lang-selector:hover {
+  background: var(--bg-hover);
+}
+
+.lang-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 140px;
+  padding: 4px 0;
+  z-index: 1000;
+}
+
+.lang-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.lang-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.lang-item.active {
+  color: var(--accent-primary);
+}
+
+.lang-item svg {
+  color: var(--accent-primary);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
 }
 </style>
