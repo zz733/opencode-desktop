@@ -22,10 +22,6 @@ export function CheckConnection() {
   return window['go']['main']['App']['CheckConnection']();
 }
 
-export function CheckKiroAuthStatus() {
-  return window['go']['main']['App']['CheckKiroAuthStatus']();
-}
-
 export function CloseTerminal(arg1) {
   return window['go']['main']['App']['CloseTerminal'](arg1);
 }
@@ -288,10 +284,6 @@ export function SubscribeEvents() {
 
 export function ToggleMCPServer(arg1, arg2) {
   return window['go']['main']['App']['ToggleMCPServer'](arg1, arg2);
-}
-
-export function TroubleshootKiroAuth() {
-  return window['go']['main']['App']['TroubleshootKiroAuth']();
 }
 
 export function UninstallAntigravityAuth() {

@@ -12,8 +12,6 @@ export function CancelSession(arg1:string):Promise<void>;
 
 export function CheckConnection():Promise<boolean>;
 
-export function CheckKiroAuthStatus():Promise<Record<string, any>>;
-
 export function CloseTerminal(arg1:number):Promise<void>;
 
 export function CodeCompletion(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
@@ -145,8 +143,6 @@ export function StopOpenCode():Promise<void>;
 export function SubscribeEvents():Promise<void>;
 
 export function ToggleMCPServer(arg1:string,arg2:boolean):Promise<void>;
-
-export function TroubleshootKiroAuth():Promise<void>;
 
 export function UninstallAntigravityAuth():Promise<void>;
 
