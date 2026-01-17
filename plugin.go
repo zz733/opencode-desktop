@@ -416,7 +416,7 @@ func (a *App) InstallKiroAuth() error {
 	}
 
 	// 添加插件
-	pluginName := "@zhafron/opencode-kiro-auth"
+	pluginName := "opencode-kiro-auth"
 	if plugins, ok := config["plugin"].([]interface{}); ok {
 		found := false
 		for _, p := range plugins {

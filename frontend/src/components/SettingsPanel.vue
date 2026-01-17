@@ -268,6 +268,12 @@ function runKiroAuth() {
   emit('runCommand', 'opencode auth login')
 }
 
+function runKiroAuthManual() {
+  // 手动认证方式：直接打开 AWS Builder ID 页面
+  const awsBuilderIdUrl = 'https://aws.amazon.com/builder-id/'
+  window.open(awsBuilderIdUrl, '_blank')
+}
+
 async function restartOpenCode() {
   pluginLoading.value = true
   pluginLoadingName.value = 'restart'
@@ -805,6 +811,9 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
                 <button class="btn-auth" @click="runKiroAuth">
                   {{ t('settings.plugins.authenticate') }}
                 </button>
+                <button class="btn-auth-manual" @click="runKiroAuthManual" :title="t('settings.plugins.manualAuth')">
+                  {{ t('settings.plugins.manualAuth') }}
+                </button>
                 <button class="btn-uninstall" @click="uninstallKiroAuth" :disabled="pluginLoading">
                   {{ pluginLoadingName === 'kiro-auth' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
                 </button>
@@ -1127,6 +1136,8 @@ input:checked + .slider:before { transform: translateX(16px); }
 .restart-hint { font-size: 11px; color: var(--text-muted); }
 .btn-auth { padding: 6px 12px; background: var(--accent-primary); border: none; border-radius: 4px; color: white; font-size: 12px; cursor: pointer; }
 .btn-auth:hover { opacity: 0.9; }
+.btn-auth-manual { padding: 6px 12px; background: var(--yellow); border: none; border-radius: 4px; color: #000; font-size: 12px; cursor: pointer; }
+.btn-auth-manual:hover { opacity: 0.9; }
 .btn-docs { padding: 6px 12px; background: transparent; border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-secondary); font-size: 12px; cursor: pointer; text-decoration: none; display: inline-block; }
 .btn-docs:hover { background: var(--bg-hover); color: var(--text-primary); }
 .plugin-tip { display: flex; gap: 12px; padding: 12px 16px; background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border-subtle); }
