@@ -52,12 +52,6 @@ func (a *App) GetServerURL() string {
 	return a.serverURL
 }
 
-
-
-
-
-
-
 // CreateTerminal 创建新终端
 func (a *App) CreateTerminal() (int, error) {
 	return a.termMgr.CreateTerminal()
@@ -354,6 +348,3 @@ func (a *App) CopyToClipboard(text string) error {
 	runtime.ClipboardSetText(a.ctx, text)
 	return nil
 }
-
-
-

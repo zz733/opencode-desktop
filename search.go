@@ -33,7 +33,7 @@ func (a *App) SearchInFiles(dir, query string, caseSensitive, useRegex bool) ([]
 			args = append(args, "-i")
 		}
 		args = append(args, query, dir)
-		
+
 		if goruntime.GOOS == "windows" {
 			cmd = exec.Command("findstr", "/S", "/N", query, dir+"\\*")
 		} else {
@@ -46,7 +46,7 @@ func (a *App) SearchInFiles(dir, query string, caseSensitive, useRegex bool) ([]
 			args = append(args, "-i")
 		}
 		args = append(args, query, dir)
-		
+
 		if goruntime.GOOS == "windows" {
 			cmd = exec.Command("findstr", "/S", "/N", query, dir+"\\*")
 		} else {
@@ -101,7 +101,7 @@ func (a *App) ReplaceInFiles(dir, searchText, replaceText string, caseSensitive 
 	}
 
 	count := 0
-	
+
 	// 遍历目录下所有文件
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -169,13 +169,13 @@ func isTextFile(content []byte) bool {
 	if len(content) == 0 {
 		return true
 	}
-	
+
 	// 检查前 512 字节
 	sample := content
 	if len(content) > 512 {
 		sample = content[:512]
 	}
-	
+
 	// 如果包含太多非打印字符，认为是二进制文件
 	nonPrintable := 0
 	for _, b := range sample {
@@ -183,7 +183,7 @@ func isTextFile(content []byte) bool {
 			nonPrintable++
 		}
 	}
-	
+
 	return float64(nonPrintable)/float64(len(sample)) < 0.3
 }
 
@@ -192,11 +192,11 @@ func replaceInsensitive(s, old, new string) string {
 	if old == "" {
 		return s
 	}
-	
+
 	oldLower := strings.ToLower(old)
 	result := ""
 	remaining := s
-	
+
 	for {
 		remainingLower := strings.ToLower(remaining)
 		idx := strings.Index(remainingLower, oldLower)
@@ -204,11 +204,10 @@ func replaceInsensitive(s, old, new string) string {
 			result += remaining
 			break
 		}
-		
+
 		result += remaining[:idx] + new
 		remaining = remaining[idx+len(old):]
 	}
-	
+
 	return result
 }
-

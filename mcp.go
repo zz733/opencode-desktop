@@ -15,9 +15,9 @@ import (
 
 // MCPServer MCP 服务器配置
 type MCPServer struct {
-	Type        string            `json:"type"`                  // "local" 或 "remote"
-	Command     []string          `json:"command,omitempty"`     // 本地服务器命令
-	URL         string            `json:"url,omitempty"`         // 远程服务器 URL
+	Type        string            `json:"type"`              // "local" 或 "remote"
+	Command     []string          `json:"command,omitempty"` // 本地服务器命令
+	URL         string            `json:"url,omitempty"`     // 远程服务器 URL
 	Enabled     bool              `json:"enabled"`
 	Environment map[string]string `json:"environment,omitempty"`
 	Timeout     int               `json:"timeout,omitempty"`
@@ -33,7 +33,7 @@ type MCPMarketItem struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Command     []string `json:"command"`
-	EnvVars     []string `json:"envVars,omitempty"`    // 需要的环境变量
+	EnvVars     []string `json:"envVars,omitempty"` // 需要的环境变量
 	Category    string   `json:"category"`
 	DocsURL     string   `json:"docsUrl,omitempty"`    // 官方文档链接
 	ConfigTips  string   `json:"configTips,omitempty"` // 配置说明
@@ -219,6 +219,7 @@ func (a *App) ToggleMCPServer(name string, enabled bool) error {
 
 	return fmt.Errorf("MCP 服务器不存在: %s", name)
 }
+
 // GetMCPMarket 获取 MCP 市场列表（内置热门服务器）
 func (a *App) GetMCPMarket() []MCPMarketItem {
 	return []MCPMarketItem{

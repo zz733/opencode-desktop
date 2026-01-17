@@ -179,7 +179,7 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 			delete(m.instances, d)
 		}
 	}
-	
+
 	if inst, ok := m.instances[dir]; ok && inst.running {
 		m.mu.Unlock()
 		wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("目录 %s 已在运行 (端口 %d)", dir, port))
