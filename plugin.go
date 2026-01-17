@@ -73,15 +73,29 @@ func (a *App) checkPluginInstalled(pluginName string) (bool, string) {
 	// 检查 plugin 数组
 	if plugins, ok := config["plugin"].([]interface{}); ok {
 		for _, p := range plugins {
-			if ps, ok := p.(string); ok && strings.Contains(ps, pluginName) {
-				version := ""
-				if strings.Contains(ps, "@") {
-					parts := strings.Split(ps, "@")
-					if len(parts) > 1 {
-						version = parts[len(parts)-1]
+			if ps, ok := p.(string); ok {
+				// 对于 kiro-auth，检查两种可能的包名
+				if pluginName == "opencode-kiro-auth" {
+					if strings.Contains(ps, "opencode-kiro-auth") || strings.Contains(ps, "@zhafron/opencode-kiro-auth") {
+						version := ""
+						if strings.Contains(ps, "@") {
+							parts := strings.Split(ps, "@")
+							if len(parts) > 1 {
+								version = parts[len(parts)-1]
+							}
+						}
+						return true, version
 					}
+				} else if strings.Contains(ps, pluginName) {
+					version := ""
+					if strings.Contains(ps, "@") {
+						parts := strings.Split(ps, "@")
+						if len(parts) > 1 {
+							version = parts[len(parts)-1]
+						}
+					}
+					return true, version
 				}
-				return true, version
 			}
 		}
 	}
@@ -89,15 +103,29 @@ func (a *App) checkPluginInstalled(pluginName string) (bool, string) {
 	// 也检查 plugins 字段（复数形式，兼容旧配置）
 	if plugins, ok := config["plugins"].([]interface{}); ok {
 		for _, p := range plugins {
-			if ps, ok := p.(string); ok && strings.Contains(ps, pluginName) {
-				version := ""
-				if strings.Contains(ps, "@") {
-					parts := strings.Split(ps, "@")
-					if len(parts) > 1 {
-						version = parts[len(parts)-1]
+			if ps, ok := p.(string); ok {
+				// 对于 kiro-auth，检查两种可能的包名
+				if pluginName == "opencode-kiro-auth" {
+					if strings.Contains(ps, "opencode-kiro-auth") || strings.Contains(ps, "@zhafron/opencode-kiro-auth") {
+						version := ""
+						if strings.Contains(ps, "@") {
+							parts := strings.Split(ps, "@")
+							if len(parts) > 1 {
+								version = parts[len(parts)-1]
+							}
+						}
+						return true, version
 					}
+				} else if strings.Contains(ps, pluginName) {
+					version := ""
+					if strings.Contains(ps, "@") {
+						parts := strings.Split(ps, "@")
+						if len(parts) > 1 {
+							version = parts[len(parts)-1]
+						}
+					}
+					return true, version
 				}
-				return true, version
 			}
 		}
 	}
@@ -415,8 +443,8 @@ func (a *App) InstallKiroAuth() error {
 		}
 	}
 
-	// 添加插件
-	pluginName := "opencode-kiro-auth"
+	// 添加插件 - 使用正确的包名
+	pluginName := "@zhafron/opencode-kiro-auth"
 	if plugins, ok := config["plugin"].([]interface{}); ok {
 		found := false
 		for _, p := range plugins {
@@ -569,6 +597,165 @@ func (a *App) UninstallKiroAuth() error {
 	runtime.EventsEmit(a.ctx, "output-log", "opencode-kiro-auth 已卸载")
 	return nil
 }
+// AuthenticateKiro 认证 Kiro Auth
+func (a *App) AuthenticateKiro() error {
+	runtime.EventsEmit(a.ctx, "output-log", "开始 Kiro Auth 认证...")
+	runtime.EventsEmit(a.ctx, "output-log", "请按照以下步骤进行认证：")
+	runtime.EventsEmit(a.ctx, "output-log", "1. 确保您有有效的 AWS Builder ID 账号")
+	runtime.EventsEmit(a.ctx, "output-log", "2. 在终端中运行: opencode auth login")
+	runtime.EventsEmit(a.ctx, "output-log", "3. 选择 'Other'")
+	runtime.EventsEmit(a.ctx, "output-log", "4. 输入 'kiro' 并按回车")
+	runtime.EventsEmit(a.ctx, "output-log", "5. 在浏览器中完成 AWS Builder ID 认证")
+	
+	// 检查是否有终端可用，如果没有则创建一个
+	runtime.EventsEmit(a.ctx, "create-terminal-if-needed")
+	
+	// 等待一秒让终端创建完成
+	time.Sleep(1 * time.Second)
+	
+	// 执行认证命令
+	runtime.EventsEmit(a.ctx, "execute-command", "opencode auth login")
+	
+	return nil
+}
+
+// CheckKiroAuthStatus 检查 Kiro Auth 认证状态
+func (a *App) CheckKiroAuthStatus() (map[string]interface{}, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	// 检查认证文件
+	authPath := filepath.Join(homeDir, ".local", "share", "opencode", "auth.json")
+	if goruntime.GOOS == "windows" {
+		authPath = filepath.Join(homeDir, "AppData", "Local", "opencode", "auth.json")
+	}
+
+	status := map[string]interface{}{
+		"authenticated": false,
+		"hasAuthFile":   false,
+		"hasKiroConfig": false,
+		"error":         "",
+	}
+
+	// 检查认证文件
+	if _, err := os.Stat(authPath); err == nil {
+		status["hasAuthFile"] = true
+		
+		// 读取认证文件检查是否有 kiro 认证
+		data, err := os.ReadFile(authPath)
+		if err == nil {
+			var authData map[string]interface{}
+			if json.Unmarshal(data, &authData) == nil {
+				if kiroAuth, ok := authData["kiro"]; ok && kiroAuth != nil {
+					status["authenticated"] = true
+				}
+			}
+		}
+	}
+
+	// 检查 kiro 配置文件
+	kiroConfigPath := filepath.Join(homeDir, ".config", "opencode", "kiro.json")
+	if _, err := os.Stat(kiroConfigPath); err == nil {
+		status["hasKiroConfig"] = true
+	}
+
+	// 检查日志文件中的错误
+	logPath := filepath.Join(homeDir, ".config", "opencode", "kiro-logs", "plugin.log")
+	if data, err := os.ReadFile(logPath); err == nil {
+		logContent := string(data)
+		if strings.Contains(logContent, "ERROR") {
+			// 提取最后一个错误
+			lines := strings.Split(logContent, "\n")
+			for i := len(lines) - 1; i >= 0; i-- {
+				if strings.Contains(lines[i], "ERROR") {
+					status["error"] = lines[i]
+					break
+				}
+			}
+		}
+	}
+
+	return status, nil
+}
+
+// TroubleshootKiroAuth 故障排除 Kiro Auth
+func (a *App) TroubleshootKiroAuth() error {
+	runtime.EventsEmit(a.ctx, "output-log", "=== Kiro Auth 故障排除 ===")
+	
+	// 检查状态
+	status, err := a.CheckKiroAuthStatus()
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("检查状态失败: %v", err))
+		return err
+	}
+
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("认证状态: %v", status["authenticated"]))
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("认证文件存在: %v", status["hasAuthFile"]))
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("Kiro配置存在: %v", status["hasKiroConfig"]))
+	
+	if errorMsg, ok := status["error"].(string); ok && errorMsg != "" {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("最后错误: %s", errorMsg))
+	}
+
+	// 检查网络连接
+	runtime.EventsEmit(a.ctx, "output-log", "检查网络连接...")
+	cmd := exec.Command("curl", "-s", "--connect-timeout", "5", "https://profile.aws.amazon.com")
+	if err := cmd.Run(); err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", "⚠️  无法连接到 AWS 认证服务，请检查网络连接")
+	} else {
+		runtime.EventsEmit(a.ctx, "output-log", "✅ 网络连接正常")
+	}
+
+	// 检查端口占用
+	runtime.EventsEmit(a.ctx, "output-log", "检查认证端口...")
+	var portCmd *exec.Cmd
+	if goruntime.GOOS == "windows" {
+		portCmd = exec.Command("netstat", "-an")
+	} else {
+		portCmd = exec.Command("lsof", "-i", ":19847")
+	}
+	
+	output, err := portCmd.CombinedOutput()
+	if err == nil && strings.Contains(string(output), "19847") {
+		runtime.EventsEmit(a.ctx, "output-log", "⚠️  端口 19847 可能被占用")
+	} else {
+		runtime.EventsEmit(a.ctx, "output-log", "✅ 认证端口可用")
+	}
+
+	// 提供解决建议
+	runtime.EventsEmit(a.ctx, "output-log", "")
+	runtime.EventsEmit(a.ctx, "output-log", "=== 解决建议 ===")
+	runtime.EventsEmit(a.ctx, "output-log", "1. 确保您有有效的 AWS Builder ID 账号")
+	runtime.EventsEmit(a.ctx, "output-log", "2. 尝试手动认证: opencode auth login")
+	runtime.EventsEmit(a.ctx, "output-log", "3. 如果浏览器没有自动打开，请手动访问显示的 URL")
+	runtime.EventsEmit(a.ctx, "output-log", "4. 检查防火墙是否阻止了端口 19847")
+	runtime.EventsEmit(a.ctx, "output-log", "5. 如果问题持续，请尝试重启 OpenCode")
+
+	return nil
+}
+
+// OpenKiroAuthManual 打开手动认证页面
+func (a *App) OpenKiroAuthManual() error {
+	// 打开 AWS Builder ID 注册/登录页面
+	authURL := "https://profile.aws.amazon.com/"
+	runtime.EventsEmit(a.ctx, "output-log", "正在打开 AWS Builder ID 认证页面...")
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("如果浏览器没有自动打开，请手动访问: %s", authURL))
+	
+	var cmd *exec.Cmd
+	switch goruntime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", authURL)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", authURL)
+	default:
+		cmd = exec.Command("xdg-open", authURL)
+	}
+	
+	return cmd.Start()
+}
+
 func (a *App) RestartOpenCode() error {
 	runtime.EventsEmit(a.ctx, "output-log", "正在重启 OpenCode...")
 

@@ -191,6 +191,7 @@ export default {
       kiroAuthTipText: '安装后点击"认证"按钮，在终端中选择 "Other"，然后输入 "kiro" 并按回车。如果认证失败，请：1) 确保有 AWS Builder ID 账号，2) 检查网络连接，3) 手动打开浏览器访问显示的认证链接，4) 重启 OpenCode 后重试。',
       authenticate: '认证',
       manualAuth: '手动认证',
+      troubleshoot: '故障排除',
       restartOpenCode: '重启 OpenCode',
       restarting: '正在重启...',
       restartHint: '修改插件配置后需要重启 OpenCode 才能生效',

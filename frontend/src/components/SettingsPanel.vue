@@ -10,6 +10,7 @@ import {
   GetOhMyOpenCodeStatus, InstallOhMyOpenCode, UninstallOhMyOpenCode, FixOhMyOpenCode,
   GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth,
   GetKiroAuthStatus, InstallKiroAuth, UninstallKiroAuth,
+  AuthenticateKiro, CheckKiroAuthStatus, TroubleshootKiroAuth, OpenKiroAuthManual,
   RestartOpenCode
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
@@ -263,15 +264,38 @@ async function uninstallKiroAuth() {
 }
 
 function runKiroAuth() {
-  // 发送命令到终端执行 Kiro 认证
-  // 用户需要选择 "Other" 然后输入 "kiro"
-  emit('runCommand', 'opencode auth login')
+  // 使用新的认证方法
+  AuthenticateKiro()
 }
 
-function runKiroAuthManual() {
+async function runKiroAuthManual() {
   // 手动认证方式：直接打开 AWS Builder ID 页面
-  const awsBuilderIdUrl = 'https://aws.amazon.com/builder-id/'
-  window.open(awsBuilderIdUrl, '_blank')
+  try {
+    await OpenKiroAuthManual()
+  } catch (e) {
+    console.error('打开手动认证页面失败:', e)
+  }
+}
+
+async function troubleshootKiroAuth() {
+  // 故障排除
+  try {
+    await TroubleshootKiroAuth()
+  } catch (e) {
+    console.error('故障排除失败:', e)
+  }
+}
+
+async function checkKiroAuthStatus() {
+  // 检查认证状态
+  try {
+    const status = await CheckKiroAuthStatus()
+    console.log('Kiro Auth 状态:', status)
+    return status
+  } catch (e) {
+    console.error('检查认证状态失败:', e)
+    return null
+  }
 }
 
 async function restartOpenCode() {
@@ -813,6 +837,9 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
                 </button>
                 <button class="btn-auth-manual" @click="runKiroAuthManual" :title="t('settings.plugins.manualAuth')">
                   {{ t('settings.plugins.manualAuth') }}
+                </button>
+                <button class="btn-troubleshoot" @click="troubleshootKiroAuth" :title="t('settings.plugins.troubleshoot')">
+                  {{ t('settings.plugins.troubleshoot') }}
                 </button>
                 <button class="btn-uninstall" @click="uninstallKiroAuth" :disabled="pluginLoading">
                   {{ pluginLoadingName === 'kiro-auth' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}

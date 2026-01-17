@@ -6,6 +6,10 @@ export function AddMCPServer(arg1, arg2) {
   return window['go']['main']['App']['AddMCPServer'](arg1, arg2);
 }
 
+export function AuthenticateKiro() {
+  return window['go']['main']['App']['AuthenticateKiro']();
+}
+
 export function AutoStartOpenCode() {
   return window['go']['main']['App']['AutoStartOpenCode']();
 }
@@ -16,6 +20,10 @@ export function CancelSession(arg1) {
 
 export function CheckConnection() {
   return window['go']['main']['App']['CheckConnection']();
+}
+
+export function CheckKiroAuthStatus() {
+  return window['go']['main']['App']['CheckKiroAuthStatus']();
 }
 
 export function CloseTerminal(arg1) {
@@ -194,6 +202,10 @@ export function OpenInFinder(arg1) {
   return window['go']['main']['App']['OpenInFinder'](arg1);
 }
 
+export function OpenKiroAuthManual() {
+  return window['go']['main']['App']['OpenKiroAuthManual']();
+}
+
 export function OpenMCPConfigFile() {
   return window['go']['main']['App']['OpenMCPConfigFile']();
 }
@@ -276,6 +288,10 @@ export function SubscribeEvents() {
 
 export function ToggleMCPServer(arg1, arg2) {
   return window['go']['main']['App']['ToggleMCPServer'](arg1, arg2);
+}
+
+export function TroubleshootKiroAuth() {
+  return window['go']['main']['App']['TroubleshootKiroAuth']();
 }
 
 export function UninstallAntigravityAuth() {
