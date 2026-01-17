@@ -198,6 +198,8 @@ export default {
       uiuxTipText: '安装后可在聊天中使用，例如："帮我设计一个现代化的登录页面"、"创建一套 SaaS 产品的设计系统"',
       authenticate: '认证',
       authenticating: '认证中...',
+      update: '升级',
+      updating: '升级中...',
       manualAuth: '手动认证',
       troubleshoot: '故障排除',
       restartOpenCode: '重启 OpenCode',

@@ -21,20 +21,26 @@ type OhMyOpenCodeStatus struct {
 
 // AntigravityAuthStatus antigravity-auth 状态
 type AntigravityAuthStatus struct {
-	Installed bool   `json:"installed"`
-	Version   string `json:"version"`
+	Installed       bool   `json:"installed"`
+	Version         string `json:"version"`
+	LatestVersion   string `json:"latestVersion"`
+	UpdateAvailable bool   `json:"updateAvailable"`
 }
 
 // KiroAuthStatus kiro-auth 状态
 type KiroAuthStatus struct {
-	Installed bool   `json:"installed"`
-	Version   string `json:"version"`
+	Installed       bool   `json:"installed"`
+	Version         string `json:"version"`
+	LatestVersion   string `json:"latestVersion"`
+	UpdateAvailable bool   `json:"updateAvailable"`
 }
 
 // UIUXProMaxStatus ui-ux-pro-max 状态
 type UIUXProMaxStatus struct {
-	Installed bool   `json:"installed"`
-	Version   string `json:"version"`
+	Installed      bool   `json:"installed"`
+	Version        string `json:"version"`
+	LatestVersion  string `json:"latestVersion"`
+	UpdateAvailable bool  `json:"updateAvailable"`
 }
 
 // GetOhMyOpenCodeStatus 获取 oh-my-opencode 状态
@@ -48,14 +54,65 @@ func (a *App) GetOhMyOpenCodeStatus() *OhMyOpenCodeStatus {
 func (a *App) GetAntigravityAuthStatus() *AntigravityAuthStatus {
 	status := &AntigravityAuthStatus{Installed: false}
 	status.Installed, status.Version = a.checkPluginInstalled("opencode-antigravity-auth")
+	
+	// 检查是否有更新可用（我们的 fork 版本）
+	if status.Installed {
+		latestVersion := a.getAntigravityAuthLatestVersion()
+		status.LatestVersion = latestVersion
+		if latestVersion != "" && latestVersion != status.Version {
+			status.UpdateAvailable = true
+		}
+	}
+	
 	return status
+}
+
+// getAntigravityAuthLatestVersion 获取我们 fork 版本的最新版本
+func (a *App) getAntigravityAuthLatestVersion() string {
+	// 检查我们的修复版本
+	var cmd *exec.Cmd
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "npm", "view", "opencode-antigravity-auth-fixed", "version")
+	} else {
+		cmd = exec.Command("npm", "view", "opencode-antigravity-auth-fixed", "version")
+	}
+	
+	if output, err := cmd.Output(); err == nil {
+		return strings.TrimSpace(string(output))
+	}
+	return ""
 }
 
 // GetKiroAuthStatus 获取 kiro-auth 状态
 func (a *App) GetKiroAuthStatus() *KiroAuthStatus {
 	status := &KiroAuthStatus{Installed: false}
 	status.Installed, status.Version = a.checkPluginInstalled("opencode-kiro-auth")
+	
+	// 检查是否有更新可用
+	if status.Installed {
+		latestVersion := a.getKiroAuthLatestVersion()
+		status.LatestVersion = latestVersion
+		if latestVersion != "" && latestVersion != status.Version {
+			status.UpdateAvailable = true
+		}
+	}
+	
 	return status
+}
+
+// getKiroAuthLatestVersion 获取 Kiro Auth 最新版本
+func (a *App) getKiroAuthLatestVersion() string {
+	var cmd *exec.Cmd
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "npm", "view", "@zhafron/opencode-kiro-auth", "version")
+	} else {
+		cmd = exec.Command("npm", "view", "@zhafron/opencode-kiro-auth", "version")
+	}
+	
+	if output, err := cmd.Output(); err == nil {
+		return strings.TrimSpace(string(output))
+	}
+	return ""
 }
 
 // GetUIUXProMaxStatus 获取 ui-ux-pro-max 状态
@@ -93,7 +150,31 @@ func (a *App) GetUIUXProMaxStatus() *UIUXProMaxStatus {
 		}
 	}
 	
+	// 检查是否有更新可用
+	if status.Installed {
+		latestVersion := a.getUIUXProMaxLatestVersion()
+		status.LatestVersion = latestVersion
+		if latestVersion != "" && latestVersion != status.Version {
+			status.UpdateAvailable = true
+		}
+	}
+	
 	return status
+}
+
+// getUIUXProMaxLatestVersion 获取最新版本号
+func (a *App) getUIUXProMaxLatestVersion() string {
+	var cmd *exec.Cmd
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "npm", "view", "uipro-cli", "version")
+	} else {
+		cmd = exec.Command("npm", "view", "uipro-cli", "version")
+	}
+	
+	if output, err := cmd.Output(); err == nil {
+		return strings.TrimSpace(string(output))
+	}
+	return ""
 }
 
 // checkPluginInstalled 检查插件是否安装
@@ -455,6 +536,26 @@ func (a *App) UninstallAntigravityAuth() error {
 	return nil
 }
 
+// UpdateAntigravityAuth 升级 Antigravity Auth 到我们的修复版本
+func (a *App) UpdateAntigravityAuth() error {
+	runtime.EventsEmit(a.ctx, "output-log", "正在升级 Antigravity Auth 到修复版本...")
+	
+	// 1. 先卸载旧版本
+	if err := a.UninstallAntigravityAuth(); err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("⚠️ 卸载旧版本失败: %v", err))
+	}
+	
+	// 2. 安装新的修复版本
+	if err := a.InstallAntigravityAuth(); err != nil {
+		return fmt.Errorf("升级失败: %v", err)
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", "✅ Antigravity Auth 升级完成！")
+	runtime.EventsEmit(a.ctx, "output-log", "现在支持修复后的 Gemini 工具格式")
+	
+	return nil
+}
+
 // InstallKiroAuth 安装 opencode-kiro-auth
 func (a *App) InstallKiroAuth() error {
 	runtime.EventsEmit(a.ctx, "output-log", "正在安装 opencode-kiro-auth...")
@@ -658,6 +759,30 @@ func (a *App) UninstallKiroAuth() error {
 	runtime.EventsEmit(a.ctx, "output-log", "opencode-kiro-auth 已卸载")
 	return nil
 }
+
+// UpdateKiroAuth 升级 Kiro Auth
+func (a *App) UpdateKiroAuth() error {
+	runtime.EventsEmit(a.ctx, "output-log", "正在升级 Kiro Auth...")
+	
+	// 1. 升级全局包
+	var cmd *exec.Cmd
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "npm", "install", "-g", "@zhafron/opencode-kiro-auth@latest")
+	} else {
+		cmd = exec.Command("npm", "install", "-g", "@zhafron/opencode-kiro-auth@latest")
+	}
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("❌ 升级失败: %s", string(output)))
+		return fmt.Errorf("升级失败: %v", err)
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", "✅ Kiro Auth 升级成功！")
+	runtime.EventsEmit(a.ctx, "output-log", "建议重启 OpenCode 以确保新版本生效")
+	
+	return nil
+}
 // AuthenticateKiro 认证 Kiro Auth - 简化版本，只提供指导
 func (a *App) AuthenticateKiro() error {
 	runtime.EventsEmit(a.ctx, "output-log", "请在终端中运行以下命令进行 Kiro Auth 认证：")
@@ -727,6 +852,50 @@ func (a *App) InstallUIUXProMax() error {
 	runtime.EventsEmit(a.ctx, "output-log", "✅ UI/UX Pro Max Skill 安装成功！")
 	runtime.EventsEmit(a.ctx, "output-log", "现在您可以在聊天中使用 UI/UX 设计功能了")
 	runtime.EventsEmit(a.ctx, "output-log", "例如：'帮我设计一个现代化的登录页面'")
+	
+	return nil
+}
+
+// UpdateUIUXProMax 升级 UI/UX Pro Max Skill
+func (a *App) UpdateUIUXProMax() error {
+	runtime.EventsEmit(a.ctx, "output-log", "正在升级 UI/UX Pro Max Skill...")
+	
+	// 1. 升级 CLI 到最新版本
+	var cmd *exec.Cmd
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "npm", "install", "-g", "uipro-cli@latest")
+	} else {
+		cmd = exec.Command("npm", "install", "-g", "uipro-cli@latest")
+	}
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("❌ CLI 升级失败: %s", string(output)))
+		return fmt.Errorf("CLI 升级失败: %v", err)
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", "✅ CLI 升级成功，正在更新配置...")
+	
+	// 2. 重新初始化配置（可能有新的配置选项）
+	workDir := a.openCode.GetWorkDir()
+	if workDir != "" {
+		if goruntime.GOOS == "windows" {
+			cmd = exec.Command("cmd", "/c", "uipro", "init", "--ai", "kiro", "--force")
+		} else {
+			cmd = exec.Command("uipro", "init", "--ai", "kiro", "--force")
+		}
+		cmd.Dir = workDir
+		
+		if output, err := cmd.CombinedOutput(); err != nil {
+			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("⚠️ 配置更新失败: %s", string(output)))
+			// 升级成功但配置更新失败，不返回错误
+		} else {
+			runtime.EventsEmit(a.ctx, "output-log", "✅ 配置更新成功")
+		}
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", "✅ UI/UX Pro Max Skill 升级完成！")
+	runtime.EventsEmit(a.ctx, "output-log", "新功能和改进现在可以使用了")
 	
 	return nil
 }

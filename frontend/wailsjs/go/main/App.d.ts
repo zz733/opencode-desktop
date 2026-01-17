@@ -156,6 +156,12 @@ export function UninstallUIUXProMax():Promise<void>;
 
 export function UnwatchFile(arg1:string):Promise<void>;
 
+export function UpdateAntigravityAuth():Promise<void>;
+
+export function UpdateKiroAuth():Promise<void>;
+
+export function UpdateUIUXProMax():Promise<void>;
+
 export function WatchFile(arg1:string):Promise<void>;
 
 export function WriteFileContent(arg1:string,arg2:string):Promise<void>;

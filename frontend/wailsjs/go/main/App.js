@@ -310,6 +310,18 @@ export function UnwatchFile(arg1) {
   return window['go']['main']['App']['UnwatchFile'](arg1);
 }
 
+export function UpdateAntigravityAuth() {
+  return window['go']['main']['App']['UpdateAntigravityAuth']();
+}
+
+export function UpdateKiroAuth() {
+  return window['go']['main']['App']['UpdateKiroAuth']();
+}
+
+export function UpdateUIUXProMax() {
+  return window['go']['main']['App']['UpdateUIUXProMax']();
+}
+
 export function WatchFile(arg1) {
   return window['go']['main']['App']['WatchFile'](arg1);
 }

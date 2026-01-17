@@ -198,6 +198,8 @@ export default {
       uiuxTipText: 'After installation, use in chat like: "Design a modern login page" or "Create a SaaS product design system"',
       authenticate: 'Authenticate',
       authenticating: 'Authenticating...',
+      update: 'Update',
+      updating: 'Updating...',
       manualAuth: 'Manual Auth',
       troubleshoot: 'Troubleshoot',
       restartOpenCode: 'Restart OpenCode',

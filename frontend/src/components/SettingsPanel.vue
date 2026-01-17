@@ -8,9 +8,9 @@ import {
   ToggleMCPServer, OpenMCPConfigFile, GetMCPStatus, ConnectMCPServer, 
   DisconnectMCPServer, GetMCPTools,
   GetOhMyOpenCodeStatus, InstallOhMyOpenCode, UninstallOhMyOpenCode, FixOhMyOpenCode,
-  GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth,
-  GetKiroAuthStatus, InstallKiroAuth, UninstallKiroAuth,
-  GetUIUXProMaxStatus, InstallUIUXProMax, UninstallUIUXProMax,
+  GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth, UpdateAntigravityAuth,
+  GetKiroAuthStatus, InstallKiroAuth, UninstallKiroAuth, UpdateKiroAuth,
+  GetUIUXProMaxStatus, InstallUIUXProMax, UninstallUIUXProMax, UpdateUIUXProMax,
   RestartOpenCode
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
@@ -278,6 +278,52 @@ async function installUIUXProMax() {
     await loadPluginStatus()
   } catch (e) {
     console.error('安装失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+async function updateAntigravityAuth() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'antigravity-auth-update'
+  try {
+    await UpdateAntigravityAuth()
+    await loadPluginStatus()
+    // 通知重新加载模型列表
+    EventsEmit('antigravity-models-changed', true)
+  } catch (e) {
+    console.error('升级失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+async function updateKiroAuth() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'kiro-auth-update'
+  try {
+    await UpdateKiroAuth()
+    await loadPluginStatus()
+    // 通知重新加载模型列表
+    EventsEmit('kiro-models-changed', true)
+  } catch (e) {
+    console.error('升级失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+async function updateUIUXProMax() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'uiux-pro-max-update'
+  try {
+    await UpdateUIUXProMax()
+    await loadPluginStatus()
+  } catch (e) {
+    console.error('升级失败:', e)
   } finally {
     pluginLoading.value = false
     pluginLoadingName.value = ''
@@ -784,6 +830,9 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
                 <button class="btn-auth" @click="runAntigravityAuth">
                   {{ t('settings.plugins.authenticate') }}
                 </button>
+                <button v-if="antigravityAuthStatus.updateAvailable" class="btn-update" @click="updateAntigravityAuth" :disabled="pluginLoading">
+                  {{ pluginLoadingName === 'antigravity-auth-update' ? t('settings.plugins.updating') : t('settings.plugins.update') }}
+                </button>
                 <button class="btn-uninstall" @click="uninstallAntigravityAuth" :disabled="pluginLoading">
                   {{ pluginLoadingName === 'antigravity-auth' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
                 </button>
@@ -835,6 +884,9 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
                 <button class="btn-auth" @click="runKiroAuth" :disabled="pluginLoading">
                   {{ pluginLoadingName === 'kiro-auth-login' ? t('settings.plugins.authenticating') : t('settings.plugins.authenticate') }}
                 </button>
+                <button v-if="kiroAuthStatus.updateAvailable" class="btn-update" @click="updateKiroAuth" :disabled="pluginLoading">
+                  {{ pluginLoadingName === 'kiro-auth-update' ? t('settings.plugins.updating') : t('settings.plugins.update') }}
+                </button>
                 <button class="btn-uninstall" @click="uninstallKiroAuth" :disabled="pluginLoading">
                   {{ pluginLoadingName === 'kiro-auth' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
                 </button>
@@ -882,6 +934,9 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
                 {{ pluginLoadingName === 'uiux-pro-max' ? t('common.loading') + '...' : t('settings.mcp.install') }}
               </button>
               <template v-else>
+                <button v-if="uiuxProMaxStatus.updateAvailable" class="btn-update" @click="updateUIUXProMax" :disabled="pluginLoading">
+                  {{ pluginLoadingName === 'uiux-pro-max-update' ? t('settings.plugins.updating') : t('settings.plugins.update') }}
+                </button>
                 <button class="btn-uninstall" @click="uninstallUIUXProMax" :disabled="pluginLoading">
                   {{ pluginLoadingName === 'uiux-pro-max' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
                 </button>
@@ -1204,6 +1259,8 @@ input:checked + .slider:before { transform: translateX(16px); }
 .restart-hint { font-size: 11px; color: var(--text-muted); }
 .btn-auth { padding: 6px 12px; background: var(--accent-primary); border: none; border-radius: 4px; color: white; font-size: 12px; cursor: pointer; }
 .btn-auth:hover { opacity: 0.9; }
+.btn-update { padding: 6px 12px; background: var(--green); border: none; border-radius: 4px; color: white; font-size: 12px; cursor: pointer; }
+.btn-update:hover { opacity: 0.9; }
 .btn-auth-manual { padding: 6px 12px; background: var(--yellow); border: none; border-radius: 4px; color: #000; font-size: 12px; cursor: pointer; }
 .btn-auth-manual:hover { opacity: 0.9; }
 .btn-docs { padding: 6px 12px; background: transparent; border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-secondary); font-size: 12px; cursor: pointer; text-decoration: none; display: inline-block; }

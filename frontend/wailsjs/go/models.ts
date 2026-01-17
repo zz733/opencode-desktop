@@ -3,6 +3,8 @@ export namespace main {
 	export class AntigravityAuthStatus {
 	    installed: boolean;
 	    version: string;
+	    latestVersion: string;
+	    updateAvailable: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AntigravityAuthStatus(source);
@@ -12,6 +14,8 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.installed = source["installed"];
 	        this.version = source["version"];
+	        this.latestVersion = source["latestVersion"];
+	        this.updateAvailable = source["updateAvailable"];
 	    }
 	}
 	export class ConfigInfo {
@@ -153,6 +157,8 @@ export namespace main {
 	export class KiroAuthStatus {
 	    installed: boolean;
 	    version: string;
+	    latestVersion: string;
+	    updateAvailable: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new KiroAuthStatus(source);
@@ -162,6 +168,8 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.installed = source["installed"];
 	        this.version = source["version"];
+	        this.latestVersion = source["latestVersion"];
+	        this.updateAvailable = source["updateAvailable"];
 	    }
 	}
 	export class MCPServer {
@@ -392,6 +400,8 @@ export namespace main {
 	export class UIUXProMaxStatus {
 	    installed: boolean;
 	    version: string;
+	    latestVersion: string;
+	    updateAvailable: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new UIUXProMaxStatus(source);
@@ -401,6 +411,8 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.installed = source["installed"];
 	        this.version = source["version"];
+	        this.latestVersion = source["latestVersion"];
+	        this.updateAvailable = source["updateAvailable"];
 	    }
 	}
 

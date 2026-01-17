@@ -196,6 +196,8 @@ export default {
       uiuxTipText: 'インストール後、チャットで使用できます。例：「モダンなログインページをデザインして」「SaaS製品のデザインシステムを作成して」',
       authenticate: '認証',
       authenticating: '認証中...',
+      update: 'アップデート',
+      updating: 'アップデート中...',
       manualAuth: '手動認証',
       troubleshoot: 'トラブルシューティング',
       restartOpenCode: 'OpenCode を再起動',
