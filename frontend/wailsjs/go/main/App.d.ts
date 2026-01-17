@@ -42,6 +42,8 @@ export function GetConfigModels():Promise<Array<main.ConfigModel>>;
 
 export function GetGitStatus(arg1:string):Promise<main.GitStatus>;
 
+export function GetKiroAuthStatus():Promise<main.KiroAuthStatus>;
+
 export function GetMCPConfig():Promise<main.MCPConfig>;
 
 export function GetMCPConfigPath():Promise<string>;
@@ -81,6 +83,8 @@ export function GitPull(arg1:string):Promise<void>;
 export function GitPush(arg1:string):Promise<void>;
 
 export function InstallAntigravityAuth():Promise<void>;
+
+export function InstallKiroAuth():Promise<void>;
 
 export function InstallOhMyOpenCode():Promise<void>;
 
@@ -137,6 +141,8 @@ export function SubscribeEvents():Promise<void>;
 export function ToggleMCPServer(arg1:string,arg2:boolean):Promise<void>;
 
 export function UninstallAntigravityAuth():Promise<void>;
+
+export function UninstallKiroAuth():Promise<void>;
 
 export function UninstallOhMyOpenCode():Promise<void>;
 

@@ -25,6 +25,12 @@ type AntigravityAuthStatus struct {
 	Version   string `json:"version"`
 }
 
+// KiroAuthStatus kiro-auth 状态
+type KiroAuthStatus struct {
+	Installed bool   `json:"installed"`
+	Version   string `json:"version"`
+}
+
 // GetOhMyOpenCodeStatus 获取 oh-my-opencode 状态
 func (a *App) GetOhMyOpenCodeStatus() *OhMyOpenCodeStatus {
 	status := &OhMyOpenCodeStatus{Installed: false}
@@ -36,6 +42,13 @@ func (a *App) GetOhMyOpenCodeStatus() *OhMyOpenCodeStatus {
 func (a *App) GetAntigravityAuthStatus() *AntigravityAuthStatus {
 	status := &AntigravityAuthStatus{Installed: false}
 	status.Installed, status.Version = a.checkPluginInstalled("opencode-antigravity-auth")
+	return status
+}
+
+// GetKiroAuthStatus 获取 kiro-auth 状态
+func (a *App) GetKiroAuthStatus() *KiroAuthStatus {
+	status := &KiroAuthStatus{Installed: false}
+	status.Installed, status.Version = a.checkPluginInstalled("opencode-kiro-auth")
 	return status
 }
 
@@ -370,7 +383,192 @@ func (a *App) UninstallAntigravityAuth() error {
 	return nil
 }
 
-// RestartOpenCode 重启 OpenCode 服务
+// InstallKiroAuth 安装 opencode-kiro-auth
+func (a *App) InstallKiroAuth() error {
+	runtime.EventsEmit(a.ctx, "output-log", "正在安装 opencode-kiro-auth...")
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+
+	// 确保目录存在
+	configDir := filepath.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return err
+	}
+
+	var config map[string]interface{}
+
+	// 读取现有配置
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		// 文件不存在，创建新配置
+		config = map[string]interface{}{
+			"$schema": "https://opencode.ai/config.json",
+		}
+	} else {
+		if err := json.Unmarshal(data, &config); err != nil {
+			return err
+		}
+	}
+
+	// 添加插件
+	pluginName := "@zhafron/opencode-kiro-auth"
+	if plugins, ok := config["plugin"].([]interface{}); ok {
+		found := false
+		for _, p := range plugins {
+			if ps, ok := p.(string); ok && strings.Contains(ps, "opencode-kiro-auth") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			config["plugin"] = append(plugins, pluginName)
+		}
+	} else {
+		config["plugin"] = []interface{}{pluginName}
+	}
+
+	// 添加 provider 配置（Kiro 模型配置）
+	kiroModels := map[string]interface{}{
+		"claude-opus-4-5": map[string]interface{}{
+			"name":  "Claude Opus 4.5",
+			"limit": map[string]interface{}{"context": 200000, "output": 64000},
+			"modalities": map[string]interface{}{
+				"input":  []string{"text", "image"},
+				"output": []string{"text"},
+			},
+		},
+		"claude-opus-4-5-thinking": map[string]interface{}{
+			"name":  "Claude Opus 4.5 Thinking",
+			"limit": map[string]interface{}{"context": 200000, "output": 64000},
+			"modalities": map[string]interface{}{
+				"input":  []string{"text", "image"},
+				"output": []string{"text"},
+			},
+			"variants": map[string]interface{}{
+				"low":    map[string]interface{}{"thinkingConfig": map[string]interface{}{"thinkingBudget": 8192}},
+				"medium": map[string]interface{}{"thinkingConfig": map[string]interface{}{"thinkingBudget": 16384}},
+				"max":    map[string]interface{}{"thinkingConfig": map[string]interface{}{"thinkingBudget": 32768}},
+			},
+		},
+		"claude-sonnet-4-5": map[string]interface{}{
+			"name":  "Claude Sonnet 4.5",
+			"limit": map[string]interface{}{"context": 200000, "output": 64000},
+			"modalities": map[string]interface{}{
+				"input":  []string{"text", "image"},
+				"output": []string{"text"},
+			},
+		},
+		"claude-sonnet-4-5-thinking": map[string]interface{}{
+			"name":  "Claude Sonnet 4.5 Thinking",
+			"limit": map[string]interface{}{"context": 200000, "output": 64000},
+			"modalities": map[string]interface{}{
+				"input":  []string{"text", "image"},
+				"output": []string{"text"},
+			},
+			"variants": map[string]interface{}{
+				"low":    map[string]interface{}{"thinkingConfig": map[string]interface{}{"thinkingBudget": 8192}},
+				"medium": map[string]interface{}{"thinkingConfig": map[string]interface{}{"thinkingBudget": 16384}},
+				"max":    map[string]interface{}{"thinkingConfig": map[string]interface{}{"thinkingBudget": 32768}},
+			},
+		},
+		"claude-haiku-4-5": map[string]interface{}{
+			"name":  "Claude Haiku 4.5",
+			"limit": map[string]interface{}{"context": 200000, "output": 64000},
+			"modalities": map[string]interface{}{
+				"input":  []string{"text", "image"},
+				"output": []string{"text"},
+			},
+		},
+	}
+
+	// 设置 provider 配置
+	provider, ok := config["provider"].(map[string]interface{})
+	if !ok {
+		provider = make(map[string]interface{})
+	}
+
+	// 设置 kiro provider
+	provider["kiro"] = map[string]interface{}{
+		"models": kiroModels,
+	}
+	config["provider"] = provider
+
+	// 保存配置
+	newData, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(configPath, newData, 0644); err != nil {
+		return err
+	}
+
+	runtime.EventsEmit(a.ctx, "output-log", "opencode-kiro-auth 安装成功，配置已写入")
+	runtime.EventsEmit(a.ctx, "output-log", "请运行 'opencode auth login' 并选择 'kiro' 进行认证")
+	return nil
+}
+
+// UninstallKiroAuth 卸载 opencode-kiro-auth
+func (a *App) UninstallKiroAuth() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return err
+	}
+
+	// 从 plugin 中移除
+	if plugins, ok := config["plugin"].([]interface{}); ok {
+		newPlugins := []interface{}{}
+		for _, p := range plugins {
+			if ps, ok := p.(string); ok && !strings.Contains(ps, "opencode-kiro-auth") {
+				newPlugins = append(newPlugins, p)
+			}
+		}
+		config["plugin"] = newPlugins
+	}
+
+	// 移除 kiro provider 配置
+	if provider, ok := config["provider"].(map[string]interface{}); ok {
+		delete(provider, "kiro")
+		if len(provider) == 0 {
+			delete(config, "provider")
+		} else {
+			config["provider"] = provider
+		}
+	}
+
+	// 保存配置
+	newData, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(configPath, newData, 0644); err != nil {
+		return err
+	}
+
+	// 删除认证文件
+	kiroConfigPath := filepath.Join(homeDir, ".config", "opencode", "kiro.json")
+	os.Remove(kiroConfigPath)
+
+	runtime.EventsEmit(a.ctx, "output-log", "opencode-kiro-auth 已卸载")
+	return nil
+}
 func (a *App) RestartOpenCode() error {
 	runtime.EventsEmit(a.ctx, "output-log", "正在重启 OpenCode...")
 

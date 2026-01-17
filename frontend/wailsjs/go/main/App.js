@@ -82,6 +82,10 @@ export function GetGitStatus(arg1) {
   return window['go']['main']['App']['GetGitStatus'](arg1);
 }
 
+export function GetKiroAuthStatus() {
+  return window['go']['main']['App']['GetKiroAuthStatus']();
+}
+
 export function GetMCPConfig() {
   return window['go']['main']['App']['GetMCPConfig']();
 }
@@ -160,6 +164,10 @@ export function GitPush(arg1) {
 
 export function InstallAntigravityAuth() {
   return window['go']['main']['App']['InstallAntigravityAuth']();
+}
+
+export function InstallKiroAuth() {
+  return window['go']['main']['App']['InstallKiroAuth']();
 }
 
 export function InstallOhMyOpenCode() {
@@ -272,6 +280,10 @@ export function ToggleMCPServer(arg1, arg2) {
 
 export function UninstallAntigravityAuth() {
   return window['go']['main']['App']['UninstallAntigravityAuth']();
+}
+
+export function UninstallKiroAuth() {
+  return window['go']['main']['App']['UninstallKiroAuth']();
 }
 
 export function UninstallOhMyOpenCode() {

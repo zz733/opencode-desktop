@@ -9,6 +9,7 @@ import {
   DisconnectMCPServer, GetMCPTools,
   GetOhMyOpenCodeStatus, InstallOhMyOpenCode, UninstallOhMyOpenCode, FixOhMyOpenCode,
   GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth,
+  GetKiroAuthStatus, InstallKiroAuth, UninstallKiroAuth,
   RestartOpenCode
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
@@ -131,6 +132,7 @@ const allModels = computed(() => [...defaultModels, ...customModels.value])
 // ========== 插件管理 ==========
 const ohMyOpenCodeStatus = ref({ installed: false, version: '' })
 const antigravityAuthStatus = ref({ installed: false, version: '' })
+const kiroAuthStatus = ref({ installed: false, version: '' })
 const pluginLoading = ref(false)
 const pluginLoadingName = ref('')
 
@@ -138,6 +140,7 @@ async function loadPluginStatus() {
   try {
     ohMyOpenCodeStatus.value = await GetOhMyOpenCodeStatus() || { installed: false, version: '' }
     antigravityAuthStatus.value = await GetAntigravityAuthStatus() || { installed: false, version: '' }
+    kiroAuthStatus.value = await GetKiroAuthStatus() || { installed: false, version: '' }
   } catch (e) {
     console.error('获取插件状态失败:', e)
   }
@@ -218,6 +221,43 @@ async function uninstallAntigravityAuth() {
 
 function runAntigravityAuth() {
   // 发送命令到终端执行（不带参数，会显示交互式选择菜单）
+  emit('runCommand', 'opencode auth login')
+}
+
+async function installKiroAuth() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'kiro-auth'
+  try {
+    await InstallKiroAuth()
+    await loadPluginStatus()
+    // 通知重新加载模型列表
+    EventsEmit('kiro-models-changed', true)
+  } catch (e) {
+    console.error('安装失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+async function uninstallKiroAuth() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'kiro-auth'
+  try {
+    await UninstallKiroAuth()
+    await loadPluginStatus()
+    // 通知清空模型列表
+    EventsEmit('kiro-models-changed', false)
+  } catch (e) {
+    console.error('卸载失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+function runKiroAuth() {
+  // 发送命令到终端执行 Kiro 认证
   emit('runCommand', 'opencode auth login')
 }
 
@@ -718,6 +758,57 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
             <div class="tip-content">
               <div class="tip-title">{{ t('settings.plugins.authTipTitle') }}</div>
               <div class="tip-text">{{ t('settings.plugins.authTipText') }}</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Kiro Auth -->
+        <div class="plugin-card">
+          <div class="plugin-header">
+            <div class="plugin-icon">🚀</div>
+            <div class="plugin-info">
+              <div class="plugin-name">Kiro Auth</div>
+              <div class="plugin-desc">{{ t('settings.plugins.kiroDesc') }}</div>
+            </div>
+          </div>
+          <div class="plugin-body">
+            <div class="plugin-features">
+              <span class="feature-tag">AWS Kiro</span>
+              <span class="feature-tag">Claude 4.5</span>
+              <span class="feature-tag">550+ Free</span>
+            </div>
+          </div>
+          <div class="plugin-footer">
+            <div v-if="kiroAuthStatus.installed" class="plugin-status installed">
+              <span class="status-badge">✓ {{ t('settings.plugins.installed') }}</span>
+              <span v-if="kiroAuthStatus.version" class="version">v{{ kiroAuthStatus.version }}</span>
+            </div>
+            <div v-else class="plugin-status">
+              <span class="status-badge">{{ t('settings.plugins.notInstalled') }}</span>
+            </div>
+            <div class="plugin-actions">
+              <button v-if="!kiroAuthStatus.installed" class="btn-install" @click="installKiroAuth" :disabled="pluginLoading">
+                {{ pluginLoadingName === 'kiro-auth' ? t('common.loading') + '...' : t('settings.mcp.install') }}
+              </button>
+              <template v-else>
+                <button class="btn-auth" @click="runKiroAuth">
+                  {{ t('settings.plugins.authenticate') }}
+                </button>
+                <button class="btn-uninstall" @click="uninstallKiroAuth" :disabled="pluginLoading">
+                  {{ pluginLoadingName === 'kiro-auth' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
+                </button>
+              </template>
+              <a class="btn-docs" href="https://github.com/tickernelz/opencode-kiro-auth" target="_blank" @click.prevent="openDocs('https://github.com/tickernelz/opencode-kiro-auth')">
+                {{ t('settings.mcp.viewDocs') }}
+              </a>
+            </div>
+          </div>
+          <!-- Kiro Auth 认证提示 -->
+          <div class="plugin-tip-inline">
+            <div class="tip-icon">🔑</div>
+            <div class="tip-content">
+              <div class="tip-title">{{ t('settings.plugins.kiroAuthTipTitle') }}</div>
+              <div class="tip-text">{{ t('settings.plugins.kiroAuthTipText') }}</div>
             </div>
           </div>
         </div>

@@ -150,6 +150,20 @@ export namespace main {
 	        this.data = source["data"];
 	    }
 	}
+	export class KiroAuthStatus {
+	    installed: boolean;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new KiroAuthStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.version = source["version"];
+	    }
+	}
 	export class MCPServer {
 	    type: string;
 	    command?: string[];
