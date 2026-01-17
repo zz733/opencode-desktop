@@ -263,8 +263,9 @@ async function uninstallKiroAuth() {
 }
 
 function runKiroAuth() {
-  // 发送命令到终端执行 Kiro 认证，明确指定 kiro provider
-  emit('runCommand', 'opencode auth login --provider kiro')
+  // 发送命令到终端执行 Kiro 认证
+  // 用户需要选择 "Other" 然后输入 "kiro"
+  emit('runCommand', 'opencode auth login')
 }
 
 async function restartOpenCode() {
