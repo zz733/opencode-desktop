@@ -232,6 +232,12 @@ async function installKiroAuth() {
     await loadPluginStatus()
     // 通知重新加载模型列表
     EventsEmit('kiro-models-changed', true)
+    // 提示用户重启 OpenCode 以确保插件生效
+    setTimeout(() => {
+      if (confirm('Kiro Auth 插件安装成功！建议重启 OpenCode 以确保插件完全生效。是否现在重启？')) {
+        restartOpenCode()
+      }
+    }, 1000)
   } catch (e) {
     console.error('安装失败:', e)
   } finally {
@@ -257,8 +263,8 @@ async function uninstallKiroAuth() {
 }
 
 function runKiroAuth() {
-  // 发送命令到终端执行 Kiro 认证
-  emit('runCommand', 'opencode auth login')
+  // 发送命令到终端执行 Kiro 认证，明确指定 kiro provider
+  emit('runCommand', 'opencode auth login --provider kiro')
 }
 
 async function restartOpenCode() {

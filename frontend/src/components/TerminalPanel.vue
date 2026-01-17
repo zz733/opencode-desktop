@@ -237,11 +237,16 @@ const executeCommand = async (command) => {
   // 切换到终端面板
   activePanel.value = 'terminal'
   
+  // 如果没有终端，先创建一个
+  if (terminals.value.length === 0) {
+    await addTerminal()
+  }
+  
   // 等待 DOM 更新
   await nextTick()
   
   // 等待终端初始化完成（如果是新创建的）
-  await new Promise(resolve => setTimeout(resolve, 300))
+  await new Promise(resolve => setTimeout(resolve, 500))
   
   // 获取当前活动终端（使用最新的 activeTerminalId）
   let termData = terminals.value.find(t => t.id === activeTerminalId.value)
