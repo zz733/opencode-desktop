@@ -415,6 +415,22 @@ func (a *App) UninstallAntigravityAuth() error {
 func (a *App) InstallKiroAuth() error {
 	runtime.EventsEmit(a.ctx, "output-log", "正在安装 opencode-kiro-auth...")
 
+	// 首先确保插件已全局安装
+	var cmd *exec.Cmd
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "npm", "install", "-g", "@zhafron/opencode-kiro-auth")
+	} else {
+		cmd = exec.Command("npm", "install", "-g", "@zhafron/opencode-kiro-auth")
+	}
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("全局安装插件失败: %s", string(output)))
+		return fmt.Errorf("全局安装插件失败: %v", err)
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", "插件全局安装成功")
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -537,7 +553,8 @@ func (a *App) InstallKiroAuth() error {
 	}
 
 	runtime.EventsEmit(a.ctx, "output-log", "opencode-kiro-auth 安装成功，配置已写入")
-	runtime.EventsEmit(a.ctx, "output-log", "请运行 'opencode auth login' 并选择 'kiro' 进行认证")
+	runtime.EventsEmit(a.ctx, "output-log", "重要提示：认证时浏览器可能不会自动打开")
+	runtime.EventsEmit(a.ctx, "output-log", "如果浏览器没有自动打开，请手动访问显示的 URL 完成认证")
 	return nil
 }
 
@@ -600,12 +617,16 @@ func (a *App) UninstallKiroAuth() error {
 // AuthenticateKiro 认证 Kiro Auth
 func (a *App) AuthenticateKiro() error {
 	runtime.EventsEmit(a.ctx, "output-log", "开始 Kiro Auth 认证...")
-	runtime.EventsEmit(a.ctx, "output-log", "请按照以下步骤进行认证：")
-	runtime.EventsEmit(a.ctx, "output-log", "1. 确保您有有效的 AWS Builder ID 账号")
-	runtime.EventsEmit(a.ctx, "output-log", "2. 在终端中运行: opencode auth login")
-	runtime.EventsEmit(a.ctx, "output-log", "3. 选择 'Other'")
-	runtime.EventsEmit(a.ctx, "output-log", "4. 输入 'kiro' 并按回车")
-	runtime.EventsEmit(a.ctx, "output-log", "5. 在浏览器中完成 AWS Builder ID 认证")
+	runtime.EventsEmit(a.ctx, "output-log", "")
+	runtime.EventsEmit(a.ctx, "output-log", "=== 重要提示 ===")
+	runtime.EventsEmit(a.ctx, "output-log", "浏览器可能不会自动打开，请手动完成以下步骤：")
+	runtime.EventsEmit(a.ctx, "output-log", "")
+	runtime.EventsEmit(a.ctx, "output-log", "步骤 1: 在终端中运行认证命令")
+	runtime.EventsEmit(a.ctx, "output-log", "步骤 2: 选择 'Other' 选项")
+	runtime.EventsEmit(a.ctx, "output-log", "步骤 3: 输入 'kiro' 并按回车")
+	runtime.EventsEmit(a.ctx, "output-log", "步骤 4: 如果浏览器没有自动打开，请手动访问显示的 URL")
+	runtime.EventsEmit(a.ctx, "output-log", "步骤 5: 在 AWS Builder ID 页面完成认证")
+	runtime.EventsEmit(a.ctx, "output-log", "")
 	
 	// 检查是否有终端可用，如果没有则创建一个
 	runtime.EventsEmit(a.ctx, "create-terminal-if-needed")
