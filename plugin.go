@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -59,8 +60,11 @@ func (a *App) GetAntigravityAuthStatus() *AntigravityAuthStatus {
 	if status.Installed {
 		latestVersion := a.getAntigravityAuthLatestVersion()
 		status.LatestVersion = latestVersion
-		if latestVersion != "" && latestVersion != status.Version {
-			status.UpdateAvailable = true
+		if latestVersion != "" && status.Version != "" {
+			// 只有当远程版本确实更新时才显示升级按钮
+			if a.compareVersions(latestVersion, status.Version) > 0 {
+				status.UpdateAvailable = true
+			}
 		}
 	}
 	
@@ -83,6 +87,54 @@ func (a *App) getAntigravityAuthLatestVersion() string {
 	return ""
 }
 
+// compareVersions 比较版本号，返回 1 表示 v1 > v2，-1 表示 v1 < v2，0 表示相等
+func (a *App) compareVersions(v1, v2 string) int {
+	// 移除 v 前缀
+	v1 = strings.TrimPrefix(v1, "v")
+	v2 = strings.TrimPrefix(v2, "v")
+	
+	// 分割版本号
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+	
+	// 补齐长度
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+	
+	for len(parts1) < maxLen {
+		parts1 = append(parts1, "0")
+	}
+	for len(parts2) < maxLen {
+		parts2 = append(parts2, "0")
+	}
+	
+	// 逐段比较
+	for i := 0; i < maxLen; i++ {
+		num1, err1 := strconv.Atoi(parts1[i])
+		num2, err2 := strconv.Atoi(parts2[i])
+		
+		if err1 != nil || err2 != nil {
+			// 如果不是数字，按字符串比较
+			if parts1[i] > parts2[i] {
+				return 1
+			} else if parts1[i] < parts2[i] {
+				return -1
+			}
+			continue
+		}
+		
+		if num1 > num2 {
+			return 1
+		} else if num1 < num2 {
+			return -1
+		}
+	}
+	
+	return 0
+}
+
 // GetKiroAuthStatus 获取 kiro-auth 状态
 func (a *App) GetKiroAuthStatus() *KiroAuthStatus {
 	status := &KiroAuthStatus{Installed: false}
@@ -92,8 +144,11 @@ func (a *App) GetKiroAuthStatus() *KiroAuthStatus {
 	if status.Installed {
 		latestVersion := a.getKiroAuthLatestVersion()
 		status.LatestVersion = latestVersion
-		if latestVersion != "" && latestVersion != status.Version {
-			status.UpdateAvailable = true
+		if latestVersion != "" && status.Version != "" {
+			// 只有当远程版本确实更新时才显示升级按钮
+			if a.compareVersions(latestVersion, status.Version) > 0 {
+				status.UpdateAvailable = true
+			}
 		}
 	}
 	
@@ -154,8 +209,11 @@ func (a *App) GetUIUXProMaxStatus() *UIUXProMaxStatus {
 	if status.Installed {
 		latestVersion := a.getUIUXProMaxLatestVersion()
 		status.LatestVersion = latestVersion
-		if latestVersion != "" && latestVersion != status.Version {
-			status.UpdateAvailable = true
+		if latestVersion != "" && status.Version != "" {
+			// 只有当远程版本确实更新时才显示升级按钮
+			if a.compareVersions(latestVersion, status.Version) > 0 {
+				status.UpdateAvailable = true
+			}
 		}
 	}
 	
@@ -538,16 +596,40 @@ func (a *App) UninstallAntigravityAuth() error {
 
 // UpdateAntigravityAuth 升级 Antigravity Auth 到我们的修复版本
 func (a *App) UpdateAntigravityAuth() error {
-	runtime.EventsEmit(a.ctx, "output-log", "正在升级 Antigravity Auth 到修复版本...")
+	runtime.EventsEmit(a.ctx, "output-log", "正在检查 Antigravity Auth 升级...")
 	
-	// 1. 先卸载旧版本
-	if err := a.UninstallAntigravityAuth(); err != nil {
-		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("⚠️ 卸载旧版本失败: %v", err))
+	// 1. 获取当前状态
+	status := a.GetAntigravityAuthStatus()
+	if !status.Installed {
+		return fmt.Errorf("插件未安装，无法升级")
 	}
 	
-	// 2. 安装新的修复版本
-	if err := a.InstallAntigravityAuth(); err != nil {
-		return fmt.Errorf("升级失败: %v", err)
+	if !status.UpdateAvailable {
+		runtime.EventsEmit(a.ctx, "output-log", "✅ 已是最新版本，无需升级")
+		return nil
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("升级版本: %s → %s", status.Version, status.LatestVersion))
+	
+	// 2. 使用 npm update 而不是重装
+	var cmd *exec.Cmd
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "npm", "update", "-g", "opencode-antigravity-auth-fixed")
+	} else {
+		cmd = exec.Command("npm", "update", "-g", "opencode-antigravity-auth-fixed")
+	}
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("❌ NPM 升级失败: %s", string(output)))
+		// 如果 npm update 失败，回退到重装方式
+		runtime.EventsEmit(a.ctx, "output-log", "尝试重装方式升级...")
+		if err := a.UninstallAntigravityAuth(); err != nil {
+			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("⚠️ 卸载旧版本失败: %v", err))
+		}
+		if err := a.InstallAntigravityAuth(); err != nil {
+			return fmt.Errorf("重装升级失败: %v", err)
+		}
 	}
 	
 	runtime.EventsEmit(a.ctx, "output-log", "✅ Antigravity Auth 升级完成！")
@@ -762,14 +844,27 @@ func (a *App) UninstallKiroAuth() error {
 
 // UpdateKiroAuth 升级 Kiro Auth
 func (a *App) UpdateKiroAuth() error {
-	runtime.EventsEmit(a.ctx, "output-log", "正在升级 Kiro Auth...")
+	runtime.EventsEmit(a.ctx, "output-log", "正在检查 Kiro Auth 升级...")
 	
-	// 1. 升级全局包
+	// 1. 获取当前状态
+	status := a.GetKiroAuthStatus()
+	if !status.Installed {
+		return fmt.Errorf("插件未安装，无法升级")
+	}
+	
+	if !status.UpdateAvailable {
+		runtime.EventsEmit(a.ctx, "output-log", "✅ 已是最新版本，无需升级")
+		return nil
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("升级版本: %s → %s", status.Version, status.LatestVersion))
+	
+	// 2. 使用 npm update 升级
 	var cmd *exec.Cmd
 	if goruntime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/c", "npm", "install", "-g", "@zhafron/opencode-kiro-auth@latest")
+		cmd = exec.Command("cmd", "/c", "npm", "update", "-g", "@zhafron/opencode-kiro-auth")
 	} else {
-		cmd = exec.Command("npm", "install", "-g", "@zhafron/opencode-kiro-auth@latest")
+		cmd = exec.Command("npm", "update", "-g", "@zhafron/opencode-kiro-auth")
 	}
 	
 	output, err := cmd.CombinedOutput()
@@ -858,14 +953,27 @@ func (a *App) InstallUIUXProMax() error {
 
 // UpdateUIUXProMax 升级 UI/UX Pro Max Skill
 func (a *App) UpdateUIUXProMax() error {
-	runtime.EventsEmit(a.ctx, "output-log", "正在升级 UI/UX Pro Max Skill...")
+	runtime.EventsEmit(a.ctx, "output-log", "正在检查 UI/UX Pro Max 升级...")
 	
-	// 1. 升级 CLI 到最新版本
+	// 1. 获取当前状态
+	status := a.GetUIUXProMaxStatus()
+	if !status.Installed {
+		return fmt.Errorf("插件未安装，无法升级")
+	}
+	
+	if !status.UpdateAvailable {
+		runtime.EventsEmit(a.ctx, "output-log", "✅ 已是最新版本，无需升级")
+		return nil
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("升级版本: %s → %s", status.Version, status.LatestVersion))
+	
+	// 2. 使用 npm update 升级 CLI
 	var cmd *exec.Cmd
 	if goruntime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/c", "npm", "install", "-g", "uipro-cli@latest")
+		cmd = exec.Command("cmd", "/c", "npm", "update", "-g", "uipro-cli")
 	} else {
-		cmd = exec.Command("npm", "install", "-g", "uipro-cli@latest")
+		cmd = exec.Command("npm", "update", "-g", "uipro-cli")
 	}
 	
 	output, err := cmd.CombinedOutput()
@@ -876,7 +984,7 @@ func (a *App) UpdateUIUXProMax() error {
 	
 	runtime.EventsEmit(a.ctx, "output-log", "✅ CLI 升级成功，正在更新配置...")
 	
-	// 2. 重新初始化配置（可能有新的配置选项）
+	// 3. 检查是否需要更新配置（可选）
 	workDir := a.openCode.GetWorkDir()
 	if workDir != "" {
 		if goruntime.GOOS == "windows" {
