@@ -22,6 +22,10 @@ const antigravityModels = computed(() =>
   props.models.filter(m => m.category === 'antigravity' || m.id?.includes('antigravity'))
 )
 
+const kiroModels = computed(() => 
+  props.models.filter(m => m.category === 'kiro' || m.provider === 'kiro')
+)
+
 const geminiCliModels = computed(() => 
   props.models.filter(m => m.category === 'gemini-cli')
 )
@@ -58,9 +62,22 @@ const select = (id) => {
     <div v-if="show" class="dropdown" @click.stop>
       <div class="header">{{ t('model.select') }}</div>
       
+      <!-- Kiro 模型 -->
+      <div v-if="kiroModels.length" class="group">
+        <div class="group-label">🚀 Kiro (AWS Builder ID)</div>
+        <div 
+          v-for="m in kiroModels" 
+          :key="m.id"
+          :class="['option', { active: modelValue === m.id }]"
+          @click="select(m.id)"
+        >
+          {{ m.name }}
+        </div>
+      </div>
+      
       <!-- Antigravity 模型 -->
       <div v-if="antigravityModels.length" class="group">
-        <div class="group-label">🚀 Antigravity</div>
+        <div class="group-label">🌐 Antigravity (Google OAuth)</div>
         <div 
           v-for="m in antigravityModels" 
           :key="m.id"

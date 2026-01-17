@@ -45,6 +45,18 @@ EventsOn('antigravity-models-changed', async (installed) => {
   }
 })
 
+// 监听 Kiro 模型变化事件
+EventsOn('kiro-models-changed', async (installed) => {
+  if (installed) {
+    log('Kiro Auth 已安装，重新加载模型列表...')
+    await fetchModels()
+  } else {
+    log('Kiro Auth 已卸载，清空 Kiro 模型列表')
+    // 从动态模型中移除 Kiro 模型
+    dynamicModels.value = dynamicModels.value.filter(m => !m.id?.includes('kiro/'))
+  }
+})
+
 const connected = ref(false)
 const connecting = ref(false)
 const sessions = ref([])
@@ -120,18 +132,29 @@ async function fetchModels() {
               category: 'gemini-cli'
             })
           }
+          // Kiro 模型 (kiro provider)
+          if (providerId === 'kiro') {
+            fetchedModels.push({
+              id: `${providerId}/${modelId}`,
+              name: modelInfo.name || modelId,
+              free: true,
+              builtin: false,
+              provider: providerId,
+              category: 'kiro'
+            })
+          }
         }
       }
     }
     
     if (fetchedModels.length > 0) {
       dynamicModels.value = fetchedModels
-      log(`从 API 加载了 ${fetchedModels.length} 个 Antigravity 模型`)
+      log(`从 API 加载了 ${fetchedModels.length} 个动态模型 (Antigravity + Kiro)`)
       return
     }
     
     // 2. API 没有返回模型，从配置文件读取
-    log('API 未返回 Antigravity 模型，从配置文件读取...')
+    log('API 未返回动态模型，从配置文件读取...')
     const configModels = await GetConfigModels()
     
     if (configModels && configModels.length > 0) {
