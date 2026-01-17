@@ -186,7 +186,7 @@ export default {
       authTipTitle: '認証のヒント',
       authTipText: 'インストール後、「認証」ボタンをクリックしてメニューから Google を選択し、認証を完了してください。',
       kiroAuthTipTitle: 'Kiro 認証のヒント',
-      kiroAuthTipText: 'インストール後、「認証」ボタンをクリックし、ターミナルで「Other」を選択してから「kiro」と入力し、Enter キーを押して AWS Builder ID 認証を完了してください。オプションが表示されない場合は、まず OpenCode を再起動してください。',
+      kiroAuthTipText: 'インストール後、「認証」をクリックし、「Other」を選択してから「kiro」と入力し Enter を押します。認証に失敗した場合：1) AWS Builder ID アカウントがあることを確認、2) ネットワーク接続を確認、3) ブラウザで認証 URL を手動で開く、4) OpenCode を再起動して再試行。',
       authenticate: '認証',
       restartOpenCode: 'OpenCode を再起動',
       restarting: '再起動中...',

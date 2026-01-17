@@ -188,7 +188,7 @@ export default {
       authTipTitle: 'Authentication Tip',
       authTipText: 'After installation, click "Authenticate" button and select Google from the menu to complete authentication.',
       kiroAuthTipTitle: 'Kiro Authentication Tip',
-      kiroAuthTipText: 'After installation, click "Authenticate" button, select "Other" in terminal, then type "kiro" and press Enter to complete AWS Builder ID authentication. If you don\'t see options, please restart OpenCode first.',
+      kiroAuthTipText: 'After installation, click "Authenticate", select "Other", then type "kiro" and press Enter. If authentication fails: 1) Ensure you have AWS Builder ID account, 2) Check network connection, 3) Manually open the auth URL in browser, 4) Restart OpenCode and retry.',
       authenticate: 'Authenticate',
       restartOpenCode: 'Restart OpenCode',
       restarting: 'Restarting...',

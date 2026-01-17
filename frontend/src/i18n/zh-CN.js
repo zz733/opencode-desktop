@@ -188,7 +188,7 @@ export default {
       authTipTitle: '认证提示',
       authTipText: '安装后点击"认证"按钮，在终端菜单中选择 Google 完成账号认证。',
       kiroAuthTipTitle: 'Kiro 认证提示',
-      kiroAuthTipText: '安装后点击"认证"按钮，在终端中选择 "Other"，然后输入 "kiro" 并按回车完成 AWS Builder ID 认证。如果没有看到选项，请先重启 OpenCode。',
+      kiroAuthTipText: '安装后点击"认证"按钮，在终端中选择 "Other"，然后输入 "kiro" 并按回车。如果认证失败，请：1) 确保有 AWS Builder ID 账号，2) 检查网络连接，3) 手动打开浏览器访问显示的认证链接，4) 重启 OpenCode 后重试。',
       authenticate: '认证',
       restartOpenCode: '重启 OpenCode',
       restarting: '正在重启...',
