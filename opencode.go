@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -171,10 +172,22 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 	m.mu.Lock()
 	for d, inst := range m.instances {
 		if d != dir && inst.running {
-			// 停止其他目录的实例
+			// 优雅停止其他目录的实例
 			wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("停止目录 %s 的实例", d))
 			if inst.cmd != nil && inst.cmd.Process != nil {
-				inst.cmd.Process.Kill()
+				// 优雅关闭
+				if goruntime.GOOS == "windows" {
+					inst.cmd.Process.Kill()
+				} else {
+					inst.cmd.Process.Signal(os.Interrupt)
+					// 等待一小段时间让进程优雅退出
+					go func() {
+						time.Sleep(2 * time.Second)
+						if inst.cmd.ProcessState == nil {
+							inst.cmd.Process.Kill()
+						}
+					}()
+				}
 			}
 			delete(m.instances, d)
 		}
@@ -187,10 +200,40 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 	}
 	m.mu.Unlock()
 
-	// 先杀掉可能占用端口的进程
-	if runtime.GOOS != "windows" {
-		exec.Command("bash", "-c", fmt.Sprintf("lsof -ti:%d | xargs kill -9 2>/dev/null", port)).Run()
-		time.Sleep(500 * time.Millisecond)
+	// 检查端口是否被占用，如果是 OpenCode 进程则优雅关闭
+	if goruntime.GOOS != "windows" {
+		// 检查是否有进程占用端口
+		checkCmd := exec.Command("bash", "-c", fmt.Sprintf("lsof -ti:%d", port))
+		if output, err := checkCmd.Output(); err == nil && len(output) > 0 {
+			pids := strings.TrimSpace(string(output))
+			if pids != "" {
+				wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("端口 %d 被占用，检查进程...", port))
+				
+				// 检查是否是 OpenCode 进程
+				for _, pid := range strings.Split(pids, "\n") {
+					if pid = strings.TrimSpace(pid); pid != "" {
+						// 检查进程名称
+						psCmd := exec.Command("ps", "-p", pid, "-o", "comm=")
+						if psOutput, psErr := psCmd.Output(); psErr == nil {
+							processName := strings.TrimSpace(string(psOutput))
+							if strings.Contains(processName, "opencode") {
+								wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("发现 OpenCode 进程 (PID %s)，优雅关闭...", pid))
+								// 先尝试 SIGTERM
+								exec.Command("kill", "-TERM", pid).Run()
+								time.Sleep(2 * time.Second)
+								
+								// 检查进程是否还在运行
+								if checkCmd := exec.Command("kill", "-0", pid); checkCmd.Run() == nil {
+									wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("进程 %s 未响应 SIGTERM，强制终止", pid))
+									exec.Command("kill", "-KILL", pid).Run()
+								}
+							}
+						}
+					}
+				}
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
 	}
 
 	installed, path := m.CheckInstalled()
@@ -278,8 +321,33 @@ func (m *OpenCodeManager) StopForDir(dir string) {
 	defer m.mu.Unlock()
 	if inst, ok := m.instances[dir]; ok {
 		if inst.cmd != nil && inst.cmd.Process != nil {
-			inst.cmd.Process.Kill()
-			inst.cmd.Wait() // 等待进程退出
+			// 优雅关闭：先发送 SIGTERM，等待一段时间后再强制杀死
+			wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("正在优雅关闭 OpenCode (PID %d)...", inst.cmd.Process.Pid))
+			
+			// 发送 SIGTERM 信号
+			if goruntime.GOOS == "windows" {
+				// Windows 上直接终止进程
+				inst.cmd.Process.Kill()
+			} else {
+				// Unix 系统上先尝试优雅关闭
+				inst.cmd.Process.Signal(os.Interrupt) // SIGINT
+			}
+			
+			// 等待进程优雅退出，最多等待 5 秒
+			done := make(chan error, 1)
+			go func() {
+				done <- inst.cmd.Wait()
+			}()
+			
+			select {
+			case <-done:
+				wailsRuntime.EventsEmit(m.app.ctx, "output-log", "OpenCode 已优雅关闭")
+			case <-time.After(5 * time.Second):
+				// 超时后强制杀死
+				wailsRuntime.EventsEmit(m.app.ctx, "output-log", "优雅关闭超时，强制终止进程")
+				inst.cmd.Process.Kill()
+				inst.cmd.Wait()
+			}
 		}
 		inst.running = false
 		delete(m.instances, dir)

@@ -575,11 +575,11 @@ func (a *App) RestartOpenCode() error {
 	// 发送连接断开事件
 	runtime.EventsEmit(a.ctx, "opencode-status", "restarting")
 
-	// 先停止当前目录的 OpenCode 实例
+	// 优雅停止当前目录的 OpenCode 实例
 	a.openCode.Stop()
 
-	// 等待进程完全退出
-	time.Sleep(2 * time.Second)
+	// 等待进程完全退出和端口释放
+	time.Sleep(3 * time.Second)
 
 	// 重新启动
 	if err := a.openCode.Start(); err != nil {

@@ -266,9 +266,13 @@ async function restartOpenCode() {
   pluginLoadingName.value = 'restart'
   try {
     await RestartOpenCode()
+    // 重启成功后，等待一段时间让用户看到状态变化
+    setTimeout(() => {
+      pluginLoading.value = false
+      pluginLoadingName.value = ''
+    }, 2000)
   } catch (e) {
     console.error('重启失败:', e)
-  } finally {
     pluginLoading.value = false
     pluginLoadingName.value = ''
   }
