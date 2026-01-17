@@ -142,6 +142,10 @@ export function GetTerminals() {
   return window['go']['main']['App']['GetTerminals']();
 }
 
+export function GetUIUXProMaxStatus() {
+  return window['go']['main']['App']['GetUIUXProMaxStatus']();
+}
+
 export function GetWorkDir() {
   return window['go']['main']['App']['GetWorkDir']();
 }
@@ -180,6 +184,10 @@ export function InstallOhMyOpenCode() {
 
 export function InstallOpenCode() {
   return window['go']['main']['App']['InstallOpenCode']();
+}
+
+export function InstallUIUXProMax() {
+  return window['go']['main']['App']['InstallUIUXProMax']();
 }
 
 export function ListDir(arg1) {
@@ -292,6 +300,10 @@ export function UninstallKiroAuth() {
 
 export function UninstallOhMyOpenCode() {
   return window['go']['main']['App']['UninstallOhMyOpenCode']();
+}
+
+export function UninstallUIUXProMax() {
+  return window['go']['main']['App']['UninstallUIUXProMax']();
 }
 
 export function UnwatchFile(arg1) {

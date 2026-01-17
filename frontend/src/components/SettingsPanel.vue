@@ -10,6 +10,7 @@ import {
   GetOhMyOpenCodeStatus, InstallOhMyOpenCode, UninstallOhMyOpenCode, FixOhMyOpenCode,
   GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth,
   GetKiroAuthStatus, InstallKiroAuth, UninstallKiroAuth,
+  GetUIUXProMaxStatus, InstallUIUXProMax, UninstallUIUXProMax,
   RestartOpenCode
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
@@ -133,6 +134,7 @@ const allModels = computed(() => [...defaultModels, ...customModels.value])
 const ohMyOpenCodeStatus = ref({ installed: false, version: '' })
 const antigravityAuthStatus = ref({ installed: false, version: '' })
 const kiroAuthStatus = ref({ installed: false, version: '' })
+const uiuxProMaxStatus = ref({ installed: false, version: '' })
 const pluginLoading = ref(false)
 const pluginLoadingName = ref('')
 
@@ -141,6 +143,7 @@ async function loadPluginStatus() {
     ohMyOpenCodeStatus.value = await GetOhMyOpenCodeStatus() || { installed: false, version: '' }
     antigravityAuthStatus.value = await GetAntigravityAuthStatus() || { installed: false, version: '' }
     kiroAuthStatus.value = await GetKiroAuthStatus() || { installed: false, version: '' }
+    uiuxProMaxStatus.value = await GetUIUXProMaxStatus() || { installed: false, version: '' }
   } catch (e) {
     console.error('获取插件状态失败:', e)
   }
@@ -265,6 +268,34 @@ async function uninstallKiroAuth() {
 function runKiroAuth() {
   // 直接执行认证命令，让用户在终端中手动选择
   emit('runCommand', 'opencode auth login')
+}
+
+async function installUIUXProMax() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'uiux-pro-max'
+  try {
+    await InstallUIUXProMax()
+    await loadPluginStatus()
+  } catch (e) {
+    console.error('安装失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+async function uninstallUIUXProMax() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'uiux-pro-max'
+  try {
+    await UninstallUIUXProMax()
+    await loadPluginStatus()
+  } catch (e) {
+    console.error('卸载失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
 }
 
 async function restartOpenCode() {
@@ -819,6 +850,53 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
             <div class="tip-content">
               <div class="tip-title">{{ t('settings.plugins.kiroAuthTipTitle') }}</div>
               <div class="tip-text">{{ t('settings.plugins.kiroAuthTipText') }}</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- UI/UX Pro Max Skill -->
+        <div class="plugin-card">
+          <div class="plugin-header">
+            <div class="plugin-icon">🎨</div>
+            <div class="plugin-info">
+              <div class="plugin-name">UI/UX Pro Max Skill</div>
+              <div class="plugin-desc">{{ t('settings.plugins.uiuxDesc') }}</div>
+            </div>
+          </div>
+          <div class="plugin-features">
+            <div class="feature-item">🎨 {{ t('settings.plugins.uiuxStyles') }}</div>
+            <div class="feature-item">🎯 {{ t('settings.plugins.uiuxSystem') }}</div>
+            <div class="feature-item">📱 {{ t('settings.plugins.uiuxPlatforms') }}</div>
+            <div class="feature-item">🏭 {{ t('settings.plugins.uiuxRules') }}</div>
+          </div>
+          <div class="plugin-footer">
+            <div v-if="uiuxProMaxStatus.installed" class="plugin-status installed">
+              <span class="status-badge">✓ {{ t('settings.plugins.installed') }}</span>
+              <span v-if="uiuxProMaxStatus.version" class="version">v{{ uiuxProMaxStatus.version }}</span>
+            </div>
+            <div v-else class="plugin-status">
+              <span class="status-badge not-installed">{{ t('settings.plugins.notInstalled') }}</span>
+            </div>
+            <div class="plugin-actions">
+              <button v-if="!uiuxProMaxStatus.installed" class="btn-install" @click="installUIUXProMax" :disabled="pluginLoading">
+                {{ pluginLoadingName === 'uiux-pro-max' ? t('common.loading') + '...' : t('settings.mcp.install') }}
+              </button>
+              <template v-else>
+                <button class="btn-uninstall" @click="uninstallUIUXProMax" :disabled="pluginLoading">
+                  {{ pluginLoadingName === 'uiux-pro-max' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
+                </button>
+              </template>
+              <a class="btn-docs" href="https://github.com/nextlevelbuilder/ui-ux-pro-max-skill" target="_blank" @click.prevent="openDocs('https://github.com/nextlevelbuilder/ui-ux-pro-max-skill')">
+                {{ t('settings.mcp.viewDocs') }}
+              </a>
+            </div>
+          </div>
+          <!-- UI/UX Pro Max 使用提示 -->
+          <div class="plugin-tip-inline">
+            <div class="tip-icon">💡</div>
+            <div class="tip-content">
+              <div class="tip-title">{{ t('settings.plugins.uiuxTipTitle') }}</div>
+              <div class="tip-text">{{ t('settings.plugins.uiuxTipText') }}</div>
             </div>
           </div>
         </div>

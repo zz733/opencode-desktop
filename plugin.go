@@ -31,6 +31,12 @@ type KiroAuthStatus struct {
 	Version   string `json:"version"`
 }
 
+// UIUXProMaxStatus ui-ux-pro-max 状态
+type UIUXProMaxStatus struct {
+	Installed bool   `json:"installed"`
+	Version   string `json:"version"`
+}
+
 // GetOhMyOpenCodeStatus 获取 oh-my-opencode 状态
 func (a *App) GetOhMyOpenCodeStatus() *OhMyOpenCodeStatus {
 	status := &OhMyOpenCodeStatus{Installed: false}
@@ -49,6 +55,44 @@ func (a *App) GetAntigravityAuthStatus() *AntigravityAuthStatus {
 func (a *App) GetKiroAuthStatus() *KiroAuthStatus {
 	status := &KiroAuthStatus{Installed: false}
 	status.Installed, status.Version = a.checkPluginInstalled("opencode-kiro-auth")
+	return status
+}
+
+// GetUIUXProMaxStatus 获取 ui-ux-pro-max 状态
+func (a *App) GetUIUXProMaxStatus() *UIUXProMaxStatus {
+	status := &UIUXProMaxStatus{Installed: false}
+	
+	// 检查 CLI 是否安装
+	var cmd *exec.Cmd
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "uipro", "--version")
+	} else {
+		cmd = exec.Command("uipro", "--version")
+	}
+	
+	if output, err := cmd.Output(); err == nil {
+		status.Installed = true
+		// 提取版本号
+		versionStr := strings.TrimSpace(string(output))
+		if strings.Contains(versionStr, "uipro-cli") {
+			parts := strings.Fields(versionStr)
+			if len(parts) >= 2 {
+				status.Version = parts[1]
+			}
+		}
+	}
+	
+	// 同时检查是否有 steering 文件
+	if status.Installed {
+		workDir := a.openCode.GetWorkDir()
+		if workDir != "" {
+			steeringFile := filepath.Join(workDir, ".kiro", "steering", "ui-ux-pro-max.md")
+			if _, err := os.Stat(steeringFile); err != nil {
+				status.Installed = false // CLI 存在但未初始化
+			}
+		}
+	}
+	
 	return status
 }
 
@@ -625,6 +669,95 @@ func (a *App) AuthenticateKiro() error {
 	runtime.EventsEmit(a.ctx, "output-log", "5. 认证完成后重启应用以刷新模型列表")
 	runtime.EventsEmit(a.ctx, "output-log", "")
 	runtime.EventsEmit(a.ctx, "output-log", "注意：如果浏览器没有自动打开，请手动访问显示的 URL")
+	
+	return nil
+}
+
+// InstallUIUXProMax 安装 UI/UX Pro Max Skill
+func (a *App) InstallUIUXProMax() error {
+	runtime.EventsEmit(a.ctx, "output-log", "正在安装 UI/UX Pro Max Skill...")
+	
+	// 1. 检查 Node.js 和 npm 是否可用
+	var cmd *exec.Cmd
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "npm", "--version")
+	} else {
+		cmd = exec.Command("npm", "--version")
+	}
+	
+	if _, err := cmd.Output(); err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", "❌ 未找到 npm，请先安装 Node.js")
+		return fmt.Errorf("npm 未安装")
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", "✅ 检测到 npm，开始安装 CLI...")
+	
+	// 2. 安装 uipro-cli
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "npm", "install", "-g", "uipro-cli")
+	} else {
+		cmd = exec.Command("npm", "install", "-g", "uipro-cli")
+	}
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("❌ CLI 安装失败: %s", string(output)))
+		return fmt.Errorf("CLI 安装失败: %v", err)
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", "✅ CLI 安装成功，正在初始化配置...")
+	
+	// 3. 初始化 Kiro 配置
+	if goruntime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "uipro", "init", "--ai", "kiro")
+	} else {
+		cmd = exec.Command("uipro", "init", "--ai", "kiro")
+	}
+	workDir := a.openCode.GetWorkDir()
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+	
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("❌ 配置初始化失败: %s", string(output)))
+		return fmt.Errorf("配置初始化失败: %v", err)
+	}
+	
+	runtime.EventsEmit(a.ctx, "output-log", "✅ UI/UX Pro Max Skill 安装成功！")
+	runtime.EventsEmit(a.ctx, "output-log", "现在您可以在聊天中使用 UI/UX 设计功能了")
+	runtime.EventsEmit(a.ctx, "output-log", "例如：'帮我设计一个现代化的登录页面'")
+	
+	return nil
+}
+
+// UninstallUIUXProMax 卸载 UI/UX Pro Max Skill
+func (a *App) UninstallUIUXProMax() error {
+	runtime.EventsEmit(a.ctx, "output-log", "正在卸载 UI/UX Pro Max Skill...")
+	
+	workDir := a.openCode.GetWorkDir()
+	if workDir == "" {
+		runtime.EventsEmit(a.ctx, "output-log", "⚠️ 无法获取工作目录")
+		return fmt.Errorf("无法获取工作目录")
+	}
+	
+	// 1. 删除本地 steering 文件
+	steeringDir := filepath.Join(workDir, ".kiro", "steering")
+	steeringFile := filepath.Join(steeringDir, "ui-ux-pro-max.md")
+	if err := os.Remove(steeringFile); err != nil && !os.IsNotExist(err) {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("⚠️ 删除 steering 文件失败: %v", err))
+	}
+	
+	// 2. 删除共享资源目录
+	sharedDir := filepath.Join(workDir, ".shared", "ui-ux-pro-max")
+	if err := os.RemoveAll(sharedDir); err != nil && !os.IsNotExist(err) {
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("⚠️ 删除共享资源失败: %v", err))
+	}
+	
+	// 3. 可选：卸载全局 CLI（询问用户）
+	runtime.EventsEmit(a.ctx, "output-log", "✅ 本地配置已清理")
+	runtime.EventsEmit(a.ctx, "output-log", "注意：全局 CLI 工具仍然保留，如需完全卸载请运行:")
+	runtime.EventsEmit(a.ctx, "output-log", "npm uninstall -g uipro-cli")
 	
 	return nil
 }

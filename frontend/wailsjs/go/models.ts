@@ -389,6 +389,20 @@ export namespace main {
 	        this.title = source["title"];
 	    }
 	}
+	export class UIUXProMaxStatus {
+	    installed: boolean;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UIUXProMaxStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.version = source["version"];
+	    }
+	}
 
 }
 

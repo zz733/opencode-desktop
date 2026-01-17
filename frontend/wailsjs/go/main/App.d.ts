@@ -72,6 +72,8 @@ export function GetSessions():Promise<Array<main.Session>>;
 
 export function GetTerminals():Promise<Array<number>>;
 
+export function GetUIUXProMaxStatus():Promise<main.UIUXProMaxStatus>;
+
 export function GetWorkDir():Promise<string>;
 
 export function GitAdd(arg1:string,arg2:string):Promise<void>;
@@ -91,6 +93,8 @@ export function InstallKiroAuth():Promise<void>;
 export function InstallOhMyOpenCode():Promise<void>;
 
 export function InstallOpenCode():Promise<void>;
+
+export function InstallUIUXProMax():Promise<void>;
 
 export function ListDir(arg1:string):Promise<Array<main.FileInfo>>;
 
@@ -147,6 +151,8 @@ export function UninstallAntigravityAuth():Promise<void>;
 export function UninstallKiroAuth():Promise<void>;
 
 export function UninstallOhMyOpenCode():Promise<void>;
+
+export function UninstallUIUXProMax():Promise<void>;
 
 export function UnwatchFile(arg1:string):Promise<void>;
 
