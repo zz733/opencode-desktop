@@ -198,10 +198,6 @@ export function OpenInFinder(arg1) {
   return window['go']['main']['App']['OpenInFinder'](arg1);
 }
 
-export function OpenKiroAuthManual() {
-  return window['go']['main']['App']['OpenKiroAuthManual']();
-}
-
 export function OpenMCPConfigFile() {
   return window['go']['main']['App']['OpenMCPConfigFile']();
 }

@@ -190,6 +190,7 @@ export default {
       kiroAuthTipTitle: 'Kiro Authentication Tip',
       kiroAuthTipText: 'After installation, click "Authenticate", select "Other", then type "kiro" and press Enter. If authentication fails: 1) Ensure you have AWS Builder ID account, 2) Check network connection, 3) Manually open the auth URL in browser, 4) Restart OpenCode and retry.',
       authenticate: 'Authenticate',
+      authenticating: 'Authenticating...',
       manualAuth: 'Manual Auth',
       troubleshoot: 'Troubleshoot',
       restartOpenCode: 'Restart OpenCode',

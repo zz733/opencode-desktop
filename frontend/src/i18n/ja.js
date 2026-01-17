@@ -188,6 +188,7 @@ export default {
       kiroAuthTipTitle: 'Kiro 認証のヒント',
       kiroAuthTipText: 'インストール後、「認証」をクリックし、「Other」を選択してから「kiro」と入力し Enter を押します。認証に失敗した場合：1) AWS Builder ID アカウントがあることを確認、2) ネットワーク接続を確認、3) ブラウザで認証 URL を手動で開く、4) OpenCode を再起動して再試行。',
       authenticate: '認証',
+      authenticating: '認証中...',
       manualAuth: '手動認証',
       troubleshoot: 'トラブルシューティング',
       restartOpenCode: 'OpenCode を再起動',

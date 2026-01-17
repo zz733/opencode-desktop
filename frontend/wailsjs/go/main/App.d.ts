@@ -100,8 +100,6 @@ export function OpenFolder():Promise<string>;
 
 export function OpenInFinder(arg1:string):Promise<void>;
 
-export function OpenKiroAuthManual():Promise<void>;
-
 export function OpenMCPConfigFile():Promise<string>;
 
 export function ReadFileContent(arg1:string):Promise<string>;

@@ -10,7 +10,6 @@ import {
   GetOhMyOpenCodeStatus, InstallOhMyOpenCode, UninstallOhMyOpenCode, FixOhMyOpenCode,
   GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth,
   GetKiroAuthStatus, InstallKiroAuth, UninstallKiroAuth,
-  AuthenticateKiro, OpenKiroAuthManual,
   RestartOpenCode
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
@@ -264,17 +263,8 @@ async function uninstallKiroAuth() {
 }
 
 function runKiroAuth() {
-  // 使用新的认证方法
-  AuthenticateKiro()
-}
-
-async function runKiroAuthManual() {
-  // 手动认证方式：直接打开 AWS Builder ID 页面
-  try {
-    await OpenKiroAuthManual()
-  } catch (e) {
-    console.error('打开手动认证页面失败:', e)
-  }
+  // 直接执行认证命令，让用户在终端中手动选择
+  emit('runCommand', 'opencode auth login')
 }
 
 async function restartOpenCode() {
@@ -811,11 +801,8 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
                 {{ pluginLoadingName === 'kiro-auth' ? t('common.loading') + '...' : t('settings.mcp.install') }}
               </button>
               <template v-else>
-                <button class="btn-auth" @click="runKiroAuth">
-                  {{ t('settings.plugins.authenticate') }}
-                </button>
-                <button class="btn-auth-manual" @click="runKiroAuthManual" :title="t('settings.plugins.manualAuth')">
-                  {{ t('settings.plugins.manualAuth') }}
+                <button class="btn-auth" @click="runKiroAuth" :disabled="pluginLoading">
+                  {{ pluginLoadingName === 'kiro-auth-login' ? t('settings.plugins.authenticating') : t('settings.plugins.authenticate') }}
                 </button>
                 <button class="btn-uninstall" @click="uninstallKiroAuth" :disabled="pluginLoading">
                   {{ pluginLoadingName === 'kiro-auth' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}

@@ -614,50 +614,19 @@ func (a *App) UninstallKiroAuth() error {
 	runtime.EventsEmit(a.ctx, "output-log", "opencode-kiro-auth 已卸载")
 	return nil
 }
-// AuthenticateKiro 认证 Kiro Auth
+// AuthenticateKiro 认证 Kiro Auth - 简化版本，只提供指导
 func (a *App) AuthenticateKiro() error {
-	runtime.EventsEmit(a.ctx, "output-log", "开始 Kiro Auth 认证...")
+	runtime.EventsEmit(a.ctx, "output-log", "请在终端中运行以下命令进行 Kiro Auth 认证：")
 	runtime.EventsEmit(a.ctx, "output-log", "")
-	runtime.EventsEmit(a.ctx, "output-log", "=== 重要提示 ===")
-	runtime.EventsEmit(a.ctx, "output-log", "浏览器可能不会自动打开，请手动完成以下步骤：")
+	runtime.EventsEmit(a.ctx, "output-log", "1. 运行命令: opencode auth login")
+	runtime.EventsEmit(a.ctx, "output-log", "2. 选择 'Other' 选项")
+	runtime.EventsEmit(a.ctx, "output-log", "3. 输入 'kiro' 作为 provider")
+	runtime.EventsEmit(a.ctx, "output-log", "4. 在浏览器中完成 AWS Builder ID 认证")
+	runtime.EventsEmit(a.ctx, "output-log", "5. 认证完成后重启应用以刷新模型列表")
 	runtime.EventsEmit(a.ctx, "output-log", "")
-	runtime.EventsEmit(a.ctx, "output-log", "步骤 1: 在终端中运行认证命令")
-	runtime.EventsEmit(a.ctx, "output-log", "步骤 2: 选择 'Other' 选项")
-	runtime.EventsEmit(a.ctx, "output-log", "步骤 3: 输入 'kiro' 并按回车")
-	runtime.EventsEmit(a.ctx, "output-log", "步骤 4: 如果浏览器没有自动打开，请手动访问显示的 URL")
-	runtime.EventsEmit(a.ctx, "output-log", "步骤 5: 在 AWS Builder ID 页面完成认证")
-	runtime.EventsEmit(a.ctx, "output-log", "")
-	
-	// 检查是否有终端可用，如果没有则创建一个
-	runtime.EventsEmit(a.ctx, "create-terminal-if-needed")
-	
-	// 等待一秒让终端创建完成
-	time.Sleep(1 * time.Second)
-	
-	// 执行认证命令
-	runtime.EventsEmit(a.ctx, "execute-command", "opencode auth login")
+	runtime.EventsEmit(a.ctx, "output-log", "注意：如果浏览器没有自动打开，请手动访问显示的 URL")
 	
 	return nil
-}
-
-// OpenKiroAuthManual 打开手动认证页面
-func (a *App) OpenKiroAuthManual() error {
-	// 打开 AWS Builder ID 注册/登录页面
-	authURL := "https://profile.aws.amazon.com/"
-	runtime.EventsEmit(a.ctx, "output-log", "正在打开 AWS Builder ID 认证页面...")
-	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("如果浏览器没有自动打开，请手动访问: %s", authURL))
-	
-	var cmd *exec.Cmd
-	switch goruntime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", authURL)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", authURL)
-	default:
-		cmd = exec.Command("xdg-open", authURL)
-	}
-	
-	return cmd.Start()
 }
 
 func (a *App) RestartOpenCode() error {
