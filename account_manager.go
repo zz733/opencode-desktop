@@ -312,11 +312,19 @@ func (am *AccountManager) SwitchAccount(id string) error {
 	newAccount.LastUsed = time.Now()
 	am.activeID = id
 
-	// Apply to system (write token and optionally update machine ID)
-	// We do this BEFORE saving to ensure any generated machine IDs are saved
-	if err := am.system.ApplyAccountToSystem(newAccount, am.settings.AutoChangeMachineID); err != nil {
-		// If token write fails, the switch is effectively broken for the user.
-		return fmt.Errorf("failed to apply account to system: %w", err)
+	// Apply to OpenCode (write to kiro-accounts.json)
+	openCodeSystem := NewOpenCodeKiroSystem()
+	if err := openCodeSystem.ApplyAccountToOpenCode(newAccount); err != nil {
+		return fmt.Errorf("failed to apply account to OpenCode: %w", err)
+	}
+
+	// If AutoChangeMachineID is enabled, also update Kiro IDE machine IDs
+	// (This is for users who also use Kiro IDE)
+	if am.settings.AutoChangeMachineID {
+		if err := am.system.ApplyAccountToSystem(newAccount, true); err != nil {
+			// Log warning but don't fail the switch
+			fmt.Printf("Warning: failed to update Kiro IDE machine ID: %v\n", err)
+		}
 	}
 
 	// Save to storage
