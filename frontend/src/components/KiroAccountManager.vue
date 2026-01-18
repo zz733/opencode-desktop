@@ -251,11 +251,10 @@ function handleQuotaUpdated(accountId, quota) {
 
 // 账号操作
 async function switchAccount(account) {
-  if (account.isActive) return
-  
   switchingId.value = account.id
   try {
     await SwitchKiroAccount(account.id)
+    await loadAccounts()
   } catch (error) {
     console.error('Failed to switch account:', error)
     alert('切换账号失败: ' + error.message)
@@ -710,7 +709,7 @@ function checkDuplicateAccount(email) {
 
           <!-- 操作按钮 -->
           <div class="card-actions">
-            <button class="btn-action btn-switch" @click.stop="switchAccount(account)" :disabled="switchingId === account.id || account.isActive" :title="account.isActive ? '当前账号' : '切换账号'">
+            <button class="btn-action btn-switch" @click.stop="switchAccount(account)" :disabled="switchingId === account.id" :title="account.isActive ? '重新应用到系统' : '切换账号'">
               <svg v-if="switchingId === account.id" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 11-6.219-8.56"/>
               </svg>
