@@ -78,6 +78,7 @@ const importPassword = ref('')
 const deleteTarget = ref(null)
 const editingAccount = ref(null)
 const switchingId = ref(null)
+const refreshingId = ref(null) // 正在刷新的账号ID
 
 // 计算属性
 const filteredAccounts = computed(() => {
@@ -264,12 +265,15 @@ async function switchAccount(account) {
 }
 
 async function refreshAccountQuota(accountId) {
+  refreshingId.value = accountId
   try {
     await RefreshKiroQuota(accountId)
     await loadAccounts()
   } catch (error) {
     console.error('Failed to refresh quota:', error)
     alert('刷新配额失败: ' + error.message)
+  } finally {
+    refreshingId.value = null
   }
 }
 
@@ -717,8 +721,11 @@ function checkDuplicateAccount(email) {
                 <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
               </svg>
             </button>
-            <button class="btn-action btn-refresh" @click.stop="refreshAccountQuota(account.id)" title="刷新配额">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="btn-action btn-refresh" @click.stop="refreshAccountQuota(account.id)" :disabled="refreshingId === account.id" title="刷新配额">
+              <svg v-if="refreshingId === account.id" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 11-6.219-8.56"/>
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
               </svg>
             </button>
