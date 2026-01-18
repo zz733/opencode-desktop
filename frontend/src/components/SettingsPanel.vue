@@ -1,6 +1,7 @@
 <script setup>
-import { ref, onMounted, computed, onUnmounted } from 'vue'
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import KiroAccountManager from './KiroAccountManager.vue'
 import { languages, setLocale } from '../i18n'
 import { useTheme } from '../composables/useTheme'
 import { 
@@ -18,7 +19,7 @@ import { EventsEmit } from '../../wailsjs/runtime/runtime'
 
 const { t, locale } = useI18n()
 const { currentTheme, themes, setTheme } = useTheme()
-const emit = defineEmits(['close', 'open-file', 'runCommand'])
+const emit = defineEmits(['close', 'open-file', 'runCommand', 'kiro-settings-active'])
 
 const activeCategory = ref('theme')
 const mcpConfig = ref({ mcp: {} })
@@ -554,6 +555,11 @@ onMounted(() => {
   statusInterval = setInterval(refreshStatus, 5000)
 })
 onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
+
+// 监听 activeCategory 变化，通知父组件是否显示 Kiro 设置
+watch(activeCategory, (newValue) => {
+  emit('kiro-settings-active', newValue === 'kiro')
+})
 </script>
 
 <template>
@@ -586,6 +592,13 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
             <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
           </svg>
           <span>MCP</span>
+        </div>
+        <div :class="['nav-item', { active: activeCategory === 'kiro' }]" @click="activeCategory = 'kiro'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          <span>Kiro 账号</span>
         </div>
         <div :class="['nav-item', { active: activeCategory === 'plugins' }]" @click="activeCategory = 'plugins'">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -745,6 +758,11 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
             </div>
           </template>
         </div>
+      </div>
+      
+      <!-- Kiro 账号管理 -->
+      <div v-if="activeCategory === 'kiro'" class="settings-section kiro-section">
+        <KiroAccountManager />
       </div>
       
       <!-- 插件管理 -->
@@ -1126,7 +1144,8 @@ onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
 .nav-item.active svg { opacity: 1; }
 
 /* 右侧内容 */
-.settings-content { flex: 1; overflow-y: auto; padding: 12px; }
+.settings-content { flex: 1; overflow-y: auto; padding: 12px; max-width: none; min-width: 0; }
+.settings-content:has(.kiro-section) { padding: 0; overflow-y: auto; overflow-x: hidden; }
 .settings-section { display: flex; flex-direction: column; gap: 8px; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .section-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
@@ -1229,6 +1248,26 @@ input:checked + .slider:before { transform: translateX(16px); }
 .model-dialog { width: 420px; }
 .required { color: var(--red); }
 .form-group input[type="password"] { padding: 8px 10px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-primary); font-size: 13px; outline: none; }
+
+/* Kiro 账号管理样式 */
+.kiro-section {
+  padding: 0 !important;
+  margin: 0 !important;
+  height: 100%;
+  width: 100%;
+  max-width: none !important;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.kiro-section :deep(.kiro-account-manager) {
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+}
 
 /* 插件管理样式 */
 .plugins-section { gap: 16px; }
