@@ -104,14 +104,9 @@ func (oks *OpenCodeKiroSystem) WriteKiroAccounts(accountsFile *OpenCodeKiroAccou
 
 // ApplyAccountToOpenCode applies a Kiro account to OpenCode configuration
 // This updates or adds the account in kiro-accounts.json and sets it as active
+// NOTE: This will REPLACE all accounts in the file with only the current account
 func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) error {
 	fmt.Printf("  → ApplyAccountToOpenCode 开始 (email=%s)\n", account.Email)
-	
-	accountsFile, err := oks.ReadKiroAccounts()
-	if err != nil {
-		return fmt.Errorf("failed to read kiro-accounts.json: %w", err)
-	}
-	fmt.Printf("  → 当前文件中有 %d 个账号\n", len(accountsFile.Accounts))
 
 	// Create OpenCode account structure
 	openCodeAccount := OpenCodeKiroAccount{
@@ -128,31 +123,13 @@ func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) erro
 	}
 	fmt.Printf("  → 创建 OpenCode 账号结构: ID=%s, Email=%s\n", openCodeAccount.ID, openCodeAccount.Email)
 
-	// Find if account already exists
-	found := false
-	foundIndex := -1
-	for i, acc := range accountsFile.Accounts {
-		if acc.ID == account.ID || acc.Email == account.Email {
-			// Update existing account
-			accountsFile.Accounts[i] = openCodeAccount
-			found = true
-			foundIndex = i
-			fmt.Printf("  → 找到已存在账号，更新索引 %d\n", i)
-			break
-		}
+	// Create a new accounts file with ONLY this account
+	accountsFile := &OpenCodeKiroAccountsFile{
+		Version:     1,
+		Accounts:    []OpenCodeKiroAccount{openCodeAccount},
+		ActiveIndex: 0, // Always 0 since we only have one account
 	}
-
-	if !found {
-		// Add new account
-		accountsFile.Accounts = append(accountsFile.Accounts, openCodeAccount)
-		foundIndex = len(accountsFile.Accounts) - 1
-		fmt.Printf("  → 添加新账号，索引 %d\n", foundIndex)
-	}
-
-	// Set as active account
-	accountsFile.ActiveIndex = foundIndex
-	fmt.Printf("  → 设置 ActiveIndex = %d\n", foundIndex)
-	fmt.Printf("  → 文件中现在有 %d 个账号\n", len(accountsFile.Accounts))
+	fmt.Printf("  → 创建新的账号文件（只包含当前账号）\n")
 
 	// Write back to file
 	path, _ := oks.GetKiroAccountsPath()
@@ -161,7 +138,7 @@ func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) erro
 		fmt.Printf("  ✗ 写入失败: %v\n", err)
 		return fmt.Errorf("failed to write kiro-accounts.json: %w", err)
 	}
-	fmt.Println("  ✓ 文件写入成功")
+	fmt.Println("  ✓ 文件写入成功（已替换为当前账号）")
 
 	return nil
 }
