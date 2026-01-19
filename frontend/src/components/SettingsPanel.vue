@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import KiroAccountManager from './KiroAccountManager.vue'
+import KiroAccountDialog from './KiroAccountDialog.vue'
 import { languages, setLocale } from '../i18n'
 import { useTheme } from '../composables/useTheme'
 import { 
@@ -888,8 +889,8 @@ watch(activeCategory, (newValue) => {
                 {{ pluginLoadingName === 'kiro-auth' ? t('common.loading') + '...' : t('settings.mcp.install') }}
               </button>
               <template v-else>
-                <button class="btn-auth" @click="showKiroAccountManager = !showKiroAccountManager">
-                  {{ showKiroAccountManager ? '收起账号管理' : '账号管理' }}
+                <button class="btn-auth" @click="showKiroAccountManager = true">
+                  账号管理
                 </button>
                 <button v-if="kiroAuthStatus.updateAvailable" class="btn-update" @click="updateKiroAuth" :disabled="pluginLoading">
                   {{ pluginLoadingName === 'kiro-auth-update' ? t('settings.plugins.updating') : t('settings.plugins.update') }}
@@ -902,11 +903,6 @@ watch(activeCategory, (newValue) => {
                 {{ t('settings.mcp.viewDocs') }}
               </a>
             </div>
-          </div>
-          
-          <!-- Kiro 账号管理器（展开时显示） -->
-          <div v-if="showKiroAccountManager && kiroAuthStatus.installed" class="kiro-account-manager-container">
-            <KiroAccountManager />
           </div>
         </div>
         
@@ -1112,6 +1108,9 @@ watch(activeCategory, (newValue) => {
       </div>
     </div>
   </aside>
+  
+  <!-- Kiro 账号管理弹窗 -->
+  <KiroAccountDialog v-if="showKiroAccountManager" @close="showKiroAccountManager = false" />
 </template>
 
 <style scoped>
@@ -1253,19 +1252,6 @@ input:checked + .slider:before { transform: translateX(16px); }
   width: 100%;
   min-width: 0;
   flex: 1;
-}
-
-/* Kiro 账号管理器容器（在插件卡片中） */
-.kiro-account-manager-container {
-  border-top: 1px solid var(--border-subtle);
-  background: var(--bg-base);
-  max-height: 600px;
-  overflow-y: auto;
-}
-
-.kiro-account-manager-container :deep(.kiro-account-manager) {
-  width: 100%;
-  min-width: 0;
 }
 
 /* 插件管理样式 */
