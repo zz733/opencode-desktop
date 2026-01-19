@@ -97,6 +97,7 @@ const handleContentClick = (e) => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding: 20px;
 }
 
 .dialog-content :deep(.kiro-account-manager) {
@@ -104,5 +105,19 @@ const handleContentClick = (e) => {
   height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* 调整账号网格布局 - 在弹窗中显示更多列 */
+.dialog-content :deep(.accounts-grid) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  padding: 0;
+}
+
+/* 确保卡片在网格中正常显示 */
+.dialog-content :deep(.account-card) {
+  width: 100%;
+  min-width: 0;
 }
 </style>
