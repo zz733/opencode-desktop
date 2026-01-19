@@ -396,6 +396,8 @@ export namespace main {
 	    machineId?: string;
 	    sqmId?: string;
 	    devDeviceId?: string;
+	    userId?: string;
+	    profileArn?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new KiroAccount(source);
@@ -420,6 +422,8 @@ export namespace main {
 	        this.machineId = source["machineId"];
 	        this.sqmId = source["sqmId"];
 	        this.devDeviceId = source["devDeviceId"];
+	        this.userId = source["userId"];
+	        this.profileArn = source["profileArn"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

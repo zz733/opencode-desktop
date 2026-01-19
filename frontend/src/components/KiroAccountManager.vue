@@ -247,10 +247,21 @@ function handleAccountRemoved(accountId) {
   }
 }
 
-function handleAccountSwitched(newAccountId, oldAccountId) {
+function handleAccountSwitched(data) {
+  console.log('收到账号切换事件:', data)
+  
+  // 更新账号状态
   state.accounts.forEach(account => {
-    account.isActive = account.id === newAccountId
+    account.isActive = account.id === data.newAccountId
   })
+  
+  // 显示切换成功的通知
+  state.errorMessage = `✅ ${data.message || '账号切换成功！请重启 OpenCode 使新账号生效。'}`
+  
+  // 5秒后清除消息
+  setTimeout(() => {
+    state.errorMessage = ''
+  }, 5000)
 }
 
 function handleQuotaUpdated(accountId, quota) {
@@ -261,16 +272,57 @@ function handleQuotaUpdated(accountId, quota) {
 }
 
 // 账号操作
+async function testSwitch(event) {
+  if (event) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  
+  try {
+    await LogToTerminal('=== 前端测试按钮被点击 ===')
+    console.log('=== 测试按钮被点击 ===')
+    alert('测试按钮工作正常！即将调用后端...')
+    
+    if (state.accounts.length > 0) {
+      await LogToTerminal('→ 尝试切换第一个账号: ' + state.accounts[0].email)
+      console.log('→ 尝试切换第一个账号:', state.accounts[0].email)
+      await switchAccount(state.accounts[0])
+    } else {
+      await LogToTerminal('✗ 没有可切换的账号')
+      alert('没有可切换的账号')
+    }
+  } catch (error) {
+    await LogToTerminal('✗ 测试失败: ' + error)
+    console.error('✗ 测试失败:', error)
+    alert('测试失败: ' + error.message)
+  }
+}
+
 async function switchAccount(account) {
+  console.log('=== 前端: switchAccount 开始 ===')
+  console.log('→ 账号 ID:', account.id)
+  console.log('→ 账号邮箱:', account.email)
+  
   switchingId.value = account.id
   try {
+    console.log('→ 调用后端 SwitchKiroAccount...')
+    
     await SwitchKiroAccount(account.id)
+    
+    console.log('✓ 后端调用成功')
+    console.log('→ 重新加载账号列表...')
     await loadAccounts()
+    
+    console.log('✓ 账号列表已重新加载')
   } catch (error) {
     console.error('✗ 切换账号失败:', error)
-    alert('切换账号失败: ' + error.message)
+    state.errorMessage = '❌ 切换账号失败: ' + error.message
+    setTimeout(() => {
+      state.errorMessage = ''
+    }, 5000)
   } finally {
     switchingId.value = null
+    console.log('=== 前端: switchAccount 完成 ===')
   }
 }
 
@@ -601,11 +653,16 @@ function checkDuplicateAccount(email) {
 
 <template>
   <div class="kiro-account-manager">
+    <!-- 成功/错误消息提示 -->
+    <div v-if="state.errorMessage" :class="['message-banner', state.errorMessage.includes('✅') ? 'success' : 'error']">
+      {{ state.errorMessage }}
+    </div>
+    
     <!-- 头部工具栏 -->
     <div class="manager-header">
       <div class="header-content">
         <div class="header-title">
-          <h1>Kiro 账号管理</h1>
+          <h1>Kiro 账号管理 [MYAPP-DEV]</h1>
         </div>
         <div class="header-actions">
           <button class="btn-settings" @click="openSettingsDialog" title="设置">
@@ -643,6 +700,10 @@ function checkDuplicateAccount(email) {
         <option value="name">名称排序</option>
         <option value="quota">配额排序</option>
       </select>
+      <!-- 测试按钮 -->
+      <button type="button" @click.prevent="testSwitch" style="margin-left: 10px; padding: 8px 16px; background: #f00; color: #fff; border: none; border-radius: 4px; cursor: pointer;">
+        测试切换
+      </button>
     </div>
 
     <!-- 账号列表 -->
@@ -710,7 +771,7 @@ function checkDuplicateAccount(email) {
           </div>
 
           <!-- 配额信息 -->
-          <div class="card-quota" v-if="account.quota">
+          <div class="card-quota" v-if="account.quota && account.quota.main">
             <div class="quota-header">
               <span class="quota-label">使用量</span>
               <span :class="['quota-percent', getQuotaPercentage({
@@ -746,7 +807,7 @@ function checkDuplicateAccount(email) {
 
           <!-- 操作按钮 -->
           <div class="card-actions">
-            <button class="btn-action btn-switch" @click="switchAccount(account)" :disabled="switchingId === account.id" :title="account.isActive ? '重新应用到系统' : '切换账号'">
+            <button type="button" class="btn-action btn-switch" @click="() => { console.log('按钮被点击了！'); switchAccount(account); }" :disabled="switchingId === account.id" :title="account.isActive ? '重新应用到系统' : '切换账号'">
               <svg v-if="switchingId === account.id" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 11-6.219-8.56"/>
               </svg>
@@ -758,8 +819,9 @@ function checkDuplicateAccount(email) {
               </svg>
             </button>
             <button 
+              type="button"
               class="btn-action btn-refresh" 
-              @click="refreshAccountQuota(account.id)" 
+              @click.stop.prevent="refreshAccountQuota(account.id)" 
               :disabled="refreshingId === account.id" 
               title="刷新配额"
             >
@@ -1130,6 +1192,38 @@ function checkDuplicateAccount(email) {
 </template>
 
 <style scoped>
+.message-banner {
+  padding: 12px 20px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  animation: slideDown 0.3s ease-out;
+}
+
+.message-banner.success {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+}
+
+.message-banner.error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .kiro-account-manager {
   display: flex;
   flex-direction: column;
@@ -1348,10 +1442,10 @@ function checkDuplicateAccount(email) {
   padding-bottom: 24px;
 }
 
-/* 网格布局 - 单列布局 */
+/* 网格布局 - 多列布局 */
 .accounts-grid {
-  display: flex !important;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 16px;
   padding-bottom: 24px;
   width: 100%;

@@ -10,25 +10,41 @@ import (
 
 // OpenCodeKiroAccount represents an account in kiro-accounts.json
 type OpenCodeKiroAccount struct {
-	ID               string `json:"id"`
-	Email            string `json:"email"`
-	AuthMethod       string `json:"authMethod"`
-	Region           string `json:"region"`
-	ClientID         string `json:"clientId,omitempty"`
-	ClientSecret     string `json:"clientSecret,omitempty"`
-	RefreshToken     string `json:"refreshToken"`
-	AccessToken      string `json:"accessToken"`
-	ExpiresAt        int64  `json:"expiresAt"`
-	RateLimitResetTime int64 `json:"rateLimitResetTime"`
-	IsHealthy        bool   `json:"isHealthy"`
-	RealEmail        string `json:"realEmail,omitempty"`
+	ID                 string `json:"id"`
+	Email              string `json:"email"`
+	AuthMethod         string `json:"authMethod"`
+	Region             string `json:"region"`
+	ClientID           string `json:"clientId,omitempty"`
+	ClientSecret       string `json:"clientSecret,omitempty"`
+	RefreshToken       string `json:"refreshToken"`
+	AccessToken        string `json:"accessToken"`
+	ExpiresAt          int64  `json:"expiresAt"`
+	RateLimitResetTime int64  `json:"rateLimitResetTime"`
+	IsHealthy          bool   `json:"isHealthy"`
+	RealEmail          string `json:"realEmail,omitempty"`
+	UserID             string `json:"userId,omitempty"`
+	ProfileArn         string `json:"profileArn,omitempty"`
 }
 
 // OpenCodeKiroAccountsFile represents the kiro-accounts.json file structure
 type OpenCodeKiroAccountsFile struct {
-	Version     int                     `json:"version"`
-	Accounts    []OpenCodeKiroAccount   `json:"accounts"`
-	ActiveIndex int                     `json:"activeIndex"`
+	Version     int                   `json:"version"`
+	Accounts    []OpenCodeKiroAccount `json:"accounts"`
+	ActiveIndex int                   `json:"activeIndex"`
+}
+
+// OpenCodeKiroUsageEntry represents a single account's usage in kiro-usage.json
+type OpenCodeKiroUsageEntry struct {
+	UsedCount  int    `json:"usedCount"`
+	LimitCount int    `json:"limitCount"`
+	RealEmail  string `json:"realEmail"`
+	LastSync   int64  `json:"lastSync"`
+}
+
+// OpenCodeKiroUsageFile represents the kiro-usage.json file structure
+type OpenCodeKiroUsageFile struct {
+	Version int                               `json:"version"`
+	Usage   map[string]OpenCodeKiroUsageEntry `json:"usage"`
 }
 
 // OpenCodeKiroSystem handles OpenCode Kiro plugin configuration
@@ -37,6 +53,15 @@ type OpenCodeKiroSystem struct{}
 // NewOpenCodeKiroSystem creates a new OpenCodeKiroSystem instance
 func NewOpenCodeKiroSystem() *OpenCodeKiroSystem {
 	return &OpenCodeKiroSystem{}
+}
+
+// GetOpenCodeConfigDir returns the OpenCode config directory path
+func (oks *OpenCodeKiroSystem) GetOpenCodeConfigDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "opencode"), nil
 }
 
 // GetKiroAccountsPath returns the path to kiro-accounts.json
@@ -106,22 +131,45 @@ func (oks *OpenCodeKiroSystem) WriteKiroAccounts(accountsFile *OpenCodeKiroAccou
 // This updates or adds the account in kiro-accounts.json and sets it as active
 // NOTE: This will REPLACE all accounts in the file with only the current account
 func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) error {
-	fmt.Printf("  → ApplyAccountToOpenCode 开始 (email=%s)\n", account.Email)
+	fmt.Printf("\n========================================\n")
+	fmt.Printf("  → ApplyAccountToOpenCode 开始\n")
+	fmt.Printf("  → 账号 ID: %s\n", account.ID)
+	fmt.Printf("  → 账号邮箱: %s\n", account.Email)
+	fmt.Printf("  → RefreshToken 长度: %d\n", len(account.RefreshToken))
+	fmt.Printf("  → BearerToken 长度: %d\n", len(account.BearerToken))
 
 	// Create OpenCode account structure
+	// OpenCode Kiro 插件要求 authMethod='idc' 时必须有 clientId 和 clientSecret
+	// 对于 Social 账号，我们提供假的凭据，实际认证通过 profileArn
+	authMethod := "idc"
+	
+	// 如果没有 ProfileArn，使用默认值
+	profileArn := account.ProfileArn
+	if profileArn == "" {
+		profileArn = "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK"
+	}
+	
+	// 生成假的 clientId 和 clientSecret（插件验证需要，但实际不使用）
+	clientID := "kiro-social-dummy-client"
+	clientSecret := "kiro-social-dummy-secret"
+
 	openCodeAccount := OpenCodeKiroAccount{
 		ID:                 account.ID,
 		Email:              account.Email,
-		AuthMethod:         "social", // Default to social, could be "idc" for IdC accounts
+		AuthMethod:         authMethod,
 		Region:             "us-east-1",
+		ClientID:           clientID,
+		ClientSecret:       clientSecret,
 		RefreshToken:       account.RefreshToken,
 		AccessToken:        account.BearerToken,
 		ExpiresAt:          time.Now().Add(1 * time.Hour).UnixMilli(),
 		RateLimitResetTime: 0,
 		IsHealthy:          true,
 		RealEmail:          account.Email,
+		UserID:             account.UserID,
+		ProfileArn:         profileArn,
 	}
-	fmt.Printf("  → 创建 OpenCode 账号结构: ID=%s, Email=%s\n", openCodeAccount.ID, openCodeAccount.Email)
+	fmt.Printf("  ✓ 创建 OpenCode 账号结构完成 (authMethod=%s, profileArn=%s)\n", authMethod, profileArn)
 
 	// Create a new accounts file with ONLY this account
 	accountsFile := &OpenCodeKiroAccountsFile{
@@ -129,18 +177,126 @@ func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) erro
 		Accounts:    []OpenCodeKiroAccount{openCodeAccount},
 		ActiveIndex: 0, // Always 0 since we only have one account
 	}
-	fmt.Printf("  → 创建新的账号文件（只包含当前账号）\n")
+	fmt.Printf("  ✓ 创建账号文件结构完成（账号数: %d）\n", len(accountsFile.Accounts))
 
-	// Write back to file
-	path, _ := oks.GetKiroAccountsPath()
-	fmt.Printf("  → 准备写入文件: %s\n", path)
+	// Get file path
+	path, err := oks.GetKiroAccountsPath()
+	if err != nil {
+		fmt.Printf("  ✗ 获取文件路径失败: %v\n", err)
+		return fmt.Errorf("failed to get kiro-accounts path: %w", err)
+	}
+	fmt.Printf("  → 目标文件路径: %s\n", path)
+
+	// Check if file exists and get current mod time
+	if info, err := os.Stat(path); err == nil {
+		fmt.Printf("  → 文件当前修改时间: %v\n", info.ModTime())
+	}
+
+	// Write to file
+	fmt.Printf("  → 开始写入文件...\n")
 	if err := oks.WriteKiroAccounts(accountsFile); err != nil {
 		fmt.Printf("  ✗ 写入失败: %v\n", err)
 		return fmt.Errorf("failed to write kiro-accounts.json: %w", err)
 	}
-	fmt.Println("  ✓ 文件写入成功（已替换为当前账号）")
 
+	// Verify write
+	if info, err := os.Stat(path); err == nil {
+		fmt.Printf("  ✓ 文件写入成功！新修改时间: %v\n", info.ModTime())
+	}
+
+	// Read back to verify
+	verifyFile, err := oks.ReadKiroAccounts()
+	if err != nil {
+		fmt.Printf("  ⚠ 警告: 无法读取文件验证: %v\n", err)
+	} else {
+		fmt.Printf("  ✓ 验证: 文件中账号数 = %d\n", len(verifyFile.Accounts))
+		if len(verifyFile.Accounts) > 0 {
+			fmt.Printf("  ✓ 验证: 第一个账号邮箱 = %s\n", verifyFile.Accounts[0].Email)
+		}
+	}
+
+	// 同时更新 kiro-usage.json 文件
+	fmt.Printf("  → 更新 kiro-usage.json...\n")
+	if err := oks.UpdateKiroUsage(account); err != nil {
+		fmt.Printf("  ⚠ 警告: 更新 usage 文件失败: %v\n", err)
+		// 不返回错误，因为主要的账号切换已经成功
+	} else {
+		fmt.Printf("  ✓ usage 文件更新成功\n")
+	}
+
+	fmt.Printf("========================================\n\n")
 	return nil
+}
+
+// UpdateKiroUsage updates the kiro-usage.json file with the current account
+// This ensures the usage tracking file is in sync with kiro-accounts.json
+func (oks *OpenCodeKiroSystem) UpdateKiroUsage(account *KiroAccount) error {
+	// Create usage structure with only the current account
+	usageFile := &OpenCodeKiroUsageFile{
+		Version: 1,
+		Usage: map[string]OpenCodeKiroUsageEntry{
+			account.ID: {
+				UsedCount:  0, // 重置使用计数
+				LimitCount: account.Quota.GetTotalAvailable(),
+				RealEmail:  account.Email,
+				LastSync:   time.Now().UnixMilli(),
+			},
+		},
+	}
+
+	// Write to file
+	return oks.WriteKiroUsage(usageFile)
+}
+
+// GetKiroUsagePath returns the path to kiro-usage.json
+func (oks *OpenCodeKiroSystem) GetKiroUsagePath() (string, error) {
+	configDir, err := oks.GetOpenCodeConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(configDir, "kiro-usage.json"), nil
+}
+
+// WriteKiroUsage writes the usage file to disk
+func (oks *OpenCodeKiroSystem) WriteKiroUsage(usageFile *OpenCodeKiroUsageFile) error {
+	path, err := oks.GetKiroUsagePath()
+	if err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(usageFile, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal usage file: %w", err)
+	}
+
+	// Write to temp file first
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write temp usage file: %w", err)
+	}
+
+	// Atomic rename
+	return os.Rename(tmpPath, path)
+}
+
+// ReadKiroUsage reads the kiro-usage.json file
+func (oks *OpenCodeKiroSystem) ReadKiroUsage() (*OpenCodeKiroUsageFile, error) {
+	path, err := oks.GetKiroUsagePath()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read usage file: %w", err)
+	}
+
+	var usageFile OpenCodeKiroUsageFile
+	if err := json.Unmarshal(data, &usageFile); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal usage file: %w", err)
+	}
+
+	return &usageFile, nil
 }
 
 // GetActiveOpenCodeAccount returns the currently active account in OpenCode

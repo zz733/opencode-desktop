@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -289,16 +291,48 @@ func (am *AccountManager) ListAccounts() []*KiroAccount {
 
 // SwitchAccount switches the active account
 func (am *AccountManager) SwitchAccount(id string) error {
-	fmt.Printf("  → AccountManager.SwitchAccount 开始 (id=%s)\n", id)
+	// 使用日志文件记录
+	logMsg := fmt.Sprintf("\n========================================\n")
+	logMsg += fmt.Sprintf("  → AccountManager.SwitchAccount 开始 (id=%s)\n", id)
+	am.writeLog(logMsg)
+	
 	am.mutex.Lock()
 	defer am.mutex.Unlock()
 
 	newAccount, exists := am.accounts[id]
 	if !exists {
-		fmt.Printf("  ✗ 账号不存在: %s\n", id)
+		am.writeLog(fmt.Sprintf("  ✗ 账号不存在: %s\n", id))
 		return fmt.Errorf("account with ID %s not found", id)
 	}
-	fmt.Printf("  ✓ 找到账号: %s\n", newAccount.Email)
+	am.writeLog(fmt.Sprintf("  ✓ 找到账号: %s (ID: %s)\n", newAccount.Email, newAccount.ID))
+
+	// 如果账号缺少 UserID 或 ProfileArn，先刷新一次获取完整信息
+	if newAccount.UserID == "" || newAccount.ProfileArn == "" {
+		am.writeLog("  → 账号缺少 UserID/ProfileArn，正在刷新获取...\n")
+		apiClient := NewKiroAPIClient()
+		
+		// 刷新 token
+		tokenResp, err := apiClient.RefreshKiroToken(newAccount.RefreshToken)
+		if err != nil {
+			am.writeLog(fmt.Sprintf("  ⚠ 警告: 刷新 token 失败: %v\n", err))
+		} else {
+			// 更新 token
+			newAccount.BearerToken = tokenResp.AccessToken
+			newAccount.RefreshToken = tokenResp.RefreshToken
+			newAccount.TokenExpiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+			newAccount.ProfileArn = tokenResp.ProfileArn
+			am.writeLog(fmt.Sprintf("  ✓ Token 已刷新，ProfileArn: %s\n", tokenResp.ProfileArn))
+			
+			// 获取用户信息
+			usageResp, err := apiClient.GetKiroUsageLimits(tokenResp.AccessToken)
+			if err != nil {
+				am.writeLog(fmt.Sprintf("  ⚠ 警告: 获取用户信息失败: %v\n", err))
+			} else if usageResp.UserInfo != nil {
+				newAccount.UserID = usageResp.UserInfo.UserID
+				am.writeLog(fmt.Sprintf("  ✓ 获取到 UserID: %s\n", usageResp.UserInfo.UserID))
+			}
+		}
+	}
 
 	// Get current active account
 	var oldActiveID string
@@ -306,7 +340,7 @@ func (am *AccountManager) SwitchAccount(id string) error {
 		if account.IsActive && account.ID != id {
 			account.IsActive = false
 			oldActiveID = account.ID
-			fmt.Printf("  → 取消旧账号激活状态: %s\n", account.Email)
+			am.writeLog(fmt.Sprintf("  → 取消旧账号激活状态: %s\n", account.Email))
 			break
 		}
 	}
@@ -315,33 +349,33 @@ func (am *AccountManager) SwitchAccount(id string) error {
 	newAccount.IsActive = true
 	newAccount.LastUsed = time.Now()
 	am.activeID = id
-	fmt.Printf("  ✓ 设置新账号为激活状态: %s\n", newAccount.Email)
+	am.writeLog(fmt.Sprintf("  ✓ 设置新账号为激活状态: %s\n", newAccount.Email))
 
 	// Apply to OpenCode (write to kiro-accounts.json)
-	fmt.Println("  → 应用账号到 OpenCode...")
+	am.writeLog("  → 应用账号到 OpenCode...\n")
 	openCodeSystem := NewOpenCodeKiroSystem()
 	if err := openCodeSystem.ApplyAccountToOpenCode(newAccount); err != nil {
-		fmt.Printf("  ✗ 应用到 OpenCode 失败: %v\n", err)
+		am.writeLog(fmt.Sprintf("  ✗ 应用到 OpenCode 失败: %v\n", err))
 		return fmt.Errorf("failed to apply account to OpenCode: %w", err)
 	}
-	fmt.Println("  ✓ 成功应用到 OpenCode")
+	am.writeLog("  ✓ 成功应用到 OpenCode\n")
 
 	// If AutoChangeMachineID is enabled, also update Kiro IDE machine IDs
 	// (This is for users who also use Kiro IDE)
 	if am.settings.AutoChangeMachineID {
-		fmt.Println("  → 更新 Kiro IDE 机器码...")
+		am.writeLog("  → 更新 Kiro IDE 机器码...\n")
 		if err := am.system.ApplyAccountToSystem(newAccount, true); err != nil {
 			// Log warning but don't fail the switch
-			fmt.Printf("  ⚠ 警告: 更新 Kiro IDE 机器码失败: %v\n", err)
+			am.writeLog(fmt.Sprintf("  ⚠ 警告: 更新 Kiro IDE 机器码失败: %v\n", err))
 		} else {
-			fmt.Println("  ✓ 成功更新 Kiro IDE 机器码")
+			am.writeLog("  ✓ 成功更新 Kiro IDE 机器码\n")
 		}
 	}
 
 	// Save to storage
-	fmt.Println("  → 保存账号数据...")
+	am.writeLog("  → 保存账号数据...\n")
 	if err := am.saveAccounts(); err != nil {
-		fmt.Printf("  ✗ 保存失败: %v\n", err)
+		am.writeLog(fmt.Sprintf("  ✗ 保存失败: %v\n", err))
 		// Rollback
 		if oldActiveID != "" && oldActiveID != id {
 			am.accounts[oldActiveID].IsActive = true
@@ -350,17 +384,33 @@ func (am *AccountManager) SwitchAccount(id string) error {
 		am.activeID = oldActiveID
 		return fmt.Errorf("failed to save account switch: %w", err)
 	}
-	fmt.Println("  ✓ 账号数据保存成功")
+	am.writeLog("  ✓ 账号数据保存成功\n")
 
 	// Emit event
-	am.emitEvent("kiro-account-switched", map[string]string{
+	am.emitEvent("kiro-account-switched", map[string]interface{}{
 		"newAccountId": id,
 		"oldAccountId": oldActiveID,
+		"email":        newAccount.Email,
+		"message":      "账号已切换成功！请重启 OpenCode 使新账号生效。",
 	})
-	fmt.Println("  ✓ 事件已发送")
+	am.writeLog("  ✓ 事件已发送\n")
+	am.writeLog("========================================\n\n")
 
-	fmt.Println("  ✓ AccountManager.SwitchAccount 完成")
 	return nil
+}
+
+// writeLog writes a log message to file
+func (am *AccountManager) writeLog(message string) {
+	// Write to stderr (visible in terminal)
+	fmt.Fprint(os.Stderr, message)
+	
+	// Also write to log file
+	logFile := filepath.Join(os.TempDir(), "kiro-account-manager.log")
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		defer f.Close()
+		f.WriteString(time.Now().Format("2006-01-02 15:04:05") + " " + message)
+	}
 }
 
 // GetActiveAccount returns the currently active account

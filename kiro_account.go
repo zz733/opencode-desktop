@@ -66,6 +66,9 @@ type KiroAccount struct {
 	MachineID   string `json:"machineId,omitempty"`   // 绑定的机器 ID
 	SqmID       string `json:"sqmId,omitempty"`       // 绑定的 SQM ID
 	DevDeviceID string `json:"devDeviceId,omitempty"` // 绑定的 Dev Device ID
+	// Kiro specific fields
+	UserID     string `json:"userId,omitempty"`     // Kiro 用户 ID
+	ProfileArn string `json:"profileArn,omitempty"` // Kiro Profile ARN
 }
 
 // TokenInfo represents token information returned from authentication

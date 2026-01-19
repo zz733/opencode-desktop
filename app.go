@@ -434,13 +434,36 @@ func (a *App) initAccountManager() {
 
 // GetKiroAccounts returns all Kiro accounts
 func (a *App) GetKiroAccounts() ([]*KiroAccount, error) {
-	fmt.Println("API 调用: GetKiroAccounts")
+	fmt.Println("=== API 调用: GetKiroAccounts ===")
 	if a.accountMgr == nil {
 		fmt.Println("✗ 错误: account manager not initialized")
 		return nil, fmt.Errorf("account manager not initialized")
 	}
 	accounts := a.accountMgr.ListAccounts()
-	fmt.Printf("✓ 返回 %d 个账号\n", len(accounts))
+	fmt.Printf("→ 账号总数: %d\n", len(accounts))
+	
+	// 打印每个账号的详细信息
+	for i, acc := range accounts {
+		fmt.Printf("  账号 %d:\n", i+1)
+		fmt.Printf("    ID: %s\n", acc.ID)
+		fmt.Printf("    Email: %s\n", acc.Email)
+		fmt.Printf("    DisplayName: %s\n", acc.DisplayName)
+		fmt.Printf("    IsActive: %v\n", acc.IsActive)
+		fmt.Printf("    RefreshToken 长度: %d\n", len(acc.RefreshToken))
+		fmt.Printf("    BearerToken 长度: %d\n", len(acc.BearerToken))
+	}
+	
+	// 同时检查 OpenCode 配置文件
+	fmt.Println("\n→ 检查 OpenCode 配置文件:")
+	openCodeSystem := NewOpenCodeKiroSystem()
+	if activeAcc, err := openCodeSystem.GetActiveOpenCodeAccount(); err == nil {
+		fmt.Printf("    OpenCode Email: %s\n", activeAcc.Email)
+		fmt.Printf("    OpenCode ID: %s\n", activeAcc.ID)
+	} else {
+		fmt.Printf("    读取失败: %v\n", err)
+	}
+	
+	fmt.Println("=== GetKiroAccounts 完成 ===")
 	return accounts, nil
 }
 
@@ -646,6 +669,40 @@ func (a *App) SwitchKiroAccount(id string) error {
 	}
 	
 	fmt.Println("✓ 账号切换成功")
+	
+	// 获取切换后的账号（用于后续重新应用）
+	switchedAccount, getErr := a.accountMgr.GetActiveAccount()
+	if getErr != nil {
+		fmt.Printf("⚠ 警告: 无法获取切换后的账号: %v\n", getErr)
+	}
+	
+	// 重启 OpenCode 使新账号生效
+	fmt.Println("→ 重启 OpenCode...")
+	if a.openCode != nil {
+		if restartErr := a.openCode.Restart(); restartErr != nil {
+			fmt.Printf("⚠ 警告: OpenCode 重启失败: %v\n", restartErr)
+			// 不返回错误，因为账号切换本身是成功的
+		} else {
+			fmt.Println("✓ OpenCode 已重启")
+			
+			// OpenCode 插件启动时可能会还原旧账号
+			// 延迟 5 秒后再次应用账号，确保覆盖插件的还原操作
+			if switchedAccount != nil {
+				fmt.Println("→ 等待 5 秒后再次应用账号...")
+				go func() {
+					time.Sleep(5 * time.Second)
+					fmt.Println("→ 再次应用账号到 OpenCode...")
+					openCodeSystem := NewOpenCodeKiroSystem()
+					if reapplyErr := openCodeSystem.ApplyAccountToOpenCode(switchedAccount); reapplyErr != nil {
+						fmt.Printf("⚠ 警告: 再次应用账号失败: %v\n", reapplyErr)
+					} else {
+						fmt.Println("✓ 账号已再次应用，覆盖插件还原")
+					}
+				}()
+			}
+		}
+	}
+	
 	fmt.Println("=== SwitchKiroAccount 完成 ===")
 	return nil
 }

@@ -218,5 +218,7 @@ func ConvertKiroResponseToAccount(tokenResp *KiroRefreshTokenResponse, usageResp
 		IsActive:         false,
 		LastUsed:         time.Now(),
 		CreatedAt:        time.Now(),
+		UserID:           userID,
+		ProfileArn:       tokenResp.ProfileArn,
 	}
 }
