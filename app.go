@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -21,6 +22,8 @@ type App struct {
 	fileMgr       *FileManager
 	sseCancel     context.CancelFunc // 用于取消 SSE 订阅
 	sseSubscribed bool
+	accountMgr    *AccountManager // Kiro Account Manager
+	configMgr     *ConfigManager  // Configuration Manager
 }
 
 // NewApp creates a new App application struct
@@ -34,15 +37,23 @@ func NewApp() *App {
 	app.termMgr = NewTerminalManager(app)
 	app.openCode = NewOpenCodeManager(app)
 	app.fileMgr = NewFileManager(app)
+
+	// Initialize Kiro Account Manager
+	app.initAccountManager()
+
 	return app
 }
 
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Set context for account manager events
+	if a.accountMgr != nil {
+		a.accountMgr.SetContext(ctx)
+	}
 }
 
-// SetServerURL 设置服务器地址
 func (a *App) SetServerURL(url string) {
 	a.serverURL = strings.TrimSuffix(url, "/")
 }
@@ -101,6 +112,7 @@ func (a *App) StopOpenCode() {
 
 // AutoStartOpenCode 自动检测并启动 OpenCode
 func (a *App) AutoStartOpenCode() error {
+
 	return a.openCode.AutoStart()
 }
 
@@ -237,6 +249,35 @@ func (a *App) findPomXml(dir string) string {
 	return ""
 }
 
+// 获取 Java 主类名 (package.ClassName)
+func (a *App) getJavaMainClass(filePath string) string {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return ""
+	}
+
+	code := string(content)
+
+	// 查找 package 声明
+	packageName := ""
+	lines := strings.Split(code, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "package ") && strings.HasSuffix(line, ";") {
+			packageName = strings.TrimSuffix(strings.TrimPrefix(line, "package "), ";")
+			break
+		}
+	}
+
+	// 获取文件名作为类名 (Java 规范)
+	className := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+
+	if packageName != "" {
+		return packageName + "." + className
+	}
+	return className
+}
+
 // 检测是否是 Gradle 项目
 func (a *App) isGradleProject(dir string) bool {
 	return a.findGradleProject(dir) != ""
@@ -273,15 +314,7 @@ func (a *App) findCargoToml(dir string) string {
 		}
 		dir = parent
 	}
-	return filepath.Join(dir, "Cargo.toml")
-}
-
-// 获取 Java 主类名
-func (a *App) getJavaMainClass(filePath string) string {
-	// 简单实现：从文件路径推断类名
-	// 实际应该解析 package 声明
-	fileName := filepath.Base(filePath)
-	return strings.TrimSuffix(fileName, ".java")
+	return ""
 }
 
 // OpenFolder 打开文件夹选择对话框并设置为工作目录
@@ -347,4 +380,705 @@ func (a *App) OpenInFinder(path string) error {
 func (a *App) CopyToClipboard(text string) error {
 	runtime.ClipboardSetText(a.ctx, text)
 	return nil
+}
+
+// --- Kiro Account Manager Initialization ---
+
+// initAccountManager initializes the Kiro Account Manager
+func (a *App) initAccountManager() {
+	fmt.Println("=== 初始化 Kiro 账号管理器 ===")
+	
+	// Initialize crypto service with a default master key
+	// TODO: In production, this should be derived from user credentials or system keychain
+	crypto := NewCryptoService("opencode-kiro-master-key-v1")
+	fmt.Println("✓ 加密服务初始化完成")
+
+	// Initialize configuration manager
+	configMgr, err := NewConfigManager(crypto)
+	if err != nil {
+		fmt.Printf("✗ 创建配置管理器失败: %v\n", err)
+		return
+	}
+	fmt.Println("✓ 配置管理器创建完成")
+
+	// Initialize configuration and directory structure
+	if err := configMgr.Initialize(); err != nil {
+		fmt.Printf("✗ 初始化配置失败: %v\n", err)
+		return
+	}
+	fmt.Println("✓ 配置初始化完成")
+
+	// Get data directory from config manager
+	dataDir := configMgr.GetDataDirectory()
+	fmt.Printf("✓ 数据目录: %s\n", dataDir)
+
+	// Initialize storage service with config-managed directory
+	storage := NewStorageService(dataDir, crypto)
+	fmt.Println("✓ 存储服务初始化完成")
+
+	// Initialize account manager
+	a.accountMgr = NewAccountManager(storage, crypto)
+	fmt.Println("✓ 账号管理器初始化完成")
+	
+	// 加载现有账号
+	accounts := a.accountMgr.ListAccounts()
+	fmt.Printf("✓ 已加载 %d 个账号\n", len(accounts))
+
+	// Store config manager reference for later use
+	a.configMgr = configMgr
+	
+	fmt.Println("=== Kiro 账号管理器初始化完成 ===")
+}
+
+// --- Kiro Account Management API ---
+
+// GetKiroAccounts returns all Kiro accounts
+func (a *App) GetKiroAccounts() ([]*KiroAccount, error) {
+	fmt.Println("API 调用: GetKiroAccounts")
+	if a.accountMgr == nil {
+		fmt.Println("✗ 错误: account manager not initialized")
+		return nil, fmt.Errorf("account manager not initialized")
+	}
+	accounts := a.accountMgr.ListAccounts()
+	fmt.Printf("✓ 返回 %d 个账号\n", len(accounts))
+	return accounts, nil
+}
+
+// AddKiroAccount adds a new Kiro account
+func (a *App) AddKiroAccount(method string, data map[string]interface{}) error {
+	fmt.Printf("API 调用: AddKiroAccount (method=%s)\n", method)
+	if a.accountMgr == nil {
+		fmt.Println("✗ 错误: account manager not initialized")
+		return fmt.Errorf("account manager not initialized")
+	}
+
+	switch method {
+	case "token":
+		return a.addAccountByToken(data)
+	case "oauth":
+		return a.addAccountByOAuth(data)
+	case "password":
+		return a.addAccountByPassword(data)
+	default:
+		fmt.Printf("✗ 错误: unsupported login method: %s\n", method)
+		return fmt.Errorf("unsupported login method: %s", method)
+	}
+}
+
+// addAccountByToken adds an account using refresh token
+func (a *App) addAccountByToken(data map[string]interface{}) error {
+	fmt.Println("→ addAccountByToken 开始")
+	refreshToken, ok := data["refreshToken"].(string)
+	if !ok || refreshToken == "" {
+		fmt.Println("✗ 错误: refresh token is required")
+		return fmt.Errorf("refresh token is required")
+	}
+	fmt.Printf("  Refresh Token 长度: %d\n", len(refreshToken))
+
+	// 使用新的 Kiro API 客户端
+	fmt.Println("  创建 Kiro API 客户端...")
+	kiroClient := NewKiroAPIClient()
+	
+	// Step 1: 刷新 Token 获取 Access Token
+	fmt.Println("  调用 RefreshKiroToken...")
+	tokenResp, err := kiroClient.RefreshKiroToken(refreshToken)
+	if err != nil {
+		fmt.Printf("✗ 刷新 Token 失败: %v\n", err)
+		return fmt.Errorf("刷新 Token 失败: %w", err)
+	}
+	fmt.Println("  ✓ Token 刷新成功")
+	
+	// Step 2: 获取用户信息和配额
+	fmt.Println("  调用 GetKiroUsageLimits...")
+	usageResp, err := kiroClient.GetKiroUsageLimits(tokenResp.AccessToken)
+	if err != nil {
+		fmt.Printf("✗ 获取配额信息失败: %v\n", err)
+		return fmt.Errorf("获取配额信息失败: %w", err)
+	}
+	fmt.Println("  ✓ 配额信息获取成功")
+	
+	// Step 3: 转换为账号对象
+	fmt.Println("  转换为账号对象...")
+	account := ConvertKiroResponseToAccount(tokenResp, usageResp, a.accountMgr)
+	fmt.Printf("  账号邮箱: %s\n", account.Email)
+	fmt.Printf("  订阅类型: %s\n", account.SubscriptionType)
+	fmt.Printf("  主配额: %d/%d\n", account.Quota.Main.Used, account.Quota.Main.Total)
+
+	// Add custom fields if provided
+	if displayName, ok := data["displayName"].(string); ok && displayName != "" {
+		account.DisplayName = displayName
+	}
+	if notes, ok := data["notes"].(string); ok {
+		account.Notes = notes
+	}
+	if tags, ok := data["tags"].([]interface{}); ok {
+		stringTags := make([]string, 0, len(tags))
+		for _, tag := range tags {
+			if strTag, ok := tag.(string); ok {
+				stringTags = append(stringTags, strTag)
+			}
+		}
+		account.Tags = stringTags
+	}
+
+	fmt.Println("  调用 AddAccount...")
+	err = a.accountMgr.AddAccount(account)
+	if err != nil {
+		fmt.Printf("✗ 添加账号失败: %v\n", err)
+		return err
+	}
+	fmt.Println("✓ 账号添加成功")
+	return nil
+}
+
+// addAccountByOAuth adds an account using OAuth
+func (a *App) addAccountByOAuth(data map[string]interface{}) error {
+	provider, ok := data["provider"].(string)
+	if !ok || provider == "" {
+		return fmt.Errorf("OAuth provider is required")
+	}
+
+	code, ok := data["code"].(string)
+	if !ok || code == "" {
+		return fmt.Errorf("OAuth code is required")
+	}
+
+	// Handle OAuth callback
+	account, err := a.accountMgr.authService.HandleOAuthCallback(code, OAuthProvider(provider))
+	if err != nil {
+		return fmt.Errorf("OAuth authentication failed: %w", err)
+	}
+
+	return a.accountMgr.AddAccount(account)
+}
+
+// addAccountByPassword adds an account using username/password
+func (a *App) addAccountByPassword(data map[string]interface{}) error {
+	email, ok := data["email"].(string)
+	if !ok || email == "" {
+		return fmt.Errorf("email is required")
+	}
+
+	password, ok := data["password"].(string)
+	if !ok || password == "" {
+		return fmt.Errorf("password is required")
+	}
+
+	// Authenticate with email and password
+	account, err := a.accountMgr.authService.LoginWithPassword(email, password)
+	if err != nil {
+		return fmt.Errorf("password authentication failed: %w", err)
+	}
+
+	// Update quota information
+	if err := a.accountMgr.authService.UpdateAccountQuota(account, a.accountMgr.quotaService); err != nil {
+		// Log error but don't fail account creation
+		fmt.Printf("Warning: failed to update quota for account %s: %v\n", account.Email, err)
+	}
+
+	// Add custom fields if provided
+	if displayName, ok := data["displayName"].(string); ok && displayName != "" {
+		account.DisplayName = displayName
+	}
+	if notes, ok := data["notes"].(string); ok {
+		account.Notes = notes
+	}
+	if tags, ok := data["tags"].([]interface{}); ok {
+		// Convert []interface{} to []string
+		stringTags := make([]string, 0, len(tags))
+		for _, tag := range tags {
+			if strTag, ok := tag.(string); ok {
+				stringTags = append(stringTags, strTag)
+			}
+		}
+		account.Tags = stringTags
+	}
+
+	return a.accountMgr.AddAccount(account)
+}
+
+// RemoveKiroAccount removes a Kiro account
+// RemoveKiroAccount removes a Kiro account
+func (a *App) RemoveKiroAccount(id string) error {
+	fmt.Printf("API 调用: RemoveKiroAccount (id=%s)\n", id)
+	if a.accountMgr == nil {
+		fmt.Println("✗ 错误: account manager not initialized")
+		return fmt.Errorf("account manager not initialized")
+	}
+	err := a.accountMgr.RemoveAccount(id)
+	if err != nil {
+		fmt.Printf("✗ 删除失败: %v\n", err)
+	} else {
+		fmt.Println("✓ 账号删除成功")
+	}
+	return err
+}
+
+// UpdateKiroAccount updates a Kiro account
+func (a *App) UpdateKiroAccount(id string, updates map[string]interface{}) error {
+	fmt.Printf("API 调用: UpdateKiroAccount (id=%s)\n", id)
+	if a.accountMgr == nil {
+		fmt.Println("✗ 错误: account manager not initialized")
+		return fmt.Errorf("account manager not initialized")
+	}
+	err := a.accountMgr.UpdateAccount(id, updates)
+	if err != nil {
+		fmt.Printf("✗ 更新失败: %v\n", err)
+	} else {
+		fmt.Println("✓ 账号更新成功")
+	}
+	return err
+}
+
+// SwitchKiroAccount switches the active Kiro account
+func (a *App) SwitchKiroAccount(id string) error {
+	fmt.Printf("=== API 调用: SwitchKiroAccount (id=%s) ===\n", id)
+	if a.accountMgr == nil {
+		fmt.Println("✗ 错误: account manager not initialized")
+		return fmt.Errorf("account manager not initialized")
+	}
+	
+	fmt.Println("→ 调用 accountMgr.SwitchAccount...")
+	err := a.accountMgr.SwitchAccount(id)
+	if err != nil {
+		fmt.Printf("✗ 切换失败: %v\n", err)
+		return err
+	}
+	
+	fmt.Println("✓ 账号切换成功")
+	fmt.Println("=== SwitchKiroAccount 完成 ===")
+	return nil
+}
+
+// GetActiveKiroAccount returns the currently active Kiro account
+func (a *App) GetActiveKiroAccount() (*KiroAccount, error) {
+	if a.accountMgr == nil {
+		return nil, fmt.Errorf("account manager not initialized")
+	}
+	account, err := a.accountMgr.GetActiveAccount()
+	if err != nil {
+		return nil, err
+	}
+	// Hide sensitive token information for frontend
+	account.BearerToken = ""
+	account.RefreshToken = ""
+	return account, nil
+}
+
+// --- Tag Management ---
+
+// GetTags returns all defined tags
+func (a *App) GetTags() ([]Tag, error) {
+	if a.accountMgr == nil {
+		return nil, fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.GetTags(), nil
+}
+
+// AddTag adds a new tag
+func (a *App) AddTag(tag Tag) error {
+	if a.accountMgr == nil {
+		return fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.AddTag(tag)
+}
+
+// DeleteTag deletes a tag
+func (a *App) DeleteTag(tagName string) error {
+	if a.accountMgr == nil {
+		return fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.DeleteTag(tagName)
+}
+
+// --- Machine ID ---
+
+// GetSystemMachineID returns the current system's machine ID
+func (a *App) GetSystemMachineID() (string, error) {
+	if a.accountMgr == nil {
+		return "", fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.system.GenerateMachineID(), nil
+}
+
+// --- Authentication API ---
+
+// StartKiroOAuth starts an OAuth flow for Kiro authentication
+func (a *App) StartKiroOAuth(provider string) (string, error) {
+	if a.accountMgr == nil {
+		return "", fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.authService.StartOAuthFlow(OAuthProvider(provider))
+}
+
+// HandleKiroOAuthCallback handles OAuth callback
+func (a *App) HandleKiroOAuthCallback(code string, provider string) (*KiroAccount, error) {
+	if a.accountMgr == nil {
+		return nil, fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.authService.HandleOAuthCallback(code, OAuthProvider(provider))
+}
+
+// ValidateKiroToken validates a Kiro bearer token
+func (a *App) ValidateKiroToken(token string) (*TokenInfo, error) {
+	if a.accountMgr == nil {
+		return nil, fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.authService.ValidateToken(token)
+}
+
+// RefreshKiroToken refreshes a Kiro account token
+func (a *App) RefreshKiroToken(accountId string) error {
+	if a.accountMgr == nil {
+		return fmt.Errorf("account manager not initialized")
+	}
+
+	account, err := a.accountMgr.GetAccount(accountId)
+	if err != nil {
+		return err
+	}
+
+	tokenInfo, err := a.accountMgr.authService.RefreshToken(account.RefreshToken)
+	if err != nil {
+		return err
+	}
+
+	// Update account with new token info
+	updates := map[string]interface{}{
+		"bearerToken":  tokenInfo.AccessToken,
+		"refreshToken": tokenInfo.RefreshToken,
+		"tokenExpiry":  tokenInfo.ExpiresAt,
+	}
+
+	return a.accountMgr.UpdateAccount(accountId, updates)
+}
+
+// --- Quota API ---
+
+// GetKiroQuota gets quota information for an account
+func (a *App) GetKiroQuota(accountId string) (*QuotaInfo, error) {
+	if a.accountMgr == nil {
+		return nil, fmt.Errorf("account manager not initialized")
+	}
+
+	account, err := a.accountMgr.GetAccount(accountId)
+	if err != nil {
+		return nil, err
+	}
+
+	return a.accountMgr.quotaService.GetQuota(account.BearerToken)
+}
+
+// RefreshActiveKiroQuota refreshes quota for the currently active account in OpenCode
+// This is useful when you want to check the quota of the account that OpenCode is actually using
+func (a *App) RefreshActiveKiroQuota() error {
+	fmt.Println("=== API 调用: RefreshActiveKiroQuota ===")
+	
+	if a.accountMgr == nil {
+		fmt.Println("✗ 错误: account manager not initialized")
+		return fmt.Errorf("account manager not initialized")
+	}
+
+	// 获取 OpenCode 当前激活的账号
+	fmt.Println("→ 读取 OpenCode 当前激活账号...")
+	openCodeSystem := NewOpenCodeKiroSystem()
+	activeOpenCodeAccount, err := openCodeSystem.GetActiveOpenCodeAccount()
+	if err != nil {
+		fmt.Printf("✗ 获取 OpenCode 激活账号失败: %v\n", err)
+		return fmt.Errorf("获取 OpenCode 激活账号失败: %w", err)
+	}
+	fmt.Printf("✓ OpenCode 当前使用账号: %s\n", activeOpenCodeAccount.Email)
+
+	// 在我们的账号管理器中查找对应的账号
+	fmt.Println("→ 查找对应的账号...")
+	var accountId string
+	accounts := a.accountMgr.ListAccounts()
+	for _, acc := range accounts {
+		if acc.Email == activeOpenCodeAccount.Email || acc.ID == activeOpenCodeAccount.ID {
+			accountId = acc.ID
+			break
+		}
+	}
+
+	if accountId == "" {
+		fmt.Printf("✗ 未找到对应账号: %s\n", activeOpenCodeAccount.Email)
+		return fmt.Errorf("未找到 OpenCode 使用的账号: %s", activeOpenCodeAccount.Email)
+	}
+	fmt.Printf("✓ 找到账号 ID: %s\n", accountId)
+
+	// 刷新该账号的配额
+	fmt.Println("→ 刷新账号配额...")
+	if err := a.RefreshKiroQuota(accountId); err != nil {
+		fmt.Printf("✗ 刷新失败: %v\n", err)
+		return err
+	}
+
+	fmt.Println("✓ RefreshActiveKiroQuota 完成")
+	return nil
+}
+
+// RefreshKiroQuota refreshes quota information for an account
+func (a *App) RefreshKiroQuota(accountId string) error {
+	fmt.Printf("=== API 调用: RefreshKiroQuota (accountId=%s) ===\n", accountId)
+	
+	if a.accountMgr == nil {
+		fmt.Println("✗ 错误: account manager not initialized")
+		return fmt.Errorf("account manager not initialized")
+	}
+
+	fmt.Println("→ 获取账号信息...")
+	account, err := a.accountMgr.GetAccount(accountId)
+	if err != nil {
+		fmt.Printf("✗ 获取账号失败: %v\n", err)
+		return err
+	}
+	fmt.Printf("✓ 账号: %s\n", account.Email)
+
+	// 先刷新 Token（如果有 RefreshToken）
+	if account.RefreshToken != "" {
+		fmt.Println("→ 刷新 Bearer Token...")
+		tokenInfo, err := a.accountMgr.authService.RefreshToken(account.RefreshToken)
+		if err != nil {
+			fmt.Printf("✗ Token 刷新失败: %v\n", err)
+			return fmt.Errorf("token 刷新失败: %w", err)
+		}
+		
+		// 更新账号的 Token
+		updates := map[string]interface{}{
+			"bearerToken":  tokenInfo.AccessToken,
+			"refreshToken": tokenInfo.RefreshToken,
+			"tokenExpiry":  tokenInfo.ExpiresAt,
+		}
+		if err := a.accountMgr.UpdateAccount(accountId, updates); err != nil {
+			fmt.Printf("✗ 更新 Token 失败: %v\n", err)
+			return fmt.Errorf("更新 token 失败: %w", err)
+		}
+		
+		// 重新获取账号（使用新的 Token）
+		account, err = a.accountMgr.GetAccount(accountId)
+		if err != nil {
+			fmt.Printf("✗ 重新获取账号失败: %v\n", err)
+			return err
+		}
+		fmt.Println("✓ Bearer Token 刷新成功")
+	}
+
+	// Refresh quota
+	fmt.Println("→ 调用 quotaService.RefreshQuota...")
+	if err := a.accountMgr.quotaService.RefreshQuota(accountId, account.BearerToken); err != nil {
+		fmt.Printf("✗ 刷新配额失败: %v\n", err)
+		return err
+	}
+	fmt.Println("✓ 配额刷新成功")
+
+	// Get updated quota and update account
+	fmt.Println("→ 获取更新后的配额...")
+	quota, err := a.accountMgr.quotaService.GetQuota(account.BearerToken)
+	if err != nil {
+		fmt.Printf("✗ 获取配额失败: %v\n", err)
+		return err
+	}
+	fmt.Printf("✓ 配额: Used=%d, Total=%d\n", 
+		quota.Main.Used+quota.Trial.Used+quota.Reward.Used,
+		quota.Main.Total+quota.Trial.Total+quota.Reward.Total)
+
+	updates := map[string]interface{}{
+		"quota": *quota,
+	}
+
+	fmt.Println("→ 更新账号配额...")
+	err = a.accountMgr.UpdateAccount(accountId, updates)
+	if err != nil {
+		fmt.Printf("✗ 更新账号失败: %v\n", err)
+	} else {
+		fmt.Println("✓ 账号配额更新成功")
+	}
+	
+	fmt.Println("=== RefreshKiroQuota 完成 ===")
+	return err
+}
+
+// BatchRefreshKiroQuota refreshes quota for multiple accounts
+func (a *App) BatchRefreshKiroQuota(accountIds []string) error {
+	if a.accountMgr == nil {
+		return fmt.Errorf("account manager not initialized")
+	}
+
+	var accounts []*KiroAccount
+	for _, id := range accountIds {
+		account, err := a.accountMgr.GetAccount(id)
+		if err != nil {
+			continue // Skip invalid accounts
+		}
+		accounts = append(accounts, account)
+	}
+
+	return a.accountMgr.quotaService.BatchRefreshQuota(accounts)
+}
+
+// GetQuotaAlerts returns quota alerts for all accounts
+func (a *App) GetQuotaAlerts() ([]QuotaAlert, error) {
+	if a.accountMgr == nil {
+		return nil, fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.GetQuotaAlerts(0.9), nil // 90% threshold
+}
+
+// --- Batch Operations API ---
+
+// BatchRefreshKiroTokens refreshes tokens for multiple accounts
+func (a *App) BatchRefreshKiroTokens(accountIds []string) error {
+	if a.accountMgr == nil {
+		return fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.BatchRefreshTokens(accountIds)
+}
+
+// BatchDeleteKiroAccounts deletes multiple accounts
+func (a *App) BatchDeleteKiroAccounts(accountIds []string) error {
+	if a.accountMgr == nil {
+		return fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.BatchDeleteAccounts(accountIds)
+}
+
+// BatchAddKiroTags adds tags to multiple accounts
+func (a *App) BatchAddKiroTags(accountIds []string, tags []string) error {
+	if a.accountMgr == nil {
+		return fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.BatchAddTags(accountIds, tags)
+}
+
+// --- Data Management API ---
+
+// ExportKiroAccounts exports accounts to JSON with optional encryption
+func (a *App) ExportKiroAccounts(password string) (string, error) {
+	if a.accountMgr == nil {
+		return "", fmt.Errorf("account manager not initialized")
+	}
+
+	data, err := a.accountMgr.ExportAccounts(password)
+	if err != nil {
+		return "", err
+	}
+
+	// Save to temporary file and return path
+	tempDir := os.TempDir()
+	timestamp := time.Now().Format("20060102_150405")
+	filename := fmt.Sprintf("kiro_accounts_export_%s.json", timestamp)
+	if password != "" {
+		filename += ".enc"
+	}
+
+	filePath := filepath.Join(tempDir, filename)
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
+		return "", fmt.Errorf("failed to write export file: %w", err)
+	}
+
+	return filePath, nil
+}
+
+// ImportKiroAccounts imports accounts from JSON file
+func (a *App) ImportKiroAccounts(filePath string, password string) error {
+	if a.accountMgr == nil {
+		return fmt.Errorf("account manager not initialized")
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read import file: %w", err)
+	}
+
+	return a.accountMgr.ImportAccounts(data, password)
+}
+
+// --- Statistics API ---
+
+// GetKiroAccountStats returns statistics about managed accounts
+func (a *App) GetKiroAccountStats() (map[string]interface{}, error) {
+	if a.accountMgr == nil {
+		return nil, fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.GetAccountStats(), nil
+}
+
+// --- Configuration Management API ---
+
+// GetConfigPaths returns the configuration paths
+func (a *App) GetConfigPaths() (ConfigPaths, error) {
+	if a.configMgr == nil {
+		return ConfigPaths{}, fmt.Errorf("configuration manager not initialized")
+	}
+	return a.configMgr.GetPaths(), nil
+}
+
+// GetAppConfig returns the current application configuration
+func (a *App) GetAppConfig() (*AppConfig, error) {
+	if a.configMgr == nil {
+		return nil, fmt.Errorf("configuration manager not initialized")
+	}
+	return a.configMgr.LoadAppConfig()
+}
+
+// UpdateAppConfig updates the application configuration
+func (a *App) UpdateAppConfig(config *AppConfig) error {
+	if a.configMgr == nil {
+		return fmt.Errorf("configuration manager not initialized")
+	}
+	return a.configMgr.SaveAppConfig(config)
+}
+
+// GetAccountSettings returns the current account settings
+func (a *App) GetAccountSettings() (AccountSettings, error) {
+	if a.accountMgr == nil {
+		return AccountSettings{}, fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.GetSettings()
+}
+
+// UpdateAccountSettings updates the account settings
+func (a *App) UpdateAccountSettings(settings AccountSettings) error {
+	if a.accountMgr == nil {
+		return fmt.Errorf("account manager not initialized")
+	}
+	return a.accountMgr.UpdateSettings(settings)
+}
+
+// GetStorageInfo returns storage usage information
+func (a *App) GetStorageInfo() (map[string]interface{}, error) {
+	if a.configMgr == nil {
+		return nil, fmt.Errorf("configuration manager not initialized")
+	}
+	return a.configMgr.GetStorageInfo()
+}
+
+// CleanupTempFiles cleans up temporary files
+func (a *App) CleanupTempFiles() error {
+	if a.configMgr == nil {
+		return fmt.Errorf("configuration manager not initialized")
+	}
+	return a.configMgr.CleanupTempDirectory()
+}
+
+// LogToTerminal logs a message to the terminal
+func (a *App) LogToTerminal(message string) {
+	fmt.Println(message)
+	fmt.Fprintf(os.Stderr, "%s\n", message)
+}
+
+// ValidateConfiguration validates the current configuration
+func (a *App) ValidateConfiguration() error {
+	if a.configMgr == nil {
+		return fmt.Errorf("configuration manager not initialized")
+	}
+	return a.configMgr.Validate()
+}
+
+// ResetConfiguration resets configuration to defaults (creates backup)
+func (a *App) ResetConfiguration() error {
+	if a.configMgr == nil {
+		return fmt.Errorf("configuration manager not initialized")
+	}
+	return a.configMgr.Reset()
 }

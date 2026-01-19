@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>测试刷新功能</title>
+</head>
+<body>
+    <h1>Kiro 账号刷新功能测试</h1>
+    <div id="output"></div>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(msg) {
+            output.innerHTML += `<p>${msg}</p>`;
+            console.log(msg);
+        }
+        
+        // 模拟账号数据
+        const account = {
+            id: 'test-123',
+            email: 'test@example.com',
+            quota: {
+                main: { used: 100, total: 500 },
+                trial: { used: 0, total: 0 },
+                reward: { used: 50, total: 50 }
+            }
+        };
+        
+        // 模拟刷新函数
+        async function refreshAccountQuota(accountId) {
+            log('=== refreshAccountQuota 被调用 === ' + accountId);
+            log('→ 调用 RefreshKiroQuota...');
+            
+            // 模拟 API 调用
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            log('✓ RefreshKiroQuota 成功');
+            log('→ 重新加载账号列表...');
+            log('✓ 账号列表加载完成');
+            log('=== refreshAccountQuota 完成 ===');
+        }
+        
+        // 创建按钮
+        const btn = document.createElement('button');
+        btn.textContent = '点击测试刷新';
+        btn.onclick = () => {
+            log('按钮被点击！');
+            refreshAccountQuota(account.id);
+        };
+        document.body.insertBefore(btn, output);
+        
+        log('测试页面已加载');
+        log('账号 ID: ' + account.id);
+    </script>
+</body>
+</html>

@@ -154,6 +154,24 @@ func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) erro
 	return nil
 }
 
+// GetActiveOpenCodeAccount returns the currently active account in OpenCode
+func (oks *OpenCodeKiroSystem) GetActiveOpenCodeAccount() (*OpenCodeKiroAccount, error) {
+	accountsFile, err := oks.ReadKiroAccounts()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read kiro-accounts.json: %w", err)
+	}
+
+	if len(accountsFile.Accounts) == 0 {
+		return nil, fmt.Errorf("no accounts in kiro-accounts.json")
+	}
+
+	if accountsFile.ActiveIndex < 0 || accountsFile.ActiveIndex >= len(accountsFile.Accounts) {
+		return nil, fmt.Errorf("invalid active index: %d", accountsFile.ActiveIndex)
+	}
+
+	return &accountsFile.Accounts[accountsFile.ActiveIndex], nil
+}
+
 // RemoveAccountFromOpenCode removes an account from OpenCode configuration
 func (oks *OpenCodeKiroSystem) RemoveAccountFromOpenCode(accountID string) error {
 	accountsFile, err := oks.ReadKiroAccounts()

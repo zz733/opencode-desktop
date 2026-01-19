@@ -409,7 +409,7 @@ const initEditor = () => {
     cursorBlinking: 'smooth',
     smoothScrolling: true,
     padding: { top: 8 },
-    fixedOverflowWidgets: true,
+    // 自动补全配置
     quickSuggestions: true,
     suggestOnTriggerCharacters: true,
     acceptSuggestionOnEnter: 'on',
@@ -501,36 +501,12 @@ const reloadFile = async () => {
   await loadFile()
 }
 
-const focusEditor = () => {
-  editor.value?.focus()
-}
-
-const handleEscapeKey = (e) => {
-  const isEscape = e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27
-  if (!isEscape) return
-  // 使用 hasWidgetFocus 替代 hasTextFocus，这样当焦点在查找框输入框时也能触发
-  if (!editor.value?.hasWidgetFocus?.()) return
-  const root = editor.value?.getDomNode()
-  if (!root) return
-  const widget = root.querySelector('.find-widget')
-  if (!widget) return
-  const rect = widget.getBoundingClientRect()
-  const displayed = widget.offsetParent !== null && rect.width > 0 && rect.height > 0
-  if (!displayed) return
-  editor.value?.getAction('closeFindWidget')?.run()
-  editor.value?.getAction('closeReplaceWidget')?.run()
-  e.preventDefault()
-  e.stopPropagation()
-}
-
 watch(() => props.file?.path, (newPath, oldPath) => {
   if (oldPath) UnwatchFile(oldPath)
   loadFile()
 })
 
 onMounted(() => {
-  window.addEventListener('keydown', handleEscapeKey, true)
-  
   initEditor()
   if (props.file) loadFile()
   EventsOn('file-changed', handleFileChanged)
@@ -561,12 +537,11 @@ onUnmounted(() => {
   if (completionTimeout) clearTimeout(completionTimeout)
   document.removeEventListener('click', hideContextMenu)
   document.removeEventListener('contextmenu', hideContextMenu)
-  window.removeEventListener('keydown', handleEscapeKey, true)
 })
 
 const lineCount = () => editor.value?.getModel()?.getLineCount() || content.value.split('\n').length
 
-defineExpose({ reloadFile, focusEditor })
+defineExpose({ reloadFile })
 </script>
 
 <template>

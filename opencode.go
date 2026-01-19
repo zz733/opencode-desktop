@@ -300,7 +300,7 @@ func (m *OpenCodeManager) cleanupPortProcesses(port int) {
 					pid := fields[len(fields)-1]
 					if pid != "0" {
 						// 检查是否是 OpenCode 进程
-						tasklistCmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %s"), "/FO", "CSV", "/NH")
+						tasklistCmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %s", pid), "/FO", "CSV", "/NH")
 						if taskOutput, taskErr := tasklistCmd.Output(); taskErr == nil {
 							taskInfo := string(taskOutput)
 							if strings.Contains(strings.ToLower(taskInfo), "opencode") {
@@ -310,7 +310,7 @@ func (m *OpenCodeManager) cleanupPortProcesses(port int) {
 								time.Sleep(2 * time.Second)
 								
 								// 检查进程是否还在运行
-								checkCmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %s"))
+								checkCmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %s", pid))
 								if checkCmd.Run() == nil {
 									wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("进程 %s 未响应，强制终止", pid))
 									exec.Command("taskkill", "/F", "/PID", pid).Run()

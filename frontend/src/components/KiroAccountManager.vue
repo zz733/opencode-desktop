@@ -8,7 +8,7 @@ import {
   RefreshKiroToken, GetKiroQuota, RefreshKiroQuota, BatchRefreshKiroTokens,
   BatchDeleteKiroAccounts, BatchAddKiroTags, ExportKiroAccounts, ImportKiroAccounts,
   GetAccountSettings, UpdateAccountSettings,
-  GetTags, AddTag, DeleteTag
+  GetTags, AddTag, DeleteTag, LogToTerminal
 } from '../../wailsjs/go/main/App'
 
 const { t } = useI18n()
@@ -24,7 +24,8 @@ const state = reactive({
   refreshing: false,
   filterTag: '',
   sortBy: 'lastUsed',
-  searchQuery: ''
+  searchQuery: '',
+  errorMessage: '' // 添加错误消息状态
 })
 
 const settings = reactive({
@@ -78,7 +79,7 @@ const importPassword = ref('')
 const deleteTarget = ref(null)
 const editingAccount = ref(null)
 const switchingId = ref(null)
-const refreshingId = ref(null) // 正在刷新的账号ID
+const refreshingId = ref(null)
 
 // 计算属性
 const filteredAccounts = computed(() => {
@@ -119,7 +120,10 @@ const activeAccount = computed(() => {
 
 // 生命周期
 onMounted(async () => {
+  await LogToTerminal('=== KiroAccountManager onMounted ===')
+  await LogToTerminal('→ 开始加载数据...')
   await loadAccounts()
+  await LogToTerminal('→ 账号数量: ' + state.accounts.length)
   await loadTags()
   await loadSettings()
   
@@ -127,6 +131,7 @@ onMounted(async () => {
   EventsOn('kiro-account-removed', handleAccountRemoved)
   EventsOn('kiro-account-switched', handleAccountSwitched)
   EventsOn('kiro-quota-updated', handleQuotaUpdated)
+  await LogToTerminal('=== KiroAccountManager 初始化完成 ===')
 })
 
 onUnmounted(() => {
@@ -138,15 +143,21 @@ onUnmounted(() => {
 
 // 数据加载
 async function loadAccounts() {
+  await LogToTerminal('=== loadAccounts 开始 ===')
   state.loading = true
   try {
+    await LogToTerminal('→ 调用 GetKiroAccounts...')
     const accounts = await GetKiroAccounts()
+    await LogToTerminal('✓ 获取到账号数据，数量: ' + (accounts ? accounts.length : 0))
     state.accounts = accounts || []
+    await LogToTerminal('✓ state.accounts 已更新')
   } catch (error) {
-    console.error('Failed to load accounts:', error)
+    await LogToTerminal('✗ 加载账号失败: ' + error)
+    console.error('✗ 加载账号失败:', error)
     state.accounts = []
   } finally {
     state.loading = false
+    await LogToTerminal('=== loadAccounts 完成 ===')
   }
 }
 
@@ -256,7 +267,7 @@ async function switchAccount(account) {
     await SwitchKiroAccount(account.id)
     await loadAccounts()
   } catch (error) {
-    console.error('Failed to switch account:', error)
+    console.error('✗ 切换账号失败:', error)
     alert('切换账号失败: ' + error.message)
   } finally {
     switchingId.value = null
@@ -265,12 +276,12 @@ async function switchAccount(account) {
 
 async function refreshAccountQuota(accountId) {
   refreshingId.value = accountId
+  
   try {
     await RefreshKiroQuota(accountId)
     await loadAccounts()
   } catch (error) {
-    console.error('Failed to refresh quota:', error)
-    alert('刷新配额失败: ' + error.message)
+    console.error('✗ 刷新失败:', error)
   } finally {
     refreshingId.value = null
   }
@@ -309,8 +320,15 @@ function resetAccountForm() {
 }
 
 async function saveAccount() {
-  if (state.saving) return
+  // 清除之前的错误消息
+  state.errorMessage = ''
+  
+  if (state.saving) {
+    return
+  }
+  
   state.saving = true
+  
   try {
     if (editingAccount.value) {
       // Editing existing account - no validation needed for basic info
@@ -330,6 +348,16 @@ async function saveAccount() {
     } else {
       // Adding new account - validate form
       if (!validateForm()) {
+        // 显示验证错误
+        if (formErrors.refreshToken) {
+          state.errorMessage = formErrors.refreshToken
+        } else if (formErrors.email) {
+          state.errorMessage = formErrors.email
+        } else if (formErrors.password) {
+          state.errorMessage = formErrors.password
+        } else {
+          state.errorMessage = '请填写必填项'
+        }
         return
       }
       
@@ -341,9 +369,6 @@ async function saveAccount() {
       
       if (accountForm.loginMethod === 'token') {
         data.refreshToken = accountForm.refreshToken.trim()
-        
-        // No need to validate here - backend will handle refresh token validation
-        // and automatically convert it to bearer token
       } else if (accountForm.loginMethod === 'oauth') {
         await startOAuthFlow()
         return
@@ -353,36 +378,48 @@ async function saveAccount() {
         
         // Check for duplicate account
         if (checkDuplicateAccount(data.email)) {
+          state.errorMessage = '该邮箱账号已存在'
           formErrors.email = '该邮箱账号已存在'
           return
         }
       }
       
+      // 显示正在添加的提示
+      state.errorMessage = '正在添加账号，请稍候...'
+      
       await AddKiroAccount(accountForm.loginMethod, data)
+      
+      // 成功后关闭对话框
       dialogs.showAddDialog = false
+      state.errorMessage = ''
       await loadAccounts()
     }
     
     resetAccountForm()
   } catch (error) {
-    console.error('Failed to save account:', error)
-    
     // Provide user-friendly error messages
-    let errorMessage = '保存账号失败'
+    let errorMessage = '❌ 保存账号失败'
     
-    if (error.message) {
-      if (error.message.includes('invalid') || error.message.includes('unauthorized')) {
-        errorMessage = '认证失败：Refresh Token 无效或已过期'
-      } else if (error.message.includes('network') || error.message.includes('timeout')) {
-        errorMessage = '网络错误：请检查网络连接'
-      } else if (error.message.includes('duplicate')) {
-        errorMessage = '该账号已存在'
+    // 获取完整的错误信息
+    const fullError = error?.message || error?.toString() || String(error)
+    
+    if (fullError) {
+      if (fullError.includes('临时封禁') || fullError.includes('SUSPENDED') || fullError.includes('suspended')) {
+        errorMessage = '❌ 账号已被临时封禁：AWS 检测到异常活动并锁定了您的账号。请联系 AWS 支持团队恢复访问：https://support.aws.amazon.com/#/contacts/kiro'
+      } else if (fullError.includes('invalid') || fullError.includes('unauthorized') || fullError.includes('刷新 Token 失败') || fullError.includes('Token 失败') || fullError.includes('Bad credentials')) {
+        errorMessage = '❌ 认证失败：Refresh Token 无效或已过期，请重新获取'
+      } else if (fullError.includes('network') || fullError.includes('timeout')) {
+        errorMessage = '❌ 网络错误：请检查网络连接'
+      } else if (fullError.includes('duplicate') || fullError.includes('已存在')) {
+        errorMessage = '❌ 该账号已存在'
       } else {
-        errorMessage = '保存账号失败: ' + error.message
+        // 显示完整的错误信息
+        errorMessage = '❌ ' + fullError
       }
     }
     
-    alert(errorMessage)
+    // 显示错误消息在界面上
+    state.errorMessage = errorMessage
   } finally {
     state.saving = false
   }
@@ -709,7 +746,7 @@ function checkDuplicateAccount(email) {
 
           <!-- 操作按钮 -->
           <div class="card-actions">
-            <button class="btn-action btn-switch" @click.stop="switchAccount(account)" :disabled="switchingId === account.id" :title="account.isActive ? '重新应用到系统' : '切换账号'">
+            <button class="btn-action btn-switch" @click="switchAccount(account)" :disabled="switchingId === account.id" :title="account.isActive ? '重新应用到系统' : '切换账号'">
               <svg v-if="switchingId === account.id" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 11-6.219-8.56"/>
               </svg>
@@ -720,7 +757,12 @@ function checkDuplicateAccount(email) {
                 <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
               </svg>
             </button>
-            <button class="btn-action btn-refresh" @click.stop="refreshAccountQuota(account.id)" :disabled="refreshingId === account.id" title="刷新配额">
+            <button 
+              class="btn-action btn-refresh" 
+              @click="refreshAccountQuota(account.id)" 
+              :disabled="refreshingId === account.id" 
+              title="刷新配额"
+            >
               <svg v-if="refreshingId === account.id" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 11-6.219-8.56"/>
               </svg>
@@ -862,6 +904,16 @@ function checkDuplicateAccount(email) {
         </div>
         
         <div class="dialog-content">
+          <!-- 错误提示区域 -->
+          <div v-if="state.errorMessage" class="error-banner">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 8v4M12 16h.01"/>
+            </svg>
+            <span>{{ state.errorMessage }}</span>
+            <button class="btn-close-error" @click="state.errorMessage = ''">×</button>
+          </div>
+
           <!-- 登录方式选择 -->
           <div class="login-methods">
             <label class="method-option" :class="{ active: accountForm.loginMethod === 'token' }">
@@ -1831,7 +1883,7 @@ function checkDuplicateAccount(email) {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9999;
   animation: fadeIn 0.2s ease;
 }
 
@@ -1852,6 +1904,8 @@ function checkDuplicateAccount(email) {
   flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 10000;
 }
 
 @keyframes slideUp {
@@ -2444,6 +2498,62 @@ input:focus + .slider {
 
 input:checked + .slider:before {
   transform: translateX(20px);
+}
+
+/* 错误横幅 */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  color: #dc2626;
+  font-size: 14px;
+  animation: slideDown 0.3s ease-out;
+}
+
+.error-banner svg {
+  flex-shrink: 0;
+  color: #dc2626;
+}
+
+.error-banner span {
+  flex: 1;
+  line-height: 1.5;
+}
+
+.btn-close-error {
+  background: none;
+  border: none;
+  color: #dc2626;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.btn-close-error:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 信息提示框 */

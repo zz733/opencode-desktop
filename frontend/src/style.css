@@ -12,25 +12,3 @@ body {
 #app {
     height: 100vh;
 }
-
-.monaco-editor .find-widget {
-    z-index: 10000 !important;
-}
-
-.monaco-editor .find-widget .button {
-    position: relative;
-    z-index: 10001 !important;
-}
-
-.monaco-hover,
-.monaco-editor-hover,
-.monaco-hover-widget,
-.monaco-tooltip,
-.context-view .monaco-tooltip {
-    pointer-events: none !important;
-}
-
-.monaco-tooltip,
-.context-view .monaco-tooltip {
-    display: none !important;
-}
