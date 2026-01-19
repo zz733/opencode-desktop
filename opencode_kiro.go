@@ -105,10 +105,13 @@ func (oks *OpenCodeKiroSystem) WriteKiroAccounts(accountsFile *OpenCodeKiroAccou
 // ApplyAccountToOpenCode applies a Kiro account to OpenCode configuration
 // This updates or adds the account in kiro-accounts.json and sets it as active
 func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) error {
+	fmt.Printf("  → ApplyAccountToOpenCode 开始 (email=%s)\n", account.Email)
+	
 	accountsFile, err := oks.ReadKiroAccounts()
 	if err != nil {
 		return fmt.Errorf("failed to read kiro-accounts.json: %w", err)
 	}
+	fmt.Printf("  → 当前文件中有 %d 个账号\n", len(accountsFile.Accounts))
 
 	// Create OpenCode account structure
 	openCodeAccount := OpenCodeKiroAccount{
@@ -123,6 +126,7 @@ func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) erro
 		IsHealthy:          true,
 		RealEmail:          account.Email,
 	}
+	fmt.Printf("  → 创建 OpenCode 账号结构: ID=%s, Email=%s\n", openCodeAccount.ID, openCodeAccount.Email)
 
 	// Find if account already exists
 	found := false
@@ -133,6 +137,7 @@ func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) erro
 			accountsFile.Accounts[i] = openCodeAccount
 			found = true
 			foundIndex = i
+			fmt.Printf("  → 找到已存在账号，更新索引 %d\n", i)
 			break
 		}
 	}
@@ -141,15 +146,22 @@ func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) erro
 		// Add new account
 		accountsFile.Accounts = append(accountsFile.Accounts, openCodeAccount)
 		foundIndex = len(accountsFile.Accounts) - 1
+		fmt.Printf("  → 添加新账号，索引 %d\n", foundIndex)
 	}
 
 	// Set as active account
 	accountsFile.ActiveIndex = foundIndex
+	fmt.Printf("  → 设置 ActiveIndex = %d\n", foundIndex)
+	fmt.Printf("  → 文件中现在有 %d 个账号\n", len(accountsFile.Accounts))
 
 	// Write back to file
+	path, _ := oks.GetKiroAccountsPath()
+	fmt.Printf("  → 准备写入文件: %s\n", path)
 	if err := oks.WriteKiroAccounts(accountsFile); err != nil {
+		fmt.Printf("  ✗ 写入失败: %v\n", err)
 		return fmt.Errorf("failed to write kiro-accounts.json: %w", err)
 	}
+	fmt.Println("  ✓ 文件写入成功")
 
 	return nil
 }
