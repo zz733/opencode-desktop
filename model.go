@@ -68,6 +68,8 @@ func (a *App) GetAllModels() ([]ConfigModel, error) {
 			continue
 		}
 
+		fmt.Printf("  - Provider: %s (包含 %d 个模型)\n", provider.ID, len(provider.Models))
+
 		for modelID, modelData := range provider.Models {
 			// 获取模型名称
 			modelName := modelID
@@ -83,19 +85,19 @@ func (a *App) GetAllModels() ([]ConfigModel, error) {
 			// 1. Kiro 模型
 			if provider.ID == "kiro" {
 				shouldAdd = true
-			}
-
-			// 2. Google Antigravity 模型
-			if provider.ID == "google" && strings.HasPrefix(modelID, "antigravity-") {
-				shouldAdd = true
-			}
-
-			// 3. Google Gemini 模型（preview 或特定模型）
-			if provider.ID == "google" {
+				fmt.Printf("    ✓ Kiro 模型: %s\n", modelID)
+			} else if provider.ID == "google" {
+				// 2. Google Antigravity 模型
+				if strings.HasPrefix(modelID, "antigravity-") {
+					shouldAdd = true
+					fmt.Printf("    ✓ Antigravity 模型: %s\n", modelID)
+				}
+				// 3. Google Gemini 模型（preview 或特定模型）
 				if strings.Contains(modelID, "-preview") ||
 					modelID == "gemini-2.5-flash" ||
 					modelID == "gemini-2.5-pro" {
 					shouldAdd = true
+					fmt.Printf("    ✓ Gemini 模型: %s\n", modelID)
 				}
 			}
 
