@@ -210,13 +210,92 @@ func (s *HTTPServer) handleModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 直接从 OpenCode API 获取模型列表
-	models, err := s.app.GetAllModels()
+	// 直接从 OpenCode /provider API 获取并过滤模型
+	var models []map[string]interface{}
+
+	resp, err := s.app.httpClient.Get(s.app.serverURL + "/provider")
 	if err != nil {
-		fmt.Printf("Failed to get models: %v\n", err)
-		// 返回空列表而不是错误，避免前端崩溃
-		models = []ConfigModel{}
+		fmt.Printf("❌ 获取 provider 失败: %v\n", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"models": []interface{}{},
+			"count":  0,
+			"error":  err.Error(),
+		})
+		return
 	}
+	defer resp.Body.Close()
+
+	var providerResp struct {
+		All []struct {
+			ID     string                 `json:"id"`
+			Name   string                 `json:"name"`
+			Models map[string]interface{} `json:"models"`
+		} `json:"all"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&providerResp); err != nil {
+		fmt.Printf("❌ 解析 provider 响应失败: %v\n", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"models": []interface{}{},
+			"count":  0,
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	fmt.Printf("📋 从 OpenCode API 获取到 %d 个 provider\n", len(providerResp.All))
+
+	// 遍历每个 provider，只添加特定的模型（与桌面端 useOpenCode.js 保持一致）
+	for _, provider := range providerResp.All {
+		if provider.Models == nil {
+			continue
+		}
+
+		for modelID, modelData := range provider.Models {
+			// 获取模型名称
+			modelName := modelID
+			if modelMap, ok := modelData.(map[string]interface{}); ok {
+				if name, ok := modelMap["name"].(string); ok && name != "" {
+					modelName = name
+				}
+			}
+
+			shouldAdd := false
+			category := ""
+
+			// 1. Kiro 模型 (kiro provider)
+			if provider.ID == "kiro" {
+				shouldAdd = true
+				category = "kiro"
+			}
+
+			// 2. Google Antigravity 模型 (antigravity- 前缀)
+			if provider.ID == "google" && strings.HasPrefix(modelID, "antigravity-") {
+				shouldAdd = true
+				category = "antigravity"
+			}
+
+			// 3. Google Gemini 模型 (-preview 后缀或特定模型)
+			if provider.ID == "google" && (strings.Contains(modelID, "-preview") || modelID == "gemini-2.5-flash" || modelID == "gemini-2.5-pro") {
+				shouldAdd = true
+				category = "gemini-cli"
+			}
+
+			if shouldAdd {
+				models = append(models, map[string]interface{}{
+					"id":       fmt.Sprintf("%s/%s", provider.ID, modelID),
+					"name":     modelName,
+					"provider": provider.ID,
+					"category": category,
+				})
+				fmt.Printf("  ✓ 添加模型: %s/%s (%s)\n", provider.ID, modelID, category)
+			}
+		}
+	}
+
+	fmt.Printf("✅ 筛选后返回 %d 个模型\n", len(models))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
