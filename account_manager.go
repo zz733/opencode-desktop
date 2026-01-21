@@ -42,6 +42,11 @@ func NewAccountManager(storage *StorageService, crypto *CryptoService) *AccountM
 		tags:         []Tag{},
 	}
 
+	// Register OAuth success callback
+	am.authService.SetAuthSuccessCallback(func(account *KiroAccount) error {
+		return am.AddAccount(account)
+	})
+
 	// Load existing accounts from storage
 	am.loadAccounts()
 
@@ -295,7 +300,7 @@ func (am *AccountManager) SwitchAccount(id string) error {
 	logMsg := fmt.Sprintf("\n========================================\n")
 	logMsg += fmt.Sprintf("  → AccountManager.SwitchAccount 开始 (id=%s)\n", id)
 	am.writeLog(logMsg)
-	
+
 	am.mutex.Lock()
 	defer am.mutex.Unlock()
 
@@ -309,27 +314,28 @@ func (am *AccountManager) SwitchAccount(id string) error {
 	// 如果账号缺少 UserID 或 ProfileArn，先刷新一次获取完整信息
 	if newAccount.UserID == "" || newAccount.ProfileArn == "" {
 		am.writeLog("  → 账号缺少 UserID/ProfileArn，正在刷新获取...\n")
-		apiClient := NewKiroAPIClient()
-		
+
 		// 刷新 token
-		tokenResp, err := apiClient.RefreshKiroToken(newAccount.RefreshToken)
+		tokenInfo, err := am.authService.RefreshToken(newAccount.RefreshToken)
 		if err != nil {
 			am.writeLog(fmt.Sprintf("  ⚠ 警告: 刷新 token 失败: %v\n", err))
 		} else {
 			// 更新 token
-			newAccount.BearerToken = tokenResp.AccessToken
-			newAccount.RefreshToken = tokenResp.RefreshToken
-			newAccount.TokenExpiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
-			newAccount.ProfileArn = tokenResp.ProfileArn
-			am.writeLog(fmt.Sprintf("  ✓ Token 已刷新，ProfileArn: %s\n", tokenResp.ProfileArn))
-			
+			newAccount.BearerToken = tokenInfo.AccessToken
+			if tokenInfo.RefreshToken != "" {
+				newAccount.RefreshToken = tokenInfo.RefreshToken
+			}
+			newAccount.TokenExpiry = tokenInfo.ExpiresAt
+			newAccount.ProfileArn = tokenInfo.ProfileArn
+			am.writeLog(fmt.Sprintf("  ✓ Token 已刷新，ProfileArn: %s\n", tokenInfo.ProfileArn))
+
 			// 获取用户信息
-			usageResp, err := apiClient.GetKiroUsageLimits(tokenResp.AccessToken)
+			userProfile, err := am.authService.GetUserProfile(tokenInfo.AccessToken)
 			if err != nil {
 				am.writeLog(fmt.Sprintf("  ⚠ 警告: 获取用户信息失败: %v\n", err))
-			} else if usageResp.UserInfo != nil {
-				newAccount.UserID = usageResp.UserInfo.UserID
-				am.writeLog(fmt.Sprintf("  ✓ 获取到 UserID: %s\n", usageResp.UserInfo.UserID))
+			} else {
+				newAccount.UserID = userProfile.ID
+				am.writeLog(fmt.Sprintf("  ✓ 获取到 UserID: %s\n", userProfile.ID))
 			}
 		}
 	}
@@ -403,7 +409,7 @@ func (am *AccountManager) SwitchAccount(id string) error {
 func (am *AccountManager) writeLog(message string) {
 	// Write to stderr (visible in terminal)
 	fmt.Fprint(os.Stderr, message)
-	
+
 	// Also write to log file
 	logFile := filepath.Join(os.TempDir(), "kiro-account-manager.log")
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -467,6 +473,7 @@ func (am *AccountManager) BatchRefreshTokens(ids []string) error {
 			account.RefreshToken = tokenInfo.RefreshToken
 		}
 		account.TokenExpiry = tokenInfo.ExpiresAt
+		account.ProfileArn = tokenInfo.ProfileArn
 
 		successCount++
 	}

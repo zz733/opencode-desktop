@@ -53,5 +53,6 @@ func TestAddAccountManual(t *testing.T) {
 		t.Fatal("No accounts found after adding")
 	}
 
-	fmt.Printf("Successfully added account: %+v\n", accounts[0])
+	account := accounts[0]
+	fmt.Printf("Successfully added account: id=%s email=%s\n", account.ID, account.Email)
 }

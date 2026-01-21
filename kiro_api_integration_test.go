@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,97 +12,55 @@ import (
 // TestGetUserProfileIntegration tests the complete user profile retrieval flow
 func TestGetUserProfileIntegration(t *testing.T) {
 	tests := []struct {
-		name           string
-		token          string
-		responseStatus int
-		responseBody   interface{}
-		expectError    bool
-		errorContains  string
+		name          string
+		token         string
+		usageResponse *UsageLimitsResponse
+		clientErr     error
+		expectError   bool
+		errorContains string
 	}{
 		{
-			name:           "successful profile retrieval",
-			token:          "valid-bearer-token-with-sufficient-length",
-			responseStatus: http.StatusOK,
-			responseBody: UserProfile{
-				ID:       "user123",
-				Email:    "test@example.com",
-				Name:     "Test User",
-				Avatar:   "https://example.com/avatar.jpg",
-				Provider: "kiro",
+			name:  "successful profile retrieval",
+			token: "valid-bearer-token-with-sufficient-length",
+			usageResponse: &UsageLimitsResponse{
+				UserInfo: &struct {
+					Email  string `json:"email"`
+					UserID string `json:"userId"`
+				}{
+					Email:  "test@example.com",
+					UserID: "user123",
+				},
 			},
 			expectError: false,
 		},
 		{
-			name:           "unauthorized token",
-			token:          "invalid-token-with-sufficient-length",
-			responseStatus: http.StatusUnauthorized,
-			responseBody:   map[string]string{"error": "unauthorized"},
-			expectError:    true,
-			errorContains:  "invalid or expired",
-		},
-		{
-			name:           "forbidden access",
-			token:          "valid-but-forbidden-token-with-length",
-			responseStatus: http.StatusForbidden,
-			responseBody:   map[string]string{"error": "forbidden"},
-			expectError:    true,
-			errorContains:  "required permissions",
-		},
-		{
-			name:           "profile not found",
-			token:          "valid-token-but-no-profile-found-here",
-			responseStatus: http.StatusNotFound,
-			responseBody:   map[string]string{"error": "not found"},
-			expectError:    true,
-			errorContains:  "not found",
-		},
-		{
-			name:           "rate limit exceeded",
-			token:          "valid-token-but-rate-limited-now-here",
-			responseStatus: http.StatusTooManyRequests,
-			responseBody:   map[string]string{"error": "rate limit"},
-			expectError:    true,
-			errorContains:  "rate limit",
-		},
-		{
-			name:           "missing email in profile",
-			token:          "valid-token-with-incomplete-profile",
-			responseStatus: http.StatusOK,
-			responseBody: UserProfile{
-				ID:     "user123",
-				Email:  "", // Missing email
-				Name:   "Test User",
-				Avatar: "https://example.com/avatar.jpg",
-			},
+			name:          "usage api error",
+			token:         "invalid-token-with-sufficient-length",
+			clientErr:     fmt.Errorf("unauthorized"),
 			expectError:   true,
-			errorContains: "missing required field",
+			errorContains: "unauthorized",
+		},
+		{
+			name:          "missing user info",
+			token:         "valid-token-with-incomplete-profile",
+			usageResponse: &UsageLimitsResponse{},
+			expectError:   true,
+			errorContains: "user info not found",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create test server
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Verify request headers
-				if r.Header.Get("Authorization") != "Bearer "+tt.token {
-					t.Errorf("Expected Authorization header 'Bearer %s', got '%s'", tt.token, r.Header.Get("Authorization"))
-				}
-				if r.Header.Get("User-Agent") != "Kiro-Account-Manager/1.0" {
-					t.Errorf("Expected User-Agent 'Kiro-Account-Manager/1.0', got '%s'", r.Header.Get("User-Agent"))
-				}
-
-				w.WriteHeader(tt.responseStatus)
-				json.NewEncoder(w).Encode(tt.responseBody)
-			}))
-			defer server.Close()
-
-			// Create auth service with test server URL
-			config := &KiroAPIConfig{
-				BaseURL:        server.URL,
-				UserProfileURL: server.URL + "/user/profile",
-				Timeout:        30,
-			}
+			config := DefaultKiroAPIConfig()
 			authService := NewAuthServiceWithConfig(config)
+			authService.kiroClient = &mockDesktopClient{
+				getUserInfo: func(token string) (*UsageLimitsResponse, error) {
+					if tt.clientErr != nil {
+						return nil, tt.clientErr
+					}
+					return tt.usageResponse, nil
+				},
+			}
 
 			// Test GetUserProfile
 			profile, err := authService.GetUserProfile(tt.token)
@@ -119,12 +78,11 @@ func TestGetUserProfileIntegration(t *testing.T) {
 				if profile == nil {
 					t.Errorf("Expected profile but got nil")
 				} else {
-					expectedProfile := tt.responseBody.(UserProfile)
-					if profile.Email != expectedProfile.Email {
-						t.Errorf("Expected email '%s', got '%s'", expectedProfile.Email, profile.Email)
+					if profile.Email != "test@example.com" {
+						t.Errorf("Expected email 'test@example.com', got '%s'", profile.Email)
 					}
-					if profile.Name != expectedProfile.Name {
-						t.Errorf("Expected name '%s', got '%s'", expectedProfile.Name, profile.Name)
+					if profile.Name != "test@example.com" {
+						t.Errorf("Expected name 'test@example.com', got '%s'", profile.Name)
 					}
 				}
 			}
@@ -135,76 +93,44 @@ func TestGetUserProfileIntegration(t *testing.T) {
 // TestGetQuotaIntegration tests the complete quota retrieval flow
 func TestGetQuotaIntegration(t *testing.T) {
 	tests := []struct {
-		name           string
-		token          string
-		responseStatus int
-		responseBody   interface{}
-		expectError    bool
-		errorContains  string
+		name          string
+		token         string
+		usageResponse *UsageLimitsResponse
+		clientErr     error
+		expectError   bool
+		errorContains string
 	}{
 		{
-			name:           "successful quota retrieval - direct format",
-			token:          "valid-bearer-token-with-sufficient-length",
-			responseStatus: http.StatusOK,
-			responseBody: QuotaInfo{
+			name:  "successful quota retrieval",
+			token: "valid-bearer-token-with-sufficient-length",
+			usageResponse: buildUsageLimitsResponse(&QuotaInfo{
 				Main:   QuotaDetail{Used: 100, Total: 1000},
 				Trial:  QuotaDetail{Used: 50, Total: 100},
 				Reward: QuotaDetail{Used: 0, Total: 200},
-			},
+			}),
 			expectError: false,
 		},
 		{
-			name:           "successful quota retrieval - wrapped format",
-			token:          "valid-bearer-token-with-sufficient-length",
-			responseStatus: http.StatusOK,
-			responseBody: map[string]interface{}{
-				"quota": QuotaInfo{
-					Main:   QuotaDetail{Used: 200, Total: 2000},
-					Trial:  QuotaDetail{Used: 25, Total: 100},
-					Reward: QuotaDetail{Used: 10, Total: 300},
-				},
-			},
-			expectError: false,
-		},
-		{
-			name:           "unauthorized token",
-			token:          "invalid-token-with-sufficient-length",
-			responseStatus: http.StatusUnauthorized,
-			responseBody:   map[string]string{"error": "unauthorized"},
-			expectError:    true,
-			errorContains:  "invalid or expired",
-		},
-		{
-			name:           "quota not found",
-			token:          "valid-token-but-no-quota-found-here",
-			responseStatus: http.StatusNotFound,
-			responseBody:   map[string]string{"error": "not found"},
-			expectError:    true,
-			errorContains:  "not found",
+			name:          "quota retrieval error",
+			token:         "invalid-token-with-sufficient-length",
+			clientErr:     fmt.Errorf("quota error"),
+			expectError:   true,
+			errorContains: "quota error",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create test server
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Verify request headers
-				if r.Header.Get("Authorization") != "Bearer "+tt.token {
-					t.Errorf("Expected Authorization header 'Bearer %s', got '%s'", tt.token, r.Header.Get("Authorization"))
-				}
-
-				w.WriteHeader(tt.responseStatus)
-				json.NewEncoder(w).Encode(tt.responseBody)
-			}))
-			defer server.Close()
-
-			// Create quota service with test server URL
-			config := &KiroAPIConfig{
-				BaseURL:      server.URL,
-				UserQuotaURL: server.URL + "/user/quota",
-				Timeout:      30,
-			}
+			config := DefaultKiroAPIConfig()
 			quotaService := NewQuotaServiceWithConfig(config)
+			quotaService.usageClient = &mockUsageClient{
+				handler: func(token string) (*UsageLimitsResponse, error) {
+					if tt.clientErr != nil {
+						return nil, tt.clientErr
+					}
+					return tt.usageResponse, nil
+				},
+			}
 
 			// Test GetQuota
 			quota, err := quotaService.GetQuota(tt.token)
@@ -221,6 +147,10 @@ func TestGetQuotaIntegration(t *testing.T) {
 				}
 				if quota == nil {
 					t.Errorf("Expected quota but got nil")
+				} else {
+					if quota.Main.Used != 100 || quota.Main.Total != 1000 {
+						t.Errorf("Unexpected quota values: %+v", quota.Main)
+					}
 				}
 			}
 		})
@@ -231,36 +161,14 @@ func TestGetQuotaIntegration(t *testing.T) {
 func TestValidateAndCreateAccountIntegration(t *testing.T) {
 	validToken := "valid-bearer-token-with-sufficient-length-for-testing"
 
-	// Create test server that handles multiple endpoints
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/auth/validate":
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(TokenInfo{
-				AccessToken:  validToken,
-				RefreshToken: "refresh-token",
-				ExpiresAt:    time.Now().Add(24 * time.Hour),
-				TokenType:    "Bearer",
-			})
-		case "/user/profile":
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(UserProfile{
-				ID:       "user123",
-				Email:    "test@example.com",
-				Name:     "Test User",
-				Avatar:   "https://example.com/avatar.jpg",
-				Provider: "kiro",
-			})
-		case "/user/quota":
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(QuotaInfo{
-				Main:   QuotaDetail{Used: 100, Total: 1000},
-				Trial:  QuotaDetail{Used: 50, Total: 100},
-				Reward: QuotaDetail{Used: 0, Total: 200},
-			})
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(TokenInfo{
+			AccessToken:  validToken,
+			RefreshToken: "refresh-token",
+			ExpiresAt:    time.Now().Add(24 * time.Hour),
+			TokenType:    "Bearer",
+		})
 	}))
 	defer server.Close()
 
@@ -268,12 +176,28 @@ func TestValidateAndCreateAccountIntegration(t *testing.T) {
 	config := &KiroAPIConfig{
 		BaseURL:         server.URL,
 		AuthValidateURL: server.URL + "/auth/validate",
-		UserProfileURL:  server.URL + "/user/profile",
-		UserQuotaURL:    server.URL + "/user/quota",
 		Timeout:         30,
 	}
 	authService := NewAuthServiceWithConfig(config)
 	quotaService := NewQuotaServiceWithConfig(config)
+	authService.kiroClient = &mockDesktopClient{
+		getUserInfo: func(token string) (*UsageLimitsResponse, error) {
+			return buildUsageLimitsResponse(&QuotaInfo{
+				Main:   QuotaDetail{Used: 100, Total: 1000},
+				Trial:  QuotaDetail{Used: 50, Total: 100},
+				Reward: QuotaDetail{Used: 0, Total: 200},
+			}), nil
+		},
+	}
+	quotaService.usageClient = &mockUsageClient{
+		handler: func(token string) (*UsageLimitsResponse, error) {
+			return buildUsageLimitsResponse(&QuotaInfo{
+				Main:   QuotaDetail{Used: 100, Total: 1000},
+				Trial:  QuotaDetail{Used: 50, Total: 100},
+				Reward: QuotaDetail{Used: 0, Total: 200},
+			}), nil
+		},
+	}
 
 	// Test ValidateAndCreateAccount
 	account, err := authService.ValidateAndCreateAccount(validToken, LoginMethodToken, "", quotaService)
@@ -290,8 +214,8 @@ func TestValidateAndCreateAccountIntegration(t *testing.T) {
 	if account.Email != "test@example.com" {
 		t.Errorf("Expected email 'test@example.com', got '%s'", account.Email)
 	}
-	if account.DisplayName != "Test User" {
-		t.Errorf("Expected name 'Test User', got '%s'", account.DisplayName)
+	if account.DisplayName != account.Email {
+		t.Errorf("Expected display name to match email, got '%s'", account.DisplayName)
 	}
 	if account.BearerToken != validToken {
 		t.Errorf("Expected token '%s', got '%s'", validToken, account.BearerToken)
@@ -319,23 +243,22 @@ func TestQuotaCaching(t *testing.T) {
 	requestCount := 0
 	validToken := "valid-bearer-token-with-sufficient-length"
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestCount++
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(QuotaInfo{
-			Main:   QuotaDetail{Used: 100, Total: 1000},
-			Trial:  QuotaDetail{Used: 50, Total: 100},
-			Reward: QuotaDetail{Used: 0, Total: 200},
-		})
-	}))
-	defer server.Close()
-
 	config := &KiroAPIConfig{
-		BaseURL:      server.URL,
-		UserQuotaURL: server.URL + "/user/quota",
+		BaseURL:      "http://localhost",
+		UserQuotaURL: "http://localhost/user/quota",
 		Timeout:      30,
 	}
 	quotaService := NewQuotaServiceWithConfig(config)
+	quotaService.usageClient = &mockUsageClient{
+		handler: func(token string) (*UsageLimitsResponse, error) {
+			requestCount++
+			return buildUsageLimitsResponse(&QuotaInfo{
+				Main:   QuotaDetail{Used: 100, Total: 1000},
+				Trial:  QuotaDetail{Used: 50, Total: 100},
+				Reward: QuotaDetail{Used: 0, Total: 200},
+			}), nil
+		},
+	}
 
 	// First request - should hit the API
 	_, err := quotaService.GetQuota(validToken)
@@ -371,7 +294,7 @@ func TestQuotaCaching(t *testing.T) {
 
 // Helper function to check if a string contains a substring (integration tests)
 func containsStr(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || 
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && stringContains(s, substr)))
 }
 
@@ -382,4 +305,32 @@ func stringContains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+type mockDesktopClient struct {
+	getUserInfo func(accessToken string) (*UsageLimitsResponse, error)
+}
+
+func (m *mockDesktopClient) InitiateLogin(provider, redirectUri, codeChallenge, state string) string {
+	return ""
+}
+
+func (m *mockDesktopClient) ExchangeToken(code, codeVerifier, redirectUri string) (*DesktopExchangeTokenResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockDesktopClient) RefreshToken(refreshToken string) (*DesktopExchangeTokenResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockDesktopClient) GetUserInfo(accessToken string) (*UsageLimitsResponse, error) {
+	return m.getUserInfo(accessToken)
+}
+
+type mockUsageClient struct {
+	handler func(token string) (*UsageLimitsResponse, error)
+}
+
+func (m *mockUsageClient) GetUserInfo(accessToken string) (*UsageLimitsResponse, error) {
+	return m.handler(accessToken)
 }

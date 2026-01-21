@@ -3,8 +3,10 @@ import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import KiroAccountManager from './KiroAccountManager.vue'
 import KiroAccountDialog from './KiroAccountDialog.vue'
+import SkillsManager from './SkillsManager.vue'
 import { languages, setLocale } from '../i18n'
 import { useTheme } from '../composables/useTheme'
+import { EventsEmit } from '../../wailsjs/runtime/runtime'
 import { 
   GetMCPConfig, SaveMCPConfig, GetMCPMarket, AddMCPServer, RemoveMCPServer, 
   ToggleMCPServer, OpenMCPConfigFile, GetMCPStatus, ConnectMCPServer, 
@@ -13,10 +15,10 @@ import {
   GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth, UpdateAntigravityAuth,
   GetKiroAuthStatus, InstallKiroAuth, UninstallKiroAuth, UpdateKiroAuth,
   GetUIUXProMaxStatus, InstallUIUXProMax, UninstallUIUXProMax, UpdateUIUXProMax,
-  RestartOpenCode
+  RestartOpenCode,
+  GetRemoteControlInfo
 } from '../../wailsjs/go/main/App'
-import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
-import { EventsEmit } from '../../wailsjs/runtime/runtime'
+import { BrowserOpenURL, EventsOn } from '../../wailsjs/runtime/runtime'
 
 const { t, locale } = useI18n()
 const { currentTheme, themes, setTheme } = useTheme()
@@ -140,6 +142,19 @@ const uiuxProMaxStatus = ref({ installed: false, version: '' })
 const pluginLoading = ref(false)
 const pluginLoadingName = ref('')
 const showKiroAccountManager = ref(false) // 控制 Kiro 账号管理器的显示
+
+// ========== 远程控制 ==========
+const remoteControlInfo = ref({ active: false, port: 0, token: '', url: '' })
+const remoteControlLoading = ref(false)
+
+async function loadRemoteControlInfo() {
+  try {
+    const info = await GetRemoteControlInfo()
+    remoteControlInfo.value = info || { active: false, port: 0, token: '', url: '' }
+  } catch (e) {
+    console.error('获取远程控制信息失败:', e)
+  }
+}
 
 async function loadPluginStatus() {
   try {
@@ -554,9 +569,28 @@ function openDocs(url) {
 onMounted(() => {
   loadMCPConfig()
   loadPluginStatus()
-  statusInterval = setInterval(refreshStatus, 5000)
+  loadRemoteControlInfo()
+  statusInterval = setInterval(() => {
+    refreshStatus()
+    loadRemoteControlInfo()
+  }, 5000)
 })
 onUnmounted(() => { if (statusInterval) clearInterval(statusInterval) })
+
+// 监听远程控制启动事件
+EventsOn('remote-control-started', (info) => {
+  remoteControlInfo.value = info
+})
+
+// 复制到剪贴板
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    // 可以添加一个提示
+    console.log('已复制:', text)
+  }).catch(err => {
+    console.error('复制失败:', err)
+  })
+}
 
 // 监听 activeCategory 变化，通知父组件是否显示 Kiro 设置
 watch(activeCategory, (newValue) => {
@@ -600,6 +634,26 @@ watch(activeCategory, (newValue) => {
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
           </svg>
           <span>{{ t('settings.plugins.title') }}</span>
+        </div>
+        <div :class="['nav-item', { active: activeCategory === 'skills' }]" @click="activeCategory = 'skills'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+          </svg>
+          <span>技能</span>
+        </div>
+        <div :class="['nav-item', { active: activeCategory === 'kiro' }]" @click="activeCategory = 'kiro'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          <span>Kiro 账号</span>
+        </div>
+        <div :class="['nav-item', { active: activeCategory === 'remote' }]" @click="activeCategory = 'remote'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+          </svg>
+          <span>远程控制</span>
         </div>
       </div>
       
@@ -752,6 +806,85 @@ watch(activeCategory, (newValue) => {
               <button class="btn-install" @click="installFromMarket(item)">{{ t('settings.mcp.install') }}</button>
             </div>
           </template>
+        </div>
+      </div>
+      
+      <!-- 技能管理 -->
+      <div v-if="activeCategory === 'skills'" class="settings-section skills-section">
+        <SkillsManager />
+      </div>
+      
+      <!-- 远程控制 -->
+      <div v-if="activeCategory === 'remote'" class="settings-section remote-section">
+        <div class="remote-card">
+          <div class="remote-header">
+            <div class="remote-icon">📱</div>
+            <div class="remote-info">
+              <div class="remote-title">OpenCode Mobile 远程控制</div>
+              <div class="remote-desc">通过手机浏览器远程控制你的 AI 编程助手</div>
+            </div>
+          </div>
+          
+          <div v-if="remoteControlInfo.active" class="remote-body active">
+            <div class="connection-info">
+              <div class="info-row">
+                <span class="info-label">状态</span>
+                <span class="status-badge active">🟢 运行中</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">连接码</span>
+                <div class="connection-code">
+                  <span class="code-display">{{ remoteControlInfo.token }}</span>
+                  <button class="btn-copy" @click="copyToClipboard(remoteControlInfo.token)" title="复制连接码">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="info-row">
+                <span class="info-label">端口</span>
+                <span class="info-value">{{ remoteControlInfo.port }}</span>
+              </div>
+            </div>
+            
+            <div class="usage-steps">
+              <div class="steps-title">📖 使用步骤</div>
+              <ol class="steps-list">
+                <li>确保手机和电脑在同一 WiFi 网络</li>
+                <li>在手机浏览器打开 OpenCode Mobile</li>
+                <li>输入上面显示的 6 位连接码</li>
+                <li>开始远程控制</li>
+              </ol>
+            </div>
+          </div>
+          
+          <div v-else class="remote-body inactive">
+            <div class="inactive-message">
+              <div class="message-icon">⚠️</div>
+              <div class="message-text">远程控制服务未运行</div>
+              <div class="message-hint">应用启动时会自动启动远程控制服务</div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="remote-features">
+          <div class="feature-card">
+            <div class="feature-icon">💬</div>
+            <div class="feature-name">AI 对话</div>
+            <div class="feature-desc">在手机上与 AI 助手对话</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📁</div>
+            <div class="feature-name">文件浏览</div>
+            <div class="feature-desc">查看和管理项目文件</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">💻</div>
+            <div class="feature-name">终端查看</div>
+            <div class="feature-desc">实时查看终端输出</div>
+          </div>
         </div>
       </div>
       
@@ -1254,6 +1387,24 @@ input:checked + .slider:before { transform: translateX(16px); }
   flex: 1;
 }
 
+/* 技能管理样式 */
+.skills-section {
+  padding: 0 !important;
+  margin: 0 !important;
+  height: 100%;
+  width: 100%;
+  max-width: none !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.skills-section :deep(.skills-manager) {
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+}
+
 /* 插件管理样式 */
 .plugins-section { gap: 16px; }
 .plugin-card { background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border-subtle); overflow: hidden; }
@@ -1298,4 +1449,39 @@ input:checked + .slider:before { transform: translateX(16px); }
 .tip-content { flex: 1; }
 .tip-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .tip-text { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+
+/* 远程控制样式 */
+.remote-section { gap: 16px; }
+.remote-card { background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border-subtle); overflow: hidden; }
+.remote-header { display: flex; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border-subtle); }
+.remote-icon { font-size: 32px; }
+.remote-info { flex: 1; }
+.remote-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.remote-desc { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.remote-body { padding: 16px; }
+.remote-body.active { background: rgba(128, 255, 181, 0.05); }
+.remote-body.inactive { background: var(--bg-surface); }
+.connection-info { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.info-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--bg-surface); border-radius: 6px; }
+.info-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.info-value { font-size: 13px; color: var(--text-primary); font-family: monospace; }
+.status-badge.active { background: rgba(128, 255, 181, 0.15); color: var(--green); padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+.connection-code { display: flex; align-items: center; gap: 8px; }
+.code-display { font-size: 24px; font-weight: 700; color: var(--accent-primary); font-family: monospace; letter-spacing: 4px; }
+.btn-copy { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: var(--bg-hover); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; }
+.btn-copy:hover { background: var(--accent-primary); color: white; border-color: var(--accent-primary); }
+.usage-steps { padding: 12px; background: var(--bg-surface); border-radius: 6px; border: 1px solid var(--border-subtle); }
+.steps-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
+.steps-list { margin: 0; padding-left: 20px; }
+.steps-list li { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.5; }
+.steps-list li:last-child { margin-bottom: 0; }
+.inactive-message { text-align: center; padding: 20px; }
+.message-icon { font-size: 48px; margin-bottom: 12px; }
+.message-text { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.message-hint { font-size: 12px; color: var(--text-muted); }
+.remote-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.feature-card { padding: 16px; background: var(--bg-elevated); border-radius: 8px; border: 1px solid var(--border-subtle); text-align: center; }
+.feature-icon { font-size: 32px; margin-bottom: 8px; }
+.feature-name { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.feature-desc { font-size: 11px; color: var(--text-secondary); }
 </style>

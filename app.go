@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,14 +26,21 @@ type App struct {
 	sseSubscribed bool
 	accountMgr    *AccountManager // Kiro Account Manager
 	configMgr     *ConfigManager  // Configuration Manager
+	httpServer    *HTTPServer     // Remote Control HTTP Server
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableKeepAlives = true
+	transport.MaxIdleConns = 0
+	transport.MaxIdleConnsPerHost = 0
+
 	app := &App{
 		serverURL: "http://localhost:4096",
 		httpClient: &http.Client{
-			Timeout: 0, // no timeout for SSE
+			Timeout:   0, // no timeout for SSE
+			Transport: transport,
 		},
 	}
 	app.termMgr = NewTerminalManager(app)
@@ -52,6 +61,59 @@ func (a *App) startup(ctx context.Context) {
 	if a.accountMgr != nil {
 		a.accountMgr.SetContext(ctx)
 	}
+
+	// 监听 OpenCode 的 server-event 并转发到远程控制客户端
+	runtime.EventsOn(ctx, "server-event", func(data ...interface{}) {
+		if a.httpServer != nil && len(data) > 0 {
+			fmt.Printf("📨 收到 OpenCode 事件，转发到手机端: %v\n", data[0])
+			
+			// 解析事件，更新当前会话
+			if dataStr, ok := data[0].(string); ok {
+				var event map[string]interface{}
+				if err := json.Unmarshal([]byte(dataStr), &event); err == nil {
+					eventType, _ := event["type"].(string)
+					// 当会话创建或更新时，更新当前会话 ID
+					if eventType == "session.created" || eventType == "session.updated" {
+						if props, ok := event["properties"].(map[string]interface{}); ok {
+							if info, ok := props["info"].(map[string]interface{}); ok {
+								if sessionID, ok := info["id"].(string); ok {
+									a.httpServer.SetCurrentSession(sessionID)
+									fmt.Printf("📍 当前会话已更新: %s\n", sessionID)
+								}
+							}
+						}
+					}
+				}
+			}
+			
+			// 转发事件到所有连接的手机端
+			a.httpServer.BroadcastEvent("server-event", data[0])
+		}
+	})
+
+	// 自动启动远程控制服务
+	go func() {
+		time.Sleep(2 * time.Second) // 等待应用完全启动
+		info, err := a.StartRemoteControl(8080)
+		if err != nil {
+			fmt.Printf("⚠️  远程控制启动失败: %v\n", err)
+		} else {
+			fmt.Println("========================================")
+			fmt.Println("📱 OpenCode Mobile 远程控制已启动")
+			fmt.Println("========================================")
+			fmt.Printf("连接码: %s\n", info["token"])
+			fmt.Printf("端口: %v\n", info["port"])
+			fmt.Println("")
+			fmt.Println("手机端访问步骤：")
+			fmt.Println("1. 手机浏览器打开: http://[你的IP]:5173")
+			fmt.Println("2. 输入连接码")
+			fmt.Println("3. 开始使用")
+			fmt.Println("========================================")
+			
+			// 发送事件到前端
+			runtime.EventsEmit(ctx, "remote-control-started", info)
+		}
+	}()
 }
 
 func (a *App) SetServerURL(url string) {
@@ -387,7 +449,7 @@ func (a *App) CopyToClipboard(text string) error {
 // initAccountManager initializes the Kiro Account Manager
 func (a *App) initAccountManager() {
 	fmt.Println("=== 初始化 Kiro 账号管理器 ===")
-	
+
 	// Initialize crypto service with a default master key
 	// TODO: In production, this should be derived from user credentials or system keychain
 	crypto := NewCryptoService("opencode-kiro-master-key-v1")
@@ -419,14 +481,14 @@ func (a *App) initAccountManager() {
 	// Initialize account manager
 	a.accountMgr = NewAccountManager(storage, crypto)
 	fmt.Println("✓ 账号管理器初始化完成")
-	
+
 	// 加载现有账号
 	accounts := a.accountMgr.ListAccounts()
 	fmt.Printf("✓ 已加载 %d 个账号\n", len(accounts))
 
 	// Store config manager reference for later use
 	a.configMgr = configMgr
-	
+
 	fmt.Println("=== Kiro 账号管理器初始化完成 ===")
 }
 
@@ -441,7 +503,7 @@ func (a *App) GetKiroAccounts() ([]*KiroAccount, error) {
 	}
 	accounts := a.accountMgr.ListAccounts()
 	fmt.Printf("→ 账号总数: %d\n", len(accounts))
-	
+
 	// 打印每个账号的详细信息
 	for i, acc := range accounts {
 		fmt.Printf("  账号 %d:\n", i+1)
@@ -452,7 +514,7 @@ func (a *App) GetKiroAccounts() ([]*KiroAccount, error) {
 		fmt.Printf("    RefreshToken 长度: %d\n", len(acc.RefreshToken))
 		fmt.Printf("    BearerToken 长度: %d\n", len(acc.BearerToken))
 	}
-	
+
 	// 同时检查 OpenCode 配置文件
 	fmt.Println("\n→ 检查 OpenCode 配置文件:")
 	openCodeSystem := NewOpenCodeKiroSystem()
@@ -462,7 +524,7 @@ func (a *App) GetKiroAccounts() ([]*KiroAccount, error) {
 	} else {
 		fmt.Printf("    读取失败: %v\n", err)
 	}
-	
+
 	fmt.Println("=== GetKiroAccounts 完成 ===")
 	return accounts, nil
 }
@@ -501,7 +563,7 @@ func (a *App) addAccountByToken(data map[string]interface{}) error {
 	// 使用新的 Kiro API 客户端
 	fmt.Println("  创建 Kiro API 客户端...")
 	kiroClient := NewKiroAPIClient()
-	
+
 	// Step 1: 刷新 Token 获取 Access Token
 	fmt.Println("  调用 RefreshKiroToken...")
 	tokenResp, err := kiroClient.RefreshKiroToken(refreshToken)
@@ -510,7 +572,7 @@ func (a *App) addAccountByToken(data map[string]interface{}) error {
 		return fmt.Errorf("刷新 Token 失败: %w", err)
 	}
 	fmt.Println("  ✓ Token 刷新成功")
-	
+
 	// Step 2: 获取用户信息和配额
 	fmt.Println("  调用 GetKiroUsageLimits...")
 	usageResp, err := kiroClient.GetKiroUsageLimits(tokenResp.AccessToken)
@@ -519,7 +581,7 @@ func (a *App) addAccountByToken(data map[string]interface{}) error {
 		return fmt.Errorf("获取配额信息失败: %w", err)
 	}
 	fmt.Println("  ✓ 配额信息获取成功")
-	
+
 	// Step 3: 转换为账号对象
 	fmt.Println("  转换为账号对象...")
 	account := ConvertKiroResponseToAccount(tokenResp, usageResp, a.accountMgr)
@@ -556,18 +618,21 @@ func (a *App) addAccountByToken(data map[string]interface{}) error {
 
 // addAccountByOAuth adds an account using OAuth
 func (a *App) addAccountByOAuth(data map[string]interface{}) error {
-	provider, ok := data["provider"].(string)
-	if !ok || provider == "" {
-		return fmt.Errorf("OAuth provider is required")
-	}
+	// Provider is not strictly needed here as it's looked up by state,
+	// but we can keep the check if desired.
 
 	code, ok := data["code"].(string)
 	if !ok || code == "" {
 		return fmt.Errorf("OAuth code is required")
 	}
 
+	state, ok := data["state"].(string)
+	if !ok || state == "" {
+		return fmt.Errorf("OAuth state is required")
+	}
+
 	// Handle OAuth callback
-	account, err := a.accountMgr.authService.HandleOAuthCallback(code, OAuthProvider(provider))
+	account, err := a.accountMgr.authService.HandleOAuthCallback(state, code)
 	if err != nil {
 		return fmt.Errorf("OAuth authentication failed: %w", err)
 	}
@@ -660,22 +725,22 @@ func (a *App) SwitchKiroAccount(id string) error {
 		fmt.Println("✗ 错误: account manager not initialized")
 		return fmt.Errorf("account manager not initialized")
 	}
-	
+
 	fmt.Println("→ 调用 accountMgr.SwitchAccount...")
 	err := a.accountMgr.SwitchAccount(id)
 	if err != nil {
 		fmt.Printf("✗ 切换失败: %v\n", err)
 		return err
 	}
-	
+
 	fmt.Println("✓ 账号切换成功")
-	
+
 	// 获取切换后的账号（用于后续重新应用）
 	switchedAccount, getErr := a.accountMgr.GetActiveAccount()
 	if getErr != nil {
 		fmt.Printf("⚠ 警告: 无法获取切换后的账号: %v\n", getErr)
 	}
-	
+
 	// 重启 OpenCode 使新账号生效
 	fmt.Println("→ 重启 OpenCode...")
 	if a.openCode != nil {
@@ -684,7 +749,7 @@ func (a *App) SwitchKiroAccount(id string) error {
 			// 不返回错误，因为账号切换本身是成功的
 		} else {
 			fmt.Println("✓ OpenCode 已重启")
-			
+
 			// OpenCode 插件启动时可能会还原旧账号
 			// 延迟 5 秒后再次应用账号，确保覆盖插件的还原操作
 			if switchedAccount != nil {
@@ -702,7 +767,7 @@ func (a *App) SwitchKiroAccount(id string) error {
 			}
 		}
 	}
-	
+
 	fmt.Println("=== SwitchKiroAccount 完成 ===")
 	return nil
 }
@@ -765,15 +830,65 @@ func (a *App) StartKiroOAuth(provider string) (string, error) {
 	if a.accountMgr == nil {
 		return "", fmt.Errorf("account manager not initialized")
 	}
-	return a.accountMgr.authService.StartOAuthFlow(OAuthProvider(provider))
+	url, err := a.accountMgr.authService.StartOAuthFlow(OAuthProvider(provider))
+	if err != nil {
+		return "", err
+	}
+
+	// Open the URL in the system browser
+	runtime.BrowserOpenURL(a.ctx, url)
+
+	return url, nil
 }
 
 // HandleKiroOAuthCallback handles OAuth callback
-func (a *App) HandleKiroOAuthCallback(code string, provider string) (*KiroAccount, error) {
+func (a *App) HandleKiroOAuthCallback(state string, code string) (*KiroAccount, error) {
 	if a.accountMgr == nil {
 		return nil, fmt.Errorf("account manager not initialized")
 	}
-	return a.accountMgr.authService.HandleOAuthCallback(code, OAuthProvider(provider))
+	return a.accountMgr.authService.HandleOAuthCallback(state, code)
+}
+
+// CompleteKiroOAuthWithURL completes OAuth flow by parsing the callback URL
+// The callback URL should be in the format: https://app.kiro.dev/signin/oauth?code=xxx&state=yyy
+func (a *App) CompleteKiroOAuthWithURL(callbackURL string) error {
+	fmt.Printf("[OAuth] CompleteKiroOAuthWithURL called with: %s\n", callbackURL[:min(len(callbackURL), 100)])
+
+	if a.accountMgr == nil {
+		return fmt.Errorf("account manager not initialized")
+	}
+
+	// Parse the URL to extract code and state
+	parsedURL, err := url.Parse(callbackURL)
+	if err != nil {
+		return fmt.Errorf("invalid callback URL: %w", err)
+	}
+
+	code := parsedURL.Query().Get("code")
+	state := parsedURL.Query().Get("state")
+
+	if code == "" {
+		return fmt.Errorf("missing 'code' parameter in callback URL")
+	}
+	if state == "" {
+		return fmt.Errorf("missing 'state' parameter in callback URL")
+	}
+
+	fmt.Printf("[OAuth] Extracted code: %s..., state: %s...\n", code[:min(len(code), 20)], state[:min(len(state), 20)])
+
+	// Handle the OAuth callback
+	account, err := a.accountMgr.authService.HandleOAuthCallback(state, code)
+	if err != nil {
+		return fmt.Errorf("OAuth authentication failed: %w", err)
+	}
+
+	// Add the account
+	if err := a.accountMgr.AddAccount(account); err != nil {
+		return fmt.Errorf("failed to save account: %w", err)
+	}
+
+	fmt.Printf("[OAuth] Account added successfully: %s\n", account.Email)
+	return nil
 }
 
 // ValidateKiroToken validates a Kiro bearer token
@@ -830,7 +945,7 @@ func (a *App) GetKiroQuota(accountId string) (*QuotaInfo, error) {
 // This is useful when you want to check the quota of the account that OpenCode is actually using
 func (a *App) RefreshActiveKiroQuota() error {
 	fmt.Println("=== API 调用: RefreshActiveKiroQuota ===")
-	
+
 	if a.accountMgr == nil {
 		fmt.Println("✗ 错误: account manager not initialized")
 		return fmt.Errorf("account manager not initialized")
@@ -877,7 +992,7 @@ func (a *App) RefreshActiveKiroQuota() error {
 // RefreshKiroQuota refreshes quota information for an account
 func (a *App) RefreshKiroQuota(accountId string) error {
 	fmt.Printf("=== API 调用: RefreshKiroQuota (accountId=%s) ===\n", accountId)
-	
+
 	if a.accountMgr == nil {
 		fmt.Println("✗ 错误: account manager not initialized")
 		return fmt.Errorf("account manager not initialized")
@@ -899,7 +1014,7 @@ func (a *App) RefreshKiroQuota(accountId string) error {
 			fmt.Printf("✗ Token 刷新失败: %v\n", err)
 			return fmt.Errorf("token 刷新失败: %w", err)
 		}
-		
+
 		// 更新账号的 Token
 		updates := map[string]interface{}{
 			"bearerToken":  tokenInfo.AccessToken,
@@ -910,7 +1025,7 @@ func (a *App) RefreshKiroQuota(accountId string) error {
 			fmt.Printf("✗ 更新 Token 失败: %v\n", err)
 			return fmt.Errorf("更新 token 失败: %w", err)
 		}
-		
+
 		// 重新获取账号（使用新的 Token）
 		account, err = a.accountMgr.GetAccount(accountId)
 		if err != nil {
@@ -935,7 +1050,7 @@ func (a *App) RefreshKiroQuota(accountId string) error {
 		fmt.Printf("✗ 获取配额失败: %v\n", err)
 		return err
 	}
-	fmt.Printf("✓ 配额: Used=%d, Total=%d\n", 
+	fmt.Printf("✓ 配额: Used=%d, Total=%d\n",
 		quota.Main.Used+quota.Trial.Used+quota.Reward.Used,
 		quota.Main.Total+quota.Trial.Total+quota.Reward.Total)
 
@@ -950,7 +1065,7 @@ func (a *App) RefreshKiroQuota(accountId string) error {
 	} else {
 		fmt.Println("✓ 账号配额更新成功")
 	}
-	
+
 	fmt.Println("=== RefreshKiroQuota 完成 ===")
 	return err
 }
@@ -1138,4 +1253,168 @@ func (a *App) ResetConfiguration() error {
 		return fmt.Errorf("configuration manager not initialized")
 	}
 	return a.configMgr.Reset()
+}
+
+
+// --- Skills Management API ---
+
+// skillsMgr 技能管理器（延迟初始化）
+func (a *App) getSkillsManager() *SkillsManager {
+	workDir := ""
+	if a.fileMgr != nil {
+		workDir = a.fileMgr.GetRootDir()
+	}
+	return NewSkillsManager(workDir)
+}
+
+// GetSkills 获取所有技能
+func (a *App) GetSkills() ([]SkillInfo, error) {
+	fmt.Println("=== API 调用: GetSkills ===")
+	sm := a.getSkillsManager()
+	skills, err := sm.ListSkills()
+	if err != nil {
+		fmt.Printf("✗ 获取技能失败: %v\n", err)
+		return nil, err
+	}
+	fmt.Printf("✓ 获取到 %d 个技能\n", len(skills))
+	return skills, nil
+}
+
+// GetSkill 获取单个技能详情
+func (a *App) GetSkill(name string) (*SkillInfo, error) {
+	fmt.Printf("=== API 调用: GetSkill (name=%s) ===\n", name)
+	sm := a.getSkillsManager()
+	skill, err := sm.GetSkill(name)
+	if err != nil {
+		fmt.Printf("✗ 获取技能失败: %v\n", err)
+		return nil, err
+	}
+	fmt.Printf("✓ 获取技能: %s\n", skill.Name)
+	return skill, nil
+}
+
+// CreateSkill 创建新技能
+func (a *App) CreateSkill(name, description, content string, global bool) error {
+	fmt.Printf("=== API 调用: CreateSkill (name=%s, global=%v) ===\n", name, global)
+	sm := a.getSkillsManager()
+	err := sm.CreateSkill(name, description, content, global)
+	if err != nil {
+		fmt.Printf("✗ 创建技能失败: %v\n", err)
+		return err
+	}
+	fmt.Println("✓ 技能创建成功")
+	return nil
+}
+
+// UpdateSkill 更新技能
+func (a *App) UpdateSkill(name, description, content string) error {
+	fmt.Printf("=== API 调用: UpdateSkill (name=%s) ===\n", name)
+	sm := a.getSkillsManager()
+	err := sm.UpdateSkill(name, description, content)
+	if err != nil {
+		fmt.Printf("✗ 更新技能失败: %v\n", err)
+		return err
+	}
+	fmt.Println("✓ 技能更新成功")
+	return nil
+}
+
+// DeleteSkill 删除技能
+func (a *App) DeleteSkill(name string) error {
+	fmt.Printf("=== API 调用: DeleteSkill (name=%s) ===\n", name)
+	sm := a.getSkillsManager()
+	err := sm.DeleteSkill(name)
+	if err != nil {
+		fmt.Printf("✗ 删除技能失败: %v\n", err)
+		return err
+	}
+	fmt.Println("✓ 技能删除成功")
+	return nil
+}
+
+// GetSkillTemplates 获取技能模板列表
+func (a *App) GetSkillTemplates() []SkillTemplate {
+	fmt.Println("=== API 调用: GetSkillTemplates ===")
+	sm := a.getSkillsManager()
+	templates := sm.GetSkillTemplates()
+	fmt.Printf("✓ 获取到 %d 个模板\n", len(templates))
+	return templates
+}
+
+// CreateSkillFromTemplate 从模板创建技能
+func (a *App) CreateSkillFromTemplate(templateID, customName string, global bool) error {
+	fmt.Printf("=== API 调用: CreateSkillFromTemplate (template=%s, name=%s, global=%v) ===\n", templateID, customName, global)
+	sm := a.getSkillsManager()
+	err := sm.CreateSkillFromTemplate(templateID, customName, global)
+	if err != nil {
+		fmt.Printf("✗ 从模板创建技能失败: %v\n", err)
+		return err
+	}
+	fmt.Println("✓ 技能创建成功")
+	return nil
+}
+
+// --- Remote Control API ---
+
+// StartRemoteControl 启动远程控制服务器
+func (a *App) StartRemoteControl(port int) (map[string]interface{}, error) {
+	fmt.Printf("=== API 调用: StartRemoteControl (port=%d) ===\n", port)
+	
+	if a.httpServer == nil {
+		a.httpServer = NewHTTPServer(a)
+	}
+	
+	err := a.httpServer.Start(port)
+	if err != nil {
+		fmt.Printf("✗ 启动失败: %v\n", err)
+		return nil, err
+	}
+	
+	info := map[string]interface{}{
+		"active": true,
+		"port":   a.httpServer.GetPort(),
+		"token":  a.httpServer.GetToken(),
+		"url":    fmt.Sprintf("http://localhost:%d", a.httpServer.GetPort()),
+	}
+	
+	fmt.Printf("✓ 远程控制服务器已启动\n")
+	fmt.Printf("  端口: %d\n", info["port"])
+	fmt.Printf("  令牌: %s\n", info["token"])
+	
+	return info, nil
+}
+
+// StopRemoteControl 停止远程控制服务器
+func (a *App) StopRemoteControl() error {
+	fmt.Println("=== API 调用: StopRemoteControl ===")
+	
+	if a.httpServer == nil {
+		fmt.Println("✓ 服务器未运行")
+		return nil
+	}
+	
+	err := a.httpServer.Stop()
+	if err != nil {
+		fmt.Printf("✗ 停止失败: %v\n", err)
+		return err
+	}
+	
+	fmt.Println("✓ 远程控制服务器已停止")
+	return nil
+}
+
+// GetRemoteControlInfo 获取远程控制信息
+func (a *App) GetRemoteControlInfo() (map[string]interface{}, error) {
+	if a.httpServer == nil || !a.httpServer.IsActive() {
+		return map[string]interface{}{
+			"active": false,
+		}, nil
+	}
+	
+	return map[string]interface{}{
+		"active": true,
+		"port":   a.httpServer.GetPort(),
+		"token":  a.httpServer.GetToken(),
+		"url":    fmt.Sprintf("http://localhost:%d", a.httpServer.GetPort()),
+	}, nil
 }

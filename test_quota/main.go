@@ -19,7 +19,8 @@ func main() {
 
 	refreshToken := os.Args[1]
 	
-	fmt.Println("=== 测试 Kiro 账号配额 ===\n")
+	fmt.Println("=== 测试 Kiro 账号配额 ===")
+	fmt.Println()
 	
 	// Step 1: 刷新 Token 获取 Access Token
 	fmt.Println("步骤 1: 刷新 Token...")

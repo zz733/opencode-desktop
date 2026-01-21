@@ -2,27 +2,39 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
-
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/github"
-	"golang.org/x/oauth2/google"
 )
 
 // AuthService handles authentication operations for Kiro accounts
 type AuthService struct {
-	httpClient   *http.Client
-	config       *KiroAPIConfig
-	oauthConfigs map[OAuthProvider]*oauth2.Config
-	oauthStates  map[string]OAuthProvider // state -> provider mapping for security
+	httpClient    *http.Client
+	config        *KiroAPIConfig
+	kiroClient    KiroDesktopAPI
+	pendingLogins map[string]*PendingLogin // state -> PendingLogin
+	onAuthSuccess func(*KiroAccount) error // Callback when authentication succeeds
+}
+
+type KiroDesktopAPI interface {
+	InitiateLogin(provider, redirectUri, codeChallenge, state string) string
+	ExchangeToken(code, codeVerifier, redirectUri string) (*DesktopExchangeTokenResponse, error)
+	RefreshToken(refreshToken string) (*DesktopExchangeTokenResponse, error)
+	GetUserInfo(accessToken string) (*UsageLimitsResponse, error)
+}
+
+type PendingLogin struct {
+	Idp           string
+	CodeVerifier  string
+	State         string
+	Provider      OAuthProvider
+	RedirectUri   string
+	UseDesktopAPI bool // Flag to use Desktop API for token exchange
 }
 
 // NewAuthService creates a new AuthService instance
@@ -33,15 +45,142 @@ func NewAuthService() *AuthService {
 		httpClient: &http.Client{
 			Timeout: time.Duration(config.Timeout) * time.Second,
 		},
-		config:       config,
-		oauthConfigs: make(map[OAuthProvider]*oauth2.Config),
-		oauthStates:  make(map[string]OAuthProvider),
+		config:        config,
+		kiroClient:    NewKiroDesktopClient(""),
+		pendingLogins: make(map[string]*PendingLogin),
 	}
 
-	// Initialize OAuth configurations
-	as.initOAuthConfigs()
+	// Start the local callback server
+	go as.StartCallbackServer()
 
 	return as
+}
+
+// SetAuthSuccessCallback sets the callback function to be called when authentication succeeds
+func (as *AuthService) SetAuthSuccessCallback(callback func(*KiroAccount) error) {
+	as.onAuthSuccess = callback
+}
+
+// StartCallbackServer starts the local HTTP server for OAuth callbacks
+func (as *AuthService) StartCallbackServer() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/callback", as.handleCallbackHTTP)
+
+	server := &http.Server{
+		Addr:    "127.0.0.1:54321",
+		Handler: mux,
+	}
+
+	fmt.Println("Starting OAuth callback server on 127.0.0.1:54321 (CORS enabled)")
+	if err := server.ListenAndServe(); err != nil {
+		fmt.Printf("OAuth callback server failed: %v\n", err)
+	}
+}
+
+// handleCallbackHTTP handles the HTTP request for the OAuth callback
+func (as *AuthService) handleCallbackHTTP(w http.ResponseWriter, r *http.Request) {
+	// 添加 CORS 支持
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	query := r.URL.Query()
+
+	// 支持通过 fullUrl 参数传递完整的跳转地址
+	fullUrl := query.Get("fullUrl")
+	if fullUrl != "" {
+		parsedUrl, err := url.Parse(fullUrl)
+		if err == nil {
+			query = parsedUrl.Query()
+		}
+	}
+
+	// Check for errors in the query params
+	if errStr := query.Get("error"); errStr != "" {
+		as.writeAuthResponse(w, false, fmt.Sprintf("Authentication failed: %s", errStr))
+		return
+	}
+
+	state := query.Get("state")
+	code := query.Get("code")
+
+	if state == "" || code == "" {
+		as.writeAuthResponse(w, false, "Missing state or code parameter")
+		return
+	}
+
+	account, err := as.HandleOAuthCallback(state, code)
+	if err != nil {
+		as.writeAuthResponse(w, false, fmt.Sprintf("Authentication failed: %v", err))
+		return
+	}
+
+	// Notify listener
+	if as.onAuthSuccess != nil {
+		if err := as.onAuthSuccess(account); err != nil {
+			as.writeAuthResponse(w, false, fmt.Sprintf("Failed to save account: %v", err))
+			return
+		}
+	}
+
+	as.writeAuthResponse(w, true, "Authentication successful! You can close this window.")
+}
+
+// writeAuthResponse writes an HTML response to the callback request
+func (as *AuthService) writeAuthResponse(w http.ResponseWriter, success bool, message string) {
+	status := "success"
+	if !success {
+		status = "error"
+	}
+
+	html := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kiro Authentication</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f5f5f7; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 100%%; }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        h1 { margin-bottom: 1rem; }
+        p { color: #666; margin-bottom: 1.5rem; }
+        button { background-color: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 1rem; }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1 class="%s">%s</h1>
+        <p>%s</p>
+        <button onclick="window.close()">Close Window</button>
+    </div>
+    <script>
+        // Notify the main application
+        if (window.opener) {
+            window.opener.postMessage({
+                type: 'oauth-complete',
+                success: %v,
+                message: '%s'
+            }, '*');
+        }
+        // Auto-close after 3 seconds if successful
+        if (%v) {
+            setTimeout(() => window.close(), 3000);
+        }
+    </script>
+</body>
+</html>
+	`, status, status, message, success, message, success)
+
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(html))
 }
 
 // NewAuthServiceWithConfig creates a new AuthService instance with custom configuration
@@ -55,58 +194,12 @@ func NewAuthServiceWithConfig(config *KiroAPIConfig) *AuthService {
 		httpClient: &http.Client{
 			Timeout: time.Duration(config.Timeout) * time.Second,
 		},
-		config:       config,
-		oauthConfigs: make(map[OAuthProvider]*oauth2.Config),
-		oauthStates:  make(map[string]OAuthProvider),
+		config:        config,
+		kiroClient:    NewKiroDesktopClient(""),
+		pendingLogins: make(map[string]*PendingLogin),
 	}
-
-	// Initialize OAuth configurations
-	as.initOAuthConfigs()
 
 	return as
-}
-
-// initOAuthConfigs initializes OAuth configurations for different providers
-func (as *AuthService) initOAuthConfigs() {
-	// Google OAuth configuration
-	as.oauthConfigs[ProviderGoogle] = &oauth2.Config{
-		ClientID:     getEnvOrDefault("GOOGLE_CLIENT_ID", ""),
-		ClientSecret: getEnvOrDefault("GOOGLE_CLIENT_SECRET", ""),
-		RedirectURL:  getEnvOrDefault("OAUTH_REDIRECT_URL", "http://localhost:34115/oauth/callback"),
-		Scopes: []string{
-			"https://www.googleapis.com/auth/userinfo.email",
-			"https://www.googleapis.com/auth/userinfo.profile",
-		},
-		Endpoint: google.Endpoint,
-	}
-
-	// GitHub OAuth configuration
-	as.oauthConfigs[ProviderGitHub] = &oauth2.Config{
-		ClientID:     getEnvOrDefault("GITHUB_CLIENT_ID", ""),
-		ClientSecret: getEnvOrDefault("GITHUB_CLIENT_SECRET", ""),
-		RedirectURL:  getEnvOrDefault("OAUTH_REDIRECT_URL", "http://localhost:34115/oauth/callback"),
-		Scopes: []string{
-			"user:email",
-			"read:user",
-		},
-		Endpoint: github.Endpoint,
-	}
-
-	// AWS Builder ID OAuth configuration
-	as.oauthConfigs[ProviderBuilderID] = &oauth2.Config{
-		ClientID:     getEnvOrDefault("AWS_BUILDERID_CLIENT_ID", ""),
-		ClientSecret: getEnvOrDefault("AWS_BUILDERID_CLIENT_SECRET", ""),
-		RedirectURL:  getEnvOrDefault("OAUTH_REDIRECT_URL", "http://localhost:34115/oauth/callback"),
-		Scopes: []string{
-			"openid",
-			"profile",
-			"email",
-		},
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  "https://auth.aws.amazon.com/oauth2/authorize",
-			TokenURL: "https://auth.aws.amazon.com/oauth2/token",
-		},
-	}
 }
 
 // getEnvOrDefault gets environment variable or returns default value
@@ -269,91 +362,19 @@ func (as *AuthService) RefreshToken(refreshToken string) (*TokenInfo, error) {
 		return nil, fmt.Errorf("refresh token cannot be empty")
 	}
 
-	// Log the API endpoint being used (for debugging)
-	fmt.Printf("Attempting to refresh token using endpoint: %s\n", as.config.AuthRefreshURL)
-
-	// Check if we are using the placeholder URL
-	if strings.Contains(as.config.AuthRefreshURL, "api.kiro.ai") {
-		return nil, fmt.Errorf("API URL not configured (using placeholder)")
-	}
-
-	// Create refresh request payload - Kiro 使用 camelCase
-	payload := map[string]string{
-		"refreshToken": refreshToken,
-	}
-
-	payloadBytes, err := json.Marshal(payload)
+	result, err := as.kiroClient.RefreshToken(refreshToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+		return nil, fmt.Errorf("failed to refresh token: %w", err)
 	}
 
-	// Create request
-	req, err := http.NewRequest("POST", as.config.AuthRefreshURL, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "Kiro-Account-Manager/1.0")
-
-	// Send request with retry
-	var resp *http.Response
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Second)
-		}
-
-		resp, lastErr = as.httpClient.Do(req)
-		if lastErr == nil {
-			break
-		}
-	}
-
-	if lastErr != nil {
-		return nil, fmt.Errorf("failed to send request after 3 attempts: %w", lastErr)
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Check response status
-	if resp.StatusCode == 401 {
-		return nil, fmt.Errorf("RefreshToken 已过期或无效")
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token refresh failed with status %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	// Parse Kiro API response format
-	var kiroResp struct {
-		AccessToken  string `json:"accessToken"`
-		RefreshToken string `json:"refreshToken"`
-		ExpiresIn    int64  `json:"expiresIn"`
-		ProfileArn   string `json:"profileArn"`
-		CsrfToken    string `json:"csrfToken,omitempty"`
-	}
-
-	if err := json.Unmarshal(bodyBytes, &kiroResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	// Convert to TokenInfo
-	expiresAt := time.Now().Add(time.Duration(kiroResp.ExpiresIn) * time.Second)
-	tokenInfo := &TokenInfo{
-		AccessToken:  kiroResp.AccessToken,
-		RefreshToken: kiroResp.RefreshToken,
+	expiresAt := time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
+	return &TokenInfo{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
 		ExpiresAt:    expiresAt,
 		TokenType:    "Bearer",
-	}
-
-	return tokenInfo, nil
+		ProfileArn:   result.ProfileArn,
+	}, nil
 }
 
 // GetUserProfile retrieves user profile information using a bearer token
@@ -363,99 +384,19 @@ func (as *AuthService) GetUserProfile(token string) (*UserProfile, error) {
 		return nil, fmt.Errorf("token cannot be empty")
 	}
 
-	// Kiro 使用 getUsageLimits API 获取用户信息
-	// Check if we are using the placeholder URL
-	if strings.Contains(as.config.UserProfileURL, "api.kiro.ai") {
-		return nil, fmt.Errorf("API URL not configured (using placeholder)")
-	}
-
-	requestURL := buildUsageLimitsURL(as.config.UserProfileURL, as.config.ProfileARN)
-
-	// Create request
-	req, err := http.NewRequest("GET", requestURL, nil)
+	usageLimits, err := as.kiroClient.GetUserInfo(token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
 
-	// Add authorization header
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("x-amz-user-agent", "aws-sdk-js/1.0.0 KiroIDE-0.6.18-"+getKiroMachineID())
-	req.Header.Set("User-Agent", "Kiro-Account-Manager/1.0")
-	req.Header.Set("amz-sdk-request", "attempt=1; max=1")
-	req.Header.Set("Connection", "close")
-
-	// Send request with retry
-	var resp *http.Response
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Second)
-		}
-
-		resp, lastErr = as.httpClient.Do(req)
-		if lastErr == nil {
-			break
-		}
-	}
-
-	if lastErr != nil {
-		return nil, fmt.Errorf("failed to send request after 3 attempts: %w", lastErr)
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	switch resp.StatusCode {
-	case http.StatusOK:
-	case http.StatusUnauthorized:
-		return nil, fmt.Errorf("token is invalid or expired")
-	case http.StatusForbidden:
-		return nil, fmt.Errorf("token does not have required permissions")
-	case http.StatusTooManyRequests:
-		return nil, fmt.Errorf("rate limit exceeded, please try again later")
-	default:
-		var errorResp struct {
-			Reason string `json:"reason"`
-		}
-		if json.Unmarshal(bodyBytes, &errorResp) == nil && errorResp.Reason != "" {
-			return nil, fmt.Errorf("账号被封禁: %s", errorResp.Reason)
-		}
-		return nil, fmt.Errorf("failed to get user profile with status %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var profile UserProfile
-	if err := json.Unmarshal(bodyBytes, &profile); err == nil && (profile.Email != "" || profile.ID != "" || profile.Name != "") {
-		if profile.Email == "" {
-			return nil, fmt.Errorf("missing required field: email")
-		}
-		return &profile, nil
-	}
-
-	var usageResp struct {
-		UserInfo *struct {
-			Email  string `json:"email"`
-			UserID string `json:"userId"`
-		} `json:"userInfo"`
-	}
-	if err := json.Unmarshal(bodyBytes, &usageResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-	if usageResp.UserInfo == nil {
+	if usageLimits.UserInfo == nil {
 		return nil, fmt.Errorf("user info not found in response")
-	}
-	if usageResp.UserInfo.Email == "" {
-		return nil, fmt.Errorf("missing required field: email")
 	}
 
 	return &UserProfile{
-		ID:       usageResp.UserInfo.UserID,
-		Email:    usageResp.UserInfo.Email,
-		Name:     usageResp.UserInfo.Email,
+		ID:       usageLimits.UserInfo.UserID,
+		Email:    usageLimits.UserInfo.Email,
+		Name:     usageLimits.UserInfo.Email,
 		Avatar:   "",
 		Provider: "kiro",
 	}, nil
@@ -548,245 +489,183 @@ func (as *AuthService) generateStateToken() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-// StartOAuthFlow starts an OAuth authentication flow
+// KiroWebOAuthRedirectURI is the official redirect URI for Kiro Web OAuth
+const KiroWebOAuthRedirectURI = "https://app.kiro.dev/signin/oauth"
+
+// StartOAuthFlow starts an OAuth authentication flow using Web OAuth API
 func (as *AuthService) StartOAuthFlow(provider OAuthProvider) (string, error) {
-	// Get OAuth config for the provider
-	config, ok := as.oauthConfigs[provider]
-	if !ok {
-		return "", fmt.Errorf("unsupported OAuth provider: %s", provider)
+	// Determine IDP string
+	var idp string
+	switch provider {
+	case ProviderGoogle:
+		idp = "Google"
+	case ProviderGitHub:
+		idp = "Github"
+	case ProviderBuilderID:
+		idp = "BuilderID"
+	default:
+		return "", fmt.Errorf("unsupported provider: %s", provider)
 	}
 
-	// Validate that OAuth is configured
-	if config.ClientID == "" {
-		return "", fmt.Errorf("OAuth not configured for provider %s: missing client ID", provider)
-	}
-
-	// Generate secure state token
+	// Generate state
 	state, err := as.generateStateToken()
 	if err != nil {
 		return "", err
 	}
 
-	// Store state -> provider mapping for callback validation
-	as.oauthStates[state] = provider
+	// Generate PKCE
+	codeVerifier, err := GenerateCodeVerifier()
+	if err != nil {
+		return "", err
+	}
+	codeChallenge := GenerateCodeChallenge(codeVerifier)
 
-	// Generate authorization URL
-	authURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	// Use official redirect URI
+	redirectUri := KiroWebOAuthRedirectURI
 
-	return authURL, nil
+	// Use Web OAuth API (CBOR)
+	webClient := NewKiroWebPortalClient()
+	initiateResp, err := webClient.InitiateLogin(idp, redirectUri, codeChallenge, state)
+	if err != nil {
+		return "", fmt.Errorf("failed to initiate login: %w", err)
+	}
+
+	if initiateResp.RedirectUrl == "" {
+		return "", fmt.Errorf("no redirect URL in InitiateLogin response")
+	}
+
+	// Store pending login
+	as.pendingLogins[state] = &PendingLogin{
+		Idp:           idp,
+		CodeVerifier:  codeVerifier,
+		State:         state,
+		Provider:      provider,
+		RedirectUri:   redirectUri,
+		UseDesktopAPI: false, // Use Web OAuth API
+	}
+
+	return initiateResp.RedirectUrl, nil
 }
 
 // HandleOAuthCallback handles the OAuth callback and creates an account
-func (as *AuthService) HandleOAuthCallback(code string, provider OAuthProvider) (*KiroAccount, error) {
+// It uses Desktop Auth API for token exchange when UseDesktopAPI flag is set
+func (as *AuthService) HandleOAuthCallback(state, code string) (*KiroAccount, error) {
 	if code == "" {
 		return nil, fmt.Errorf("authorization code is required")
 	}
 
-	// Get OAuth config for the provider
-	config, ok := as.oauthConfigs[provider]
+	// Retrieve pending login
+	pending, ok := as.pendingLogins[state]
 	if !ok {
-		return nil, fmt.Errorf("unsupported OAuth provider: %s", provider)
+		return nil, fmt.Errorf("invalid or expired state: %s", state)
+	}
+	defer delete(as.pendingLogins, state)
+
+	fmt.Printf("[OAuth] Handling callback for state: %s..., code: %s..., useDesktopAPI: %v\n", state[:20], code[:min(len(code), 20)], pending.UseDesktopAPI)
+
+	var accessToken, refreshToken string
+	var expiresIn int64
+
+	if pending.UseDesktopAPI {
+		// Use Desktop Auth API for token exchange
+		desktopClient := NewKiroDesktopClient("")
+		tokenResult, err := desktopClient.ExchangeToken(code, pending.CodeVerifier, pending.RedirectUri)
+		if err != nil {
+			fmt.Printf("[OAuth] Desktop token exchange failed: %v\n", err)
+			return nil, fmt.Errorf("failed to exchange token: %w", err)
+		}
+
+		accessToken = tokenResult.AccessToken
+		refreshToken = tokenResult.RefreshToken
+		expiresIn = tokenResult.ExpiresIn
+
+		fmt.Printf("[OAuth] Desktop token exchange successful, accessToken length: %d\n", len(accessToken))
+	} else {
+		// Fall back to Web OAuth (CBOR API)
+		webClient := NewKiroWebPortalClient()
+		tokenResult, err := webClient.ExchangeToken(pending.Idp, code, pending.CodeVerifier, pending.RedirectUri, state)
+		if err != nil {
+			return nil, fmt.Errorf("failed to exchange token: %w", err)
+		}
+
+		accessToken = tokenResult.AccessToken
+		refreshToken = tokenResult.SessionToken
+		expiresIn = tokenResult.ExpiresIn
 	}
 
-	// Exchange authorization code for token
-	ctx := context.Background()
-	token, err := config.Exchange(ctx, code)
-	if err != nil {
-		return nil, fmt.Errorf("failed to exchange code for token: %w", err)
-	}
+	fmt.Printf("[OAuth] Token exchange successful, getting user info...\n")
 
-	// Get user information from the provider
-	userInfo, err := as.getUserInfoFromProvider(token.AccessToken, provider)
+	// Get User Info using Desktop API (works for both Desktop and Web tokens)
+	desktopClient := NewKiroDesktopClient("")
+	usageLimits, err := desktopClient.GetUserInfo(accessToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
 
-	// Exchange OAuth token for Kiro bearer token
-	// This assumes Kiro has an endpoint to exchange OAuth tokens
-	kiroToken, err := as.exchangeOAuthTokenForKiroToken(token.AccessToken, provider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to exchange OAuth token for Kiro token: %w", err)
+	if usageLimits.UserInfo == nil {
+		return nil, fmt.Errorf("user info not found in response")
 	}
 
-	// Create token info
-	tokenInfo := &TokenInfo{
-		AccessToken:  kiroToken,
-		RefreshToken: token.RefreshToken,
-		ExpiresAt:    token.Expiry,
-		TokenType:    "Bearer",
+	fmt.Printf("[OAuth] User info retrieved: %s\n", usageLimits.UserInfo.Email)
+
+	// Map subscription info
+	subscriptionType := SubscriptionFree
+	if usageLimits.SubscriptionInfo != nil {
+		switch usageLimits.SubscriptionInfo.Type {
+		case "pro":
+			subscriptionType = SubscriptionPro
+		case "pro_plus":
+			subscriptionType = SubscriptionProPlus
+		}
 	}
 
-	// Get user profile from Kiro
-	profile, err := as.GetUserProfile(kiroToken)
-	if err != nil {
-		// If Kiro profile fetch fails, use OAuth provider info
-		profile = &UserProfile{
-			ID:       userInfo["id"].(string),
-			Email:    userInfo["email"].(string),
-			Name:     userInfo["name"].(string),
-			Avatar:   userInfo["avatar"].(string),
-			Provider: string(provider),
+	// Map quota info
+	quota := QuotaInfo{
+		Main:   QuotaDetail{Used: 0, Total: 0},
+		Trial:  QuotaDetail{Used: 0, Total: 0},
+		Reward: QuotaDetail{Used: 0, Total: 0},
+	}
+
+	for _, breakdown := range usageLimits.UsageBreakdownList {
+		if breakdown.ResourceType == "chat" {
+			quota.Main.Used = breakdown.CurrentUsage
+			quota.Main.Total = breakdown.UsageLimit
+
+			if breakdown.FreeTrialInfo != nil {
+				quota.Trial.Used = breakdown.FreeTrialInfo.CurrentUsage
+				quota.Trial.Total = breakdown.FreeTrialInfo.UsageLimit
+			}
+
+			for _, bonus := range breakdown.Bonuses {
+				quota.Reward.Used += int(bonus.CurrentUsage)
+				quota.Reward.Total += int(bonus.UsageLimit)
+			}
+			break
 		}
 	}
 
 	// Create account
 	account := &KiroAccount{
-		Email:            profile.Email,
-		DisplayName:      profile.Name,
-		Avatar:           profile.Avatar,
-		BearerToken:      tokenInfo.AccessToken,
-		RefreshToken:     tokenInfo.RefreshToken,
-		TokenExpiry:      tokenInfo.ExpiresAt,
+		Email:            usageLimits.UserInfo.Email,
+		DisplayName:      usageLimits.UserInfo.Email,
+		Avatar:           "",
+		BearerToken:      accessToken,
+		RefreshToken:     refreshToken,
+		TokenExpiry:      time.Now().Add(time.Duration(expiresIn) * time.Second),
 		LoginMethod:      LoginMethodOAuth,
-		Provider:         provider,
-		SubscriptionType: SubscriptionFree, // Will be updated when quota is fetched
-		Quota: QuotaInfo{
-			Main:   QuotaDetail{Used: 0, Total: 0},
-			Trial:  QuotaDetail{Used: 0, Total: 0},
-			Reward: QuotaDetail{Used: 0, Total: 0},
-		},
-		Tags:      []string{},
-		Notes:     "",
-		IsActive:  false,
-		LastUsed:  time.Now(),
-		CreatedAt: time.Now(),
+		Provider:         pending.Provider,
+		SubscriptionType: subscriptionType,
+		Quota:            quota,
+		Tags:             []string{},
+		Notes:            "",
+		IsActive:         false,
+		LastUsed:         time.Now(),
+		CreatedAt:        time.Now(),
 	}
+
+	fmt.Printf("[OAuth] Account created successfully for: %s\n", account.Email)
 
 	return account, nil
-}
-
-// getUserInfoFromProvider retrieves user information from the OAuth provider
-func (as *AuthService) getUserInfoFromProvider(accessToken string, provider OAuthProvider) (map[string]interface{}, error) {
-	var userInfoURL string
-
-	switch provider {
-	case ProviderGoogle:
-		userInfoURL = "https://www.googleapis.com/oauth2/v2/userinfo"
-	case ProviderGitHub:
-		userInfoURL = "https://api.github.com/user"
-	case ProviderBuilderID:
-		userInfoURL = "https://auth.aws.amazon.com/oauth2/userInfo"
-	default:
-		return nil, fmt.Errorf("unsupported provider: %s", provider)
-	}
-
-	// Create request
-	req, err := http.NewRequest("GET", userInfoURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	// Send request
-	resp, err := as.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get user info, status: %d", resp.StatusCode)
-	}
-
-	// Parse response
-	var userInfo map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
-		return nil, fmt.Errorf("failed to parse user info: %w", err)
-	}
-
-	// Normalize user info across providers
-	return as.normalizeUserInfo(userInfo, provider), nil
-}
-
-// normalizeUserInfo normalizes user information from different providers
-func (as *AuthService) normalizeUserInfo(userInfo map[string]interface{}, provider OAuthProvider) map[string]interface{} {
-	normalized := make(map[string]interface{})
-
-	switch provider {
-	case ProviderGoogle:
-		normalized["id"] = userInfo["id"]
-		normalized["email"] = userInfo["email"]
-		normalized["name"] = userInfo["name"]
-		normalized["avatar"] = userInfo["picture"]
-
-	case ProviderGitHub:
-		normalized["id"] = fmt.Sprintf("%v", userInfo["id"])
-		normalized["email"] = userInfo["email"]
-		if userInfo["email"] == nil {
-			// GitHub might not return email, fetch it separately
-			normalized["email"] = userInfo["login"].(string) + "@github.com"
-		}
-		normalized["name"] = userInfo["name"]
-		if userInfo["name"] == nil {
-			normalized["name"] = userInfo["login"]
-		}
-		normalized["avatar"] = userInfo["avatar_url"]
-
-	case ProviderBuilderID:
-		normalized["id"] = userInfo["sub"]
-		normalized["email"] = userInfo["email"]
-		normalized["name"] = userInfo["name"]
-		if userInfo["picture"] != nil {
-			normalized["avatar"] = userInfo["picture"]
-		} else {
-			normalized["avatar"] = ""
-		}
-	}
-
-	return normalized
-}
-
-// exchangeOAuthTokenForKiroToken exchanges an OAuth token for a Kiro bearer token
-func (as *AuthService) exchangeOAuthTokenForKiroToken(oauthToken string, provider OAuthProvider) (string, error) {
-	// Create request payload
-	payload := map[string]string{
-		"oauth_token": oauthToken,
-		"provider":    string(provider),
-	}
-
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	// Create request to Kiro API
-	req, err := http.NewRequest("POST", as.config.OAuthExchangeURL, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	// Send request
-	resp, err := as.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to exchange token: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("token exchange failed with status: %d", resp.StatusCode)
-	}
-
-	// Parse response
-	var result struct {
-		BearerToken string `json:"bearer_token"`
-		AccessToken string `json:"access_token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	// Return bearer token or access token
-	if result.BearerToken != "" {
-		return result.BearerToken, nil
-	}
-	if result.AccessToken != "" {
-		return result.AccessToken, nil
-	}
-
-	return "", fmt.Errorf("no token returned from exchange")
 }
 
 // UpdateAccountQuota updates the quota information for an existing account

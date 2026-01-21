@@ -106,7 +106,7 @@ func TestValidateToken(t *testing.T) {
 				if r.URL.Path != "/auth/validate" {
 					t.Errorf("Expected path /auth/validate, got %s", r.URL.Path)
 				}
-				
+
 				// Verify Authorization header
 				authHeader := r.Header.Get("Authorization")
 				if tt.token != "" && len(tt.token) >= 20 && !strings.Contains(tt.token, "!@#") {
@@ -115,7 +115,7 @@ func TestValidateToken(t *testing.T) {
 						t.Errorf("Expected Authorization header to start with '%s'", expectedPrefix)
 					}
 				}
-				
+
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverStatus == http.StatusOK && tt.serverResponse != nil {
 					json.NewEncoder(w).Encode(tt.serverResponse)
@@ -196,7 +196,7 @@ func TestValidateTokenFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := authService.validateTokenFormat(tt.token)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
@@ -263,7 +263,7 @@ func TestValidateTokenExpiry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := authService.validateTokenExpiry(tt.tokenInfo)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
@@ -357,7 +357,7 @@ func TestValidateTokenWithRetry(t *testing.T) {
 				Timeout:         5, // Shorter timeout for tests
 			}
 			authService := NewAuthServiceWithConfig(config)
-			
+
 			tokenInfo, err := authService.ValidateTokenWithRetry(tt.token, tt.maxRetries)
 
 			if tt.expectError {
@@ -380,6 +380,26 @@ func TestValidateTokenWithRetry(t *testing.T) {
 			}
 		})
 	}
+}
+
+type mockProfileUsageClient struct {
+	getUserInfo func(accessToken string) (*UsageLimitsResponse, error)
+}
+
+func (m *mockProfileUsageClient) InitiateLogin(provider, redirectUri, codeChallenge, state string) string {
+	return ""
+}
+
+func (m *mockProfileUsageClient) ExchangeToken(code, codeVerifier, redirectUri string) (*DesktopExchangeTokenResponse, error) {
+	return nil, nil
+}
+
+func (m *mockProfileUsageClient) RefreshToken(refreshToken string) (*DesktopExchangeTokenResponse, error) {
+	return nil, nil
+}
+
+func (m *mockProfileUsageClient) GetUserInfo(accessToken string) (*UsageLimitsResponse, error) {
+	return m.getUserInfo(accessToken)
 }
 
 // TestGetUserProfile tests the GetUserProfile method
@@ -416,23 +436,23 @@ func TestGetUserProfile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/user/profile" {
-					t.Errorf("Expected path /user/profile, got %s", r.URL.Path)
-				}
-				w.WriteHeader(tt.serverStatus)
-				if tt.serverStatus == http.StatusOK && tt.serverResponse != nil {
-					json.NewEncoder(w).Encode(tt.serverResponse)
-				}
-			}))
-			defer server.Close()
-
-			config := &KiroAPIConfig{
-				BaseURL:        server.URL,
-				UserProfileURL: server.URL + "/user/profile",
-				Timeout:        30,
+			authService := NewAuthServiceWithConfig(DefaultKiroAPIConfig())
+			authService.kiroClient = &mockProfileUsageClient{
+				getUserInfo: func(token string) (*UsageLimitsResponse, error) {
+					if tt.serverResponse == nil {
+						return &UsageLimitsResponse{}, nil
+					}
+					return &UsageLimitsResponse{
+						UserInfo: &struct {
+							Email  string `json:"email"`
+							UserID string `json:"userId"`
+						}{
+							Email:  tt.serverResponse.Email,
+							UserID: tt.serverResponse.ID,
+						},
+					}, nil
+				},
 			}
-			authService := NewAuthServiceWithConfig(config)
 			profile, err := authService.GetUserProfile(tt.token)
 
 			if tt.expectError {
@@ -447,6 +467,13 @@ func TestGetUserProfile(t *testing.T) {
 				}
 				if profile == nil {
 					t.Errorf("Expected profile but got nil")
+				} else {
+					if tt.serverResponse != nil && profile.Email != tt.serverResponse.Email {
+						t.Errorf("Expected email '%s', got '%s'", tt.serverResponse.Email, profile.Email)
+					}
+					if tt.serverResponse != nil && profile.Name != tt.serverResponse.Email {
+						t.Errorf("Expected name '%s', got '%s'", tt.serverResponse.Email, profile.Name)
+					}
 				}
 			}
 		})
@@ -456,7 +483,7 @@ func TestGetUserProfile(t *testing.T) {
 // TestValidateAndCreateAccount tests the ValidateAndCreateAccount method
 func TestValidateAndCreateAccount(t *testing.T) {
 	validToken := "valid-bearer-token-with-sufficient-length-for-validation"
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/auth/validate":
@@ -492,9 +519,98 @@ func TestValidateAndCreateAccount(t *testing.T) {
 		Timeout:         30,
 	}
 	authService := NewAuthServiceWithConfig(config)
+	authService.kiroClient = &mockProfileUsageClient{
+		getUserInfo: func(token string) (*UsageLimitsResponse, error) {
+			return &UsageLimitsResponse{
+				UserInfo: &struct {
+					Email  string `json:"email"`
+					UserID string `json:"userId"`
+				}{
+					Email:  "user@example.com",
+					UserID: "user-123",
+				},
+				UsageBreakdownList: []struct {
+					ResourceType  string `json:"resourceType"`
+					UsageLimit    int    `json:"usageLimit"`
+					CurrentUsage  int    `json:"currentUsage"`
+					FreeTrialInfo *struct {
+						UsageLimit   int `json:"usageLimit"`
+						CurrentUsage int `json:"currentUsage"`
+					} `json:"freeTrialInfo"`
+					Bonuses []struct {
+						UsageLimit   float64 `json:"usageLimit"`
+						CurrentUsage float64 `json:"currentUsage"`
+					} `json:"bonuses"`
+				}{
+					{
+						ResourceType: "chat",
+						UsageLimit:   1000,
+						CurrentUsage: 100,
+						FreeTrialInfo: &struct {
+							UsageLimit   int `json:"usageLimit"`
+							CurrentUsage int `json:"currentUsage"`
+						}{
+							UsageLimit:   100,
+							CurrentUsage: 50,
+						},
+						Bonuses: []struct {
+							UsageLimit   float64 `json:"usageLimit"`
+							CurrentUsage float64 `json:"currentUsage"`
+						}{
+							{
+								UsageLimit:   200,
+								CurrentUsage: 0,
+							},
+						},
+					},
+				},
+			}, nil
+		},
+	}
 
 	// Create a quota service for the test
 	quotaService := NewQuotaServiceWithConfig(config)
+	quotaService.usageClient = &mockProfileUsageClient{
+		getUserInfo: func(token string) (*UsageLimitsResponse, error) {
+			return &UsageLimitsResponse{
+				UsageBreakdownList: []struct {
+					ResourceType  string `json:"resourceType"`
+					UsageLimit    int    `json:"usageLimit"`
+					CurrentUsage  int    `json:"currentUsage"`
+					FreeTrialInfo *struct {
+						UsageLimit   int `json:"usageLimit"`
+						CurrentUsage int `json:"currentUsage"`
+					} `json:"freeTrialInfo"`
+					Bonuses []struct {
+						UsageLimit   float64 `json:"usageLimit"`
+						CurrentUsage float64 `json:"currentUsage"`
+					} `json:"bonuses"`
+				}{
+					{
+						ResourceType: "chat",
+						UsageLimit:   1000,
+						CurrentUsage: 100,
+						FreeTrialInfo: &struct {
+							UsageLimit   int `json:"usageLimit"`
+							CurrentUsage int `json:"currentUsage"`
+						}{
+							UsageLimit:   100,
+							CurrentUsage: 50,
+						},
+						Bonuses: []struct {
+							UsageLimit   float64 `json:"usageLimit"`
+							CurrentUsage float64 `json:"currentUsage"`
+						}{
+							{
+								UsageLimit:   200,
+								CurrentUsage: 0,
+							},
+						},
+					},
+				},
+			}, nil
+		},
+	}
 
 	account, err := authService.ValidateAndCreateAccount(validToken, LoginMethodToken, "", quotaService)
 	if err != nil {
@@ -504,8 +620,8 @@ func TestValidateAndCreateAccount(t *testing.T) {
 	if account.Email != "user@example.com" {
 		t.Errorf("Expected Email 'user@example.com', got '%s'", account.Email)
 	}
-	if account.DisplayName != "Test User" {
-		t.Errorf("Expected DisplayName 'Test User', got '%s'", account.DisplayName)
+	if account.DisplayName != "user@example.com" {
+		t.Errorf("Expected DisplayName 'user@example.com', got '%s'", account.DisplayName)
 	}
 	if account.BearerToken != validToken {
 		t.Errorf("Expected BearerToken '%s', got '%s'", validToken, account.BearerToken)

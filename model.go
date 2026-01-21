@@ -3,11 +3,122 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// ProviderModel OpenCode API 返回的模型信息
+type ProviderModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ProviderResponse OpenCode /provider API 返回的单个 provider
+type ProviderResponse struct {
+	ID     string                   `json:"id"`
+	Name   string                   `json:"name"`
+	Models map[string]ProviderModel `json:"models"`
+}
+
+// GetAllModels 从 OpenCode API 获取所有模型列表
+// 只返回 Kiro 模型和 Antigravity/Gemini 模型，与桌面端保持一致
+func (a *App) GetAllModels() ([]ConfigModel, error) {
+	var models []ConfigModel
+
+	// 调用 OpenCode /provider API
+	resp, err := a.httpClient.Get(a.serverURL + "/provider")
+	if err != nil {
+		fmt.Printf("❌ 获取 provider 失败: %v\n", err)
+		// 降级到配置文件
+		return a.GetConfigModels()
+	}
+	defer resp.Body.Close()
+
+	// 先读取响应体用于调试
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("❌ 读取响应失败: %v\n", err)
+		return a.GetConfigModels()
+	}
+
+	// 解析返回的 JSON
+	var providerResp struct {
+		All []struct {
+			ID     string                 `json:"id"`
+			Name   string                 `json:"name"`
+			Models map[string]interface{} `json:"models"`
+		} `json:"all"`
+		Connected []string `json:"connected"`
+	}
+
+	if err := json.Unmarshal(body, &providerResp); err != nil {
+		fmt.Printf("❌ 解析 provider 响应失败: %v\n", err)
+		return a.GetConfigModels()
+	}
+
+	fmt.Printf("📋 从 OpenCode API 获取到 %d 个 provider\n", len(providerResp.All))
+
+	// 遍历每个 provider，只添加特定的模型
+	for _, provider := range providerResp.All {
+		if provider.Models == nil {
+			continue
+		}
+
+		for modelID, modelData := range provider.Models {
+			// 获取模型名称
+			modelName := modelID
+			if modelMap, ok := modelData.(map[string]interface{}); ok {
+				if name, ok := modelMap["name"].(string); ok && name != "" {
+					modelName = name
+				}
+			}
+
+			// 只添加特定的模型（与桌面端保持一致）
+			shouldAdd := false
+
+			// 1. Kiro 模型
+			if provider.ID == "kiro" {
+				shouldAdd = true
+			}
+
+			// 2. Google Antigravity 模型
+			if provider.ID == "google" && strings.HasPrefix(modelID, "antigravity-") {
+				shouldAdd = true
+			}
+
+			// 3. Google Gemini 模型（preview 或特定模型）
+			if provider.ID == "google" {
+				if strings.Contains(modelID, "-preview") ||
+					modelID == "gemini-2.5-flash" ||
+					modelID == "gemini-2.5-pro" {
+					shouldAdd = true
+				}
+			}
+
+			if shouldAdd {
+				models = append(models, ConfigModel{
+					ID:       fmt.Sprintf("%s/%s", provider.ID, modelID),
+					Name:     modelName,
+					Provider: provider.ID,
+				})
+			}
+		}
+	}
+
+	fmt.Printf("✅ 筛选后返回 %d 个模型\n", len(models))
+
+	// 如果没有获取到任何模型，降级到配置文件
+	if len(models) == 0 {
+		fmt.Printf("⚠️ API 未返回符合条件的模型，降级到配置文件\n")
+		return a.GetConfigModels()
+	}
+
+	return models, nil
+}
 
 // ConfigModel 配置文件中的模型信息
 type ConfigModel struct {

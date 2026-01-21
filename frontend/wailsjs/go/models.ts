@@ -711,6 +711,48 @@ export namespace main {
 	        this.title = source["title"];
 	    }
 	}
+	export class SkillInfo {
+	    name: string;
+	    description: string;
+	    path: string;
+	    source: string;
+	    content?: string;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SkillInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.path = source["path"];
+	        this.source = source["source"];
+	        this.content = source["content"];
+	        this.enabled = source["enabled"];
+	    }
+	}
+	export class SkillTemplate {
+	    id: string;
+	    name: string;
+	    description: string;
+	    content: string;
+	    category: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SkillTemplate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.content = source["content"];
+	        this.category = source["category"];
+	    }
+	}
 	
 	export class Tag {
 	    name: string;
@@ -734,6 +776,7 @@ export namespace main {
 	    // Go type: time
 	    expires_at: any;
 	    token_type: string;
+	    profile_arn?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TokenInfo(source);
@@ -745,6 +788,7 @@ export namespace main {
 	        this.refresh_token = source["refresh_token"];
 	        this.expires_at = this.convertValues(source["expires_at"], null);
 	        this.token_type = source["token_type"];
+	        this.profile_arn = source["profile_arn"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

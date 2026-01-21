@@ -58,6 +58,10 @@ export function CodeCompletion(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CodeCompletion'](arg1, arg2, arg3, arg4);
 }
 
+export function CompleteKiroOAuthWithURL(arg1) {
+  return window['go']['main']['App']['CompleteKiroOAuthWithURL'](arg1);
+}
+
 export function ConnectMCPServer(arg1) {
   return window['go']['main']['App']['ConnectMCPServer'](arg1);
 }
@@ -82,12 +86,24 @@ export function CreateSession() {
   return window['go']['main']['App']['CreateSession']();
 }
 
+export function CreateSkill(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CreateSkill'](arg1, arg2, arg3, arg4);
+}
+
+export function CreateSkillFromTemplate(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreateSkillFromTemplate'](arg1, arg2, arg3);
+}
+
 export function CreateTerminal() {
   return window['go']['main']['App']['CreateTerminal']();
 }
 
 export function DeletePath(arg1) {
   return window['go']['main']['App']['DeletePath'](arg1);
+}
+
+export function DeleteSkill(arg1) {
+  return window['go']['main']['App']['DeleteSkill'](arg1);
 }
 
 export function DeleteTag(arg1) {
@@ -112,6 +128,10 @@ export function GetAccountSettings() {
 
 export function GetActiveKiroAccount() {
   return window['go']['main']['App']['GetActiveKiroAccount']();
+}
+
+export function GetAllModels() {
+  return window['go']['main']['App']['GetAllModels']();
 }
 
 export function GetAntigravityAuthStatus() {
@@ -194,6 +214,10 @@ export function GetQuotaAlerts() {
   return window['go']['main']['App']['GetQuotaAlerts']();
 }
 
+export function GetRemoteControlInfo() {
+  return window['go']['main']['App']['GetRemoteControlInfo']();
+}
+
 export function GetServerURL() {
   return window['go']['main']['App']['GetServerURL']();
 }
@@ -204,6 +228,18 @@ export function GetSessionMessages(arg1) {
 
 export function GetSessions() {
   return window['go']['main']['App']['GetSessions']();
+}
+
+export function GetSkill(arg1) {
+  return window['go']['main']['App']['GetSkill'](arg1);
+}
+
+export function GetSkillTemplates() {
+  return window['go']['main']['App']['GetSkillTemplates']();
+}
+
+export function GetSkills() {
+  return window['go']['main']['App']['GetSkills']();
 }
 
 export function GetStorageInfo() {
@@ -394,8 +430,16 @@ export function StartOpenCode() {
   return window['go']['main']['App']['StartOpenCode']();
 }
 
+export function StartRemoteControl(arg1) {
+  return window['go']['main']['App']['StartRemoteControl'](arg1);
+}
+
 export function StopOpenCode() {
   return window['go']['main']['App']['StopOpenCode']();
+}
+
+export function StopRemoteControl() {
+  return window['go']['main']['App']['StopRemoteControl']();
 }
 
 export function SubscribeEvents() {
@@ -448,6 +492,10 @@ export function UpdateKiroAccount(arg1, arg2) {
 
 export function UpdateKiroAuth() {
   return window['go']['main']['App']['UpdateKiroAuth']();
+}
+
+export function UpdateSkill(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UpdateSkill'](arg1, arg2, arg3);
 }
 
 export function UpdateUIUXProMax() {

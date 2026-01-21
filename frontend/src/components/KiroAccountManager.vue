@@ -8,7 +8,8 @@ import {
   RefreshKiroToken, GetKiroQuota, RefreshKiroQuota, BatchRefreshKiroTokens,
   BatchDeleteKiroAccounts, BatchAddKiroTags, ExportKiroAccounts, ImportKiroAccounts,
   GetAccountSettings, UpdateAccountSettings,
-  GetTags, AddTag, DeleteTag, LogToTerminal
+  GetTags, AddTag, DeleteTag, LogToTerminal,
+  CompleteKiroOAuthWithURL
 } from '../../wailsjs/go/main/App'
 
 const { t } = useI18n()
@@ -63,6 +64,23 @@ const accountForm = reactive({
   password: '',
   tags: []
 })
+
+// OAuth 流程状态
+const oauthState = reactive({
+  isWaitingForCallback: false,
+  callbackUrl: '',
+  authUrl: '',
+  magicCopied: false,
+});
+
+const magicCopied = ref(false);
+
+const copyMagicSnippet = () => {
+  const snippet = `fetch('http://127.0.0.1:54321/oauth/callback?fullUrl=' + encodeURIComponent(window.location.href)).then(() => alert('捕获成功！认证已在应用中完成。')).catch(() => alert('捕获失败。请确保应用正在运行。'));`;
+  navigator.clipboard.writeText(snippet);
+  magicCopied.value = true;
+  setTimeout(() => magicCopied.value = false, 2000);
+};
 
 // 表单验证错误
 const formErrors = reactive({
@@ -479,21 +497,64 @@ async function saveAccount() {
 
 async function startOAuthFlow() {
   try {
+    state.errorMessage = '正在打开授权页面...'
     const authUrl = await StartKiroOAuth(accountForm.provider)
-    window.open(authUrl, 'oauth', 'width=600,height=700')
     
-    const handleOAuthComplete = (event) => {
-      if (event.data.type === 'oauth-complete') {
-        window.removeEventListener('message', handleOAuthComplete)
-        dialogs.showAddDialog = false
-        loadAccounts()
-      }
-    }
-    window.addEventListener('message', handleOAuthComplete)
+    // 设置 OAuth 等待状态
+    oauthState.isWaitingForCallback = true
+    oauthState.authUrl = authUrl
+    oauthState.callbackUrl = ''
+    state.errorMessage = ''
+    
+    console.log('OAuth flow started, waiting for callback URL...')
   } catch (error) {
     console.error('Failed to start OAuth flow:', error)
-    alert('启动 OAuth 认证失败: ' + error.message)
+    state.errorMessage = '启动 OAuth 认证失败: ' + error.message
   }
+}
+
+// 完成 OAuth 流程
+async function completeOAuthFlow() {
+  if (!oauthState.callbackUrl) {
+    state.errorMessage = '请粘贴授权完成后的回调 URL'
+    return
+  }
+  
+  // 验证 URL 格式
+  if (!oauthState.callbackUrl.includes('code=') || !oauthState.callbackUrl.includes('state=')) {
+    state.errorMessage = 'URL 格式无效，请确保复制完整的回调地址（包含 code 和 state 参数）'
+    return
+  }
+  
+  state.saving = true
+  state.errorMessage = '正在验证并添加账号...'
+  
+  try {
+    await CompleteKiroOAuthWithURL(oauthState.callbackUrl)
+    
+    // 成功后重置状态
+    oauthState.isWaitingForCallback = false
+    oauthState.callbackUrl = ''
+    oauthState.authUrl = ''
+    dialogs.showAddDialog = false
+    state.errorMessage = ''
+    
+    await loadAccounts()
+    console.log('OAuth flow completed successfully')
+  } catch (error) {
+    console.error('Failed to complete OAuth flow:', error)
+    state.errorMessage = '验证失败: ' + (error.message || error)
+  } finally {
+    state.saving = false
+  }
+}
+
+// 取消 OAuth 流程
+function cancelOAuthFlow() {
+  oauthState.isWaitingForCallback = false
+  oauthState.callbackUrl = ''
+  oauthState.authUrl = ''
+  state.errorMessage = ''
 }
 
 function askDeleteAccount(account) {
@@ -774,14 +835,9 @@ function checkDuplicateAccount(email) {
           <div class="card-quota" v-if="account.quota && account.quota.main">
             <div class="quota-header">
               <span class="quota-label">使用量</span>
-              <span :class="['quota-percent', getQuotaPercentage({
-                used: account.quota.main.used + (account.quota.trial?.used || 0) + (account.quota.reward?.used || 0),
-                total: account.quota.main.total + (account.quota.trial?.total || 0) + (account.quota.reward?.total || 0)
-              }) > 80 ? 'high' : '']">
-                {{ getQuotaPercentage({
-                  used: account.quota.main.used + (account.quota.trial?.used || 0) + (account.quota.reward?.used || 0),
-                  total: account.quota.main.total + (account.quota.trial?.total || 0) + (account.quota.reward?.total || 0)
-                }) }}%
+              <span class="quota-text">
+                {{ account.quota.main.used + (account.quota.trial?.used || 0) + (account.quota.reward?.used || 0) }} / 
+                {{ account.quota.main.total + (account.quota.trial?.total || 0) + (account.quota.reward?.total || 0) }}
               </span>
             </div>
             <div class="quota-bar">
@@ -799,9 +855,10 @@ function checkDuplicateAccount(email) {
                 }"
               ></div>
             </div>
-            <div class="quota-text">
-              <span class="quota-used">{{ account.quota.main.used + (account.quota.trial?.used || 0) + (account.quota.reward?.used || 0) }} / {{ account.quota.main.total + (account.quota.trial?.total || 0) + (account.quota.reward?.total || 0) }}</span>
-              <span class="quota-remaining">剩余 {{ (account.quota.main.total + (account.quota.trial?.total || 0) + (account.quota.reward?.total || 0)) - (account.quota.main.used + (account.quota.trial?.used || 0) + (account.quota.reward?.used || 0)) }}</span>
+            <div class="quota-details-text" style="font-size: 0.8em; color: #666; margin-top: 4px;">
+              (Main: {{account.quota.main.used}}/{{account.quota.main.total}}, 
+               Trial: {{account.quota.trial?.used || 0}}/{{account.quota.trial?.total || 0}}, 
+               Reward: {{account.quota.reward?.used || 0}}/{{account.quota.reward?.total || 0}})
             </div>
           </div>
 
@@ -1037,7 +1094,8 @@ function checkDuplicateAccount(email) {
 
           <!-- OAuth 登录表单 -->
           <div v-if="accountForm.loginMethod === 'oauth'" class="form-section">
-            <div class="form-group">
+            <!-- 步骤 1: 选择提供商并开始授权 -->
+            <div v-if="!oauthState.isWaitingForCallback" class="form-group">
               <label>OAuth 提供商</label>
               <div class="provider-options">
                 <label class="provider-option" :class="{ active: accountForm.provider === 'google' }">
@@ -1061,6 +1119,69 @@ function checkDuplicateAccount(email) {
                     <span>AWS Builder ID</span>
                   </div>
                 </label>
+              </div>
+            </div>
+            
+            <!-- 步骤 2: 等待回调 URL -->
+            <div v-if="oauthState.isWaitingForCallback" class="oauth-callback-section">
+              <div class="oauth-step-indicator">
+                <div class="step completed">1. 选择提供商 ✓</div>
+                <div class="step active">2. 等待授权回调</div>
+              </div>
+              
+              <div class="info-box warning">
+                <div class="info-icon">⚠️</div>
+                <div class="info-text">
+                  <p><strong>获取授权码的终极秘籍</strong></p>
+                  <p>1. 完成授权后，Kiro 页面可能会<strong>瞬间跳转</strong>导致你看不清地址栏。</p>
+                  <p>2. <strong>最简单的方法：</strong> 在跳转后的那个报错页面，按下 <code>F12</code> 打开浏览器控制台，点击下方按钮复制脚本并粘贴回控制台回车。</p>
+                  <div class="magic-action-row">
+                    <button class="btn-magic-tool" @click="copyMagicSnippet">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                      </svg>
+                      复制一键捕获脚本
+                    </button>
+                    <span v-if="magicCopied" class="magic-copied-hint">已复制！</span>
+                  </div>
+                  <p>3. 或者，完成后立即按 <code>Esc</code> 键停止页面加载，然后手动复制 URL 粘贴到下方。</p>
+                </div>
+              </div>
+              
+              <div class="form-group">
+                <label>回调 URL *</label>
+                <textarea 
+                  v-model="oauthState.callbackUrl" 
+                  placeholder="粘贴授权完成后的回调 URL..."
+                  rows="3"
+                  class="callback-url-input"
+                ></textarea>
+                <div class="form-hint">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 16v-4M12 8h.01"/>
+                  </svg>
+                  <span>从浏览器地址栏复制完整的 URL 并粘贴在这里</span>
+                </div>
+              </div>
+              
+              <div class="oauth-actions">
+                <button 
+                  class="btn-secondary" 
+                  @click="cancelOAuthFlow"
+                  type="button"
+                >
+                  取消
+                </button>
+                <button 
+                  class="btn-primary" 
+                  @click="completeOAuthFlow"
+                  :disabled="state.saving || !oauthState.callbackUrl"
+                  type="button"
+                >
+                  {{ state.saving ? '验证中...' : '完成认证' }}
+                </button>
               </div>
             </div>
           </div>
@@ -2673,6 +2794,19 @@ input:checked + .slider:before {
   line-height: 1.5;
 }
 
+.info-text p + p {
+  margin-top: 6px;
+}
+
+.info-box.warning {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.info-box.warning .info-text strong {
+  color: var(--yellow, #fbbf24);
+}
+
 /* 标签管理样式 */
 .tag-manager-dialog {
   width: 480px;
@@ -2760,5 +2894,100 @@ input:checked + .slider:before {
   background: var(--bg-elevated);
   border-radius: 8px;
   border: 1px dashed var(--border-default);
+}
+
+/* OAuth 回调输入样式 */
+.oauth-callback-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.oauth-step-indicator {
+  display: flex;
+  gap: 16px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border-radius: 8px;
+}
+
+.oauth-step-indicator .step {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.oauth-step-indicator .step.completed {
+  color: var(--green, #10b981);
+}
+
+.oauth-step-indicator .step.active {
+  color: var(--primary-color, #a855f7);
+  font-weight: 600;
+}
+
+.callback-url-input {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.info-text .hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  margin-top: 8px !important;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+/* 魔法脚本按钮 */
+.magic-action-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.btn-magic-tool {
+  background: rgba(176, 128, 255, 0.2);
+  border: 1px solid rgba(176, 128, 255, 0.4);
+  color: var(--kiro-purple);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.btn-magic-tool:hover {
+  background: rgba(176, 128, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.magic-copied-hint {
+  font-size: 12px;
+  color: var(--kiro-purple);
+  animation: fadeIn 0.3s forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-5px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* 之前已有的样式保持不变 */
+.oauth-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
 }
 </style>

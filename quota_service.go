@@ -4,19 +4,21 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"net/http"
-	"net/url"
 	"sync"
 	"time"
 )
 
 // QuotaService handles quota-related operations for Kiro accounts
 type QuotaService struct {
-	httpClient *http.Client
-	config     *KiroAPIConfig
-	cache      map[string]*QuotaCacheEntry
-	cacheTTL   time.Duration
-	mutex      sync.RWMutex
+	config      *KiroAPIConfig
+	cache       map[string]*QuotaCacheEntry
+	cacheTTL    time.Duration
+	mutex       sync.RWMutex
+	usageClient UsageLimitsFetcher
+}
+
+type UsageLimitsFetcher interface {
+	GetUserInfo(accessToken string) (*UsageLimitsResponse, error)
 }
 
 var kiroMachineIDOnce sync.Once
@@ -31,26 +33,6 @@ func getKiroMachineID() string {
 	return kiroMachineID
 }
 
-func buildUsageLimitsURL(baseURL string, profileARN string) string {
-	u, err := url.Parse(baseURL)
-	if err != nil {
-		return baseURL
-	}
-
-	q := u.Query()
-	if q.Get("isEmailRequired") == "" {
-		q.Set("isEmailRequired", "true")
-	}
-	if q.Get("origin") == "" {
-		q.Set("origin", "AI_EDITOR")
-	}
-	if profileARN != "" && q.Get("profileArn") == "" {
-		q.Set("profileArn", profileARN)
-	}
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
 // QuotaCacheEntry represents a cached quota entry
 type QuotaCacheEntry struct {
 	Quota     *QuotaInfo
@@ -62,13 +44,11 @@ func NewQuotaService() *QuotaService {
 	config := DefaultKiroAPIConfig()
 
 	return &QuotaService{
-		httpClient: &http.Client{
-			Timeout: time.Duration(config.Timeout) * time.Second,
-		},
-		config:   config,
-		cache:    make(map[string]*QuotaCacheEntry),
-		cacheTTL: 5 * time.Minute, // Cache quota for 5 minutes
-		mutex:    sync.RWMutex{},
+		config:      config,
+		cache:       make(map[string]*QuotaCacheEntry),
+		cacheTTL:    5 * time.Minute,
+		mutex:       sync.RWMutex{},
+		usageClient: NewKiroDesktopClient(getKiroMachineID()),
 	}
 }
 
@@ -80,13 +60,11 @@ func NewQuotaServiceWithConfig(config *KiroAPIConfig) *QuotaService {
 	}
 
 	return &QuotaService{
-		httpClient: &http.Client{
-			Timeout: time.Duration(config.Timeout) * time.Second,
-		},
-		config:   config,
-		cache:    make(map[string]*QuotaCacheEntry),
-		cacheTTL: 5 * time.Minute,
-		mutex:    sync.RWMutex{},
+		config:      config,
+		cache:       make(map[string]*QuotaCacheEntry),
+		cacheTTL:    5 * time.Minute,
+		mutex:       sync.RWMutex{},
+		usageClient: NewKiroDesktopClient(getKiroMachineID()),
 	}
 }
 
@@ -130,51 +108,75 @@ func (qs *QuotaService) GetQuota(token string) (*QuotaInfo, error) {
 // fetchQuotaFromAPI fetches quota information from the Kiro API
 func (qs *QuotaService) fetchQuotaFromAPI(token string) (*QuotaInfo, error) {
 	fmt.Printf("→ fetchQuotaFromAPI 开始 (token长度: %d)\n", len(token))
-	
-	// 使用新的 Kiro API 客户端
-	kiroClient := NewKiroAPIClient()
-	
-	fmt.Println("  调用 GetKiroUsageLimits...")
-	usageResp, err := kiroClient.GetKiroUsageLimits(token)
+
+	fmt.Println("  调用 GetUsageLimits...")
+	if qs.usageClient == nil {
+		qs.usageClient = NewKiroDesktopClient(getKiroMachineID())
+	}
+	usageResp, err := qs.usageClient.GetUserInfo(token)
 	if err != nil {
 		fmt.Printf("✗ 获取配额失败: %v\n", err)
 		return nil, fmt.Errorf("获取配额失败: %w", err)
 	}
+
 	fmt.Println("  ✓ 配额信息获取成功")
-	
+
 	// 转换为 QuotaInfo
 	quota := QuotaInfo{
 		Main:   QuotaDetail{Used: 0, Total: 0},
 		Trial:  QuotaDetail{Used: 0, Total: 0},
 		Reward: QuotaDetail{Used: 0, Total: 0},
 	}
-	
-	if len(usageResp.UsageBreakdownList) > 0 {
-		breakdown := usageResp.UsageBreakdownList[0]
+
+	var breakdown *struct {
+		ResourceType  string `json:"resourceType"`
+		UsageLimit    int    `json:"usageLimit"`
+		CurrentUsage  int    `json:"currentUsage"`
+		FreeTrialInfo *struct {
+			UsageLimit   int `json:"usageLimit"`
+			CurrentUsage int `json:"currentUsage"`
+		} `json:"freeTrialInfo"`
+		Bonuses []struct {
+			UsageLimit   float64 `json:"usageLimit"`
+			CurrentUsage float64 `json:"currentUsage"`
+		} `json:"bonuses"`
+	}
+
+	for i := range usageResp.UsageBreakdownList {
+		if usageResp.UsageBreakdownList[i].ResourceType == "chat" {
+			breakdown = &usageResp.UsageBreakdownList[i]
+			break
+		}
+	}
+	if breakdown == nil && len(usageResp.UsageBreakdownList) > 0 {
+		breakdown = &usageResp.UsageBreakdownList[0]
+	}
+
+	if breakdown != nil {
 		quota.Main.Used = breakdown.CurrentUsage
 		quota.Main.Total = breakdown.UsageLimit
-		
+
 		fmt.Printf("  【API 返回】主配额: Used=%d, Total=%d\n", breakdown.CurrentUsage, breakdown.UsageLimit)
-		
+
 		if breakdown.FreeTrialInfo != nil {
 			quota.Trial.Used = breakdown.FreeTrialInfo.CurrentUsage
 			quota.Trial.Total = breakdown.FreeTrialInfo.UsageLimit
 			fmt.Printf("  【API 返回】试用配额: Used=%d, Total=%d\n", breakdown.FreeTrialInfo.CurrentUsage, breakdown.FreeTrialInfo.UsageLimit)
 		}
-		
+
 		for i, bonus := range breakdown.Bonuses {
 			quota.Reward.Used += int(bonus.CurrentUsage)
 			quota.Reward.Total += int(bonus.UsageLimit)
 			fmt.Printf("  【API 返回】赠送配额[%d]: Used=%.0f, Total=%.0f\n", i, bonus.CurrentUsage, bonus.UsageLimit)
 		}
-		
-		fmt.Printf("  【计算结果】累计配额: Used=%d, Total=%d\n", 
+
+		fmt.Printf("  【计算结果】累计配额: Used=%d, Total=%d\n",
 			quota.Main.Used+quota.Trial.Used+quota.Reward.Used,
 			quota.Main.Total+quota.Trial.Total+quota.Reward.Total)
 	} else {
 		fmt.Println("  ⚠ 警告: API 返回的 UsageBreakdownList 为空")
 	}
-	
+
 	fmt.Println("✓ fetchQuotaFromAPI 完成")
 	return &quota, nil
 }

@@ -52,6 +52,7 @@ type KiroAccount struct {
 	Avatar           string           `json:"avatar,omitempty"`   // 头像 URL
 	BearerToken      string           `json:"-"`                  // 认证 Token
 	RefreshToken     string           `json:"-"`                  // 刷新 Token
+	CsrfToken        string           `json:"-"`                  // CSRF Token (用于 Web OAuth 刷新)
 	TokenExpiry      time.Time        `json:"tokenExpiry"`        // Token 过期时间
 	LoginMethod      LoginMethod      `json:"loginMethod"`        // 登录方式
 	Provider         OAuthProvider    `json:"provider,omitempty"` // OAuth 提供商
@@ -77,6 +78,7 @@ type TokenInfo struct {
 	RefreshToken string    `json:"refresh_token"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	TokenType    string    `json:"token_type"`
+	ProfileArn   string    `json:"profile_arn,omitempty"`
 }
 
 // UserProfile represents user profile information from Kiro API

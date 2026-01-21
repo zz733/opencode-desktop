@@ -30,6 +30,8 @@ export function CloseTerminal(arg1:number):Promise<void>;
 
 export function CodeCompletion(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
+export function CompleteKiroOAuthWithURL(arg1:string):Promise<void>;
+
 export function ConnectMCPServer(arg1:string):Promise<void>;
 
 export function CopyPath(arg1:string,arg2:string):Promise<string>;
@@ -42,9 +44,15 @@ export function CreateNewFolder(arg1:string,arg2:string):Promise<string>;
 
 export function CreateSession():Promise<main.Session>;
 
+export function CreateSkill(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
+
+export function CreateSkillFromTemplate(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function CreateTerminal():Promise<number>;
 
 export function DeletePath(arg1:string):Promise<void>;
+
+export function DeleteSkill(arg1:string):Promise<void>;
 
 export function DeleteTag(arg1:string):Promise<void>;
 
@@ -57,6 +65,8 @@ export function FixOhMyOpenCode():Promise<void>;
 export function GetAccountSettings():Promise<main.AccountSettings>;
 
 export function GetActiveKiroAccount():Promise<main.KiroAccount>;
+
+export function GetAllModels():Promise<Array<main.ConfigModel>>;
 
 export function GetAntigravityAuthStatus():Promise<main.AntigravityAuthStatus>;
 
@@ -98,11 +108,19 @@ export function GetProviders():Promise<main.ProviderInfo>;
 
 export function GetQuotaAlerts():Promise<Array<main.QuotaAlert>>;
 
+export function GetRemoteControlInfo():Promise<Record<string, any>>;
+
 export function GetServerURL():Promise<string>;
 
 export function GetSessionMessages(arg1:string):Promise<Array<main.Message>>;
 
 export function GetSessions():Promise<Array<main.Session>>;
+
+export function GetSkill(arg1:string):Promise<main.SkillInfo>;
+
+export function GetSkillTemplates():Promise<Array<main.SkillTemplate>>;
+
+export function GetSkills():Promise<Array<main.SkillInfo>>;
 
 export function GetStorageInfo():Promise<Record<string, any>>;
 
@@ -198,7 +216,11 @@ export function StartKiroOAuth(arg1:string):Promise<string>;
 
 export function StartOpenCode():Promise<void>;
 
+export function StartRemoteControl(arg1:number):Promise<Record<string, any>>;
+
 export function StopOpenCode():Promise<void>;
+
+export function StopRemoteControl():Promise<void>;
 
 export function SubscribeEvents():Promise<void>;
 
@@ -225,6 +247,8 @@ export function UpdateAppConfig(arg1:main.AppConfig):Promise<void>;
 export function UpdateKiroAccount(arg1:string,arg2:Record<string, any>):Promise<void>;
 
 export function UpdateKiroAuth():Promise<void>;
+
+export function UpdateSkill(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function UpdateUIUXProMax():Promise<void>;
 

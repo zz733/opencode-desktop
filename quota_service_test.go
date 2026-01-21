@@ -1,9 +1,8 @@
 package main
 
 import (
-	"encoding/json"
+	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +13,8 @@ func TestGetQuota(t *testing.T) {
 	tests := []struct {
 		name           string
 		token          string
-		serverResponse *QuotaInfo
+		serverResponse *UsageLimitsResponse
+		expectedQuota  *QuotaInfo
 		serverStatus   int
 		expectError    bool
 		errorContains  string
@@ -22,7 +22,7 @@ func TestGetQuota(t *testing.T) {
 		{
 			name:  "valid quota request",
 			token: "valid-token",
-			serverResponse: &QuotaInfo{
+			expectedQuota: &QuotaInfo{
 				Main:   QuotaDetail{Used: 1000, Total: 10000},
 				Trial:  QuotaDetail{Used: 50, Total: 100},
 				Reward: QuotaDetail{Used: 0, Total: 500},
@@ -42,60 +42,51 @@ func TestGetQuota(t *testing.T) {
 			token:         "invalid-token",
 			serverStatus:  http.StatusUnauthorized,
 			expectError:   true,
-			errorContains: "invalid or expired",
+			errorContains: "获取配额失败 (状态码: 401)",
 		},
 		{
 			name:          "forbidden - 403",
 			token:         "valid-token-no-permissions",
 			serverStatus:  http.StatusForbidden,
 			expectError:   true,
-			errorContains: "does not have required permissions",
+			errorContains: "获取配额失败 (状态码: 403)",
 		},
 		{
 			name:          "not found - 404",
 			token:         "valid-token-no-quota",
 			serverStatus:  http.StatusNotFound,
 			expectError:   true,
-			errorContains: "quota information not found",
+			errorContains: "获取配额失败 (状态码: 404)",
 		},
 		{
 			name:          "rate limited - 429",
 			token:         "valid-token-rate-limited",
 			serverStatus:  http.StatusTooManyRequests,
 			expectError:   true,
-			errorContains: "rate limit exceeded",
+			errorContains: "获取配额失败 (状态码: 429)",
 		},
 	}
 
 	for _, tt := range tests {
+		if tt.expectedQuota != nil {
+			tt.serverResponse = buildUsageLimitsResponse(tt.expectedQuota)
+		}
+
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/user/quota" {
-					t.Errorf("Expected path /user/quota, got %s", r.URL.Path)
-				}
-
-				// Verify Authorization header
-				if tt.token != "" {
-					authHeader := r.Header.Get("Authorization")
-					expectedPrefix := "Bearer "
-					if !strings.HasPrefix(authHeader, expectedPrefix) {
-						t.Errorf("Expected Authorization header to start with '%s'", expectedPrefix)
-					}
-				}
-
-				w.WriteHeader(tt.serverStatus)
-				if tt.serverStatus == http.StatusOK && tt.serverResponse != nil {
-					json.NewEncoder(w).Encode(tt.serverResponse)
-				}
-			}))
-			defer server.Close()
-
 			config := &KiroAPIConfig{
-				BaseURL:      server.URL,
-				UserQuotaURL: server.URL + "/user/quota",
+				BaseURL:      "http://localhost",
+				UserQuotaURL: "http://localhost/user/quota",
 				Timeout:      30,
 			}
 			quotaService := NewQuotaServiceWithConfig(config)
+			quotaService.usageClient = &mockQuotaUsageClient{
+				handler: func(token string) (*UsageLimitsResponse, error) {
+					if tt.serverStatus != http.StatusOK {
+						return nil, fmt.Errorf("获取配额失败 (状态码: %d)", tt.serverStatus)
+					}
+					return tt.serverResponse, nil
+				},
+			}
 			quota, err := quotaService.GetQuota(tt.token)
 
 			if tt.expectError {
@@ -112,11 +103,11 @@ func TestGetQuota(t *testing.T) {
 					t.Errorf("Expected quota but got nil")
 				} else {
 					// Verify quota values
-					if quota.Main.Used != tt.serverResponse.Main.Used {
-						t.Errorf("Expected Main.Used %d, got %d", tt.serverResponse.Main.Used, quota.Main.Used)
+					if quota.Main.Used != tt.expectedQuota.Main.Used {
+						t.Errorf("Expected Main.Used %d, got %d", tt.expectedQuota.Main.Used, quota.Main.Used)
 					}
-					if quota.Main.Total != tt.serverResponse.Main.Total {
-						t.Errorf("Expected Main.Total %d, got %d", tt.serverResponse.Main.Total, quota.Main.Total)
+					if quota.Main.Total != tt.expectedQuota.Main.Total {
+						t.Errorf("Expected Main.Total %d, got %d", tt.expectedQuota.Main.Total, quota.Main.Total)
 					}
 				}
 			}
@@ -127,24 +118,24 @@ func TestGetQuota(t *testing.T) {
 // TestGetQuotaCache tests the quota caching mechanism
 func TestGetQuotaCache(t *testing.T) {
 	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestCount++
-		quota := QuotaInfo{
-			Main:   QuotaDetail{Used: 1000, Total: 10000},
-			Trial:  QuotaDetail{Used: 50, Total: 100},
-			Reward: QuotaDetail{Used: 0, Total: 500},
-		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(quota)
-	}))
-	defer server.Close()
 
 	config := &KiroAPIConfig{
-		BaseURL:      server.URL,
-		UserQuotaURL: server.URL + "/user/quota",
+		BaseURL:      "http://localhost",
+		UserQuotaURL: "http://localhost/user/quota",
 		Timeout:      30,
 	}
 	quotaService := NewQuotaServiceWithConfig(config)
+	quotaService.usageClient = &mockQuotaUsageClient{
+		handler: func(token string) (*UsageLimitsResponse, error) {
+			requestCount++
+			quota := QuotaInfo{
+				Main:   QuotaDetail{Used: 1000, Total: 10000},
+				Trial:  QuotaDetail{Used: 50, Total: 100},
+				Reward: QuotaDetail{Used: 0, Total: 500},
+			}
+			return buildUsageLimitsResponse(&quota), nil
+		},
+	}
 
 	token := "test-token"
 
@@ -180,24 +171,24 @@ func TestGetQuotaCache(t *testing.T) {
 // TestRefreshQuota tests the RefreshQuota method
 func TestRefreshQuota(t *testing.T) {
 	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestCount++
-		quota := QuotaInfo{
-			Main:   QuotaDetail{Used: requestCount * 100, Total: 10000},
-			Trial:  QuotaDetail{Used: 50, Total: 100},
-			Reward: QuotaDetail{Used: 0, Total: 500},
-		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(quota)
-	}))
-	defer server.Close()
 
 	config := &KiroAPIConfig{
-		BaseURL:      server.URL,
-		UserQuotaURL: server.URL + "/user/quota",
+		BaseURL:      "http://localhost",
+		UserQuotaURL: "http://localhost/user/quota",
 		Timeout:      30,
 	}
 	quotaService := NewQuotaServiceWithConfig(config)
+	quotaService.usageClient = &mockQuotaUsageClient{
+		handler: func(token string) (*UsageLimitsResponse, error) {
+			requestCount++
+			quota := QuotaInfo{
+				Main:   QuotaDetail{Used: requestCount * 100, Total: 10000},
+				Trial:  QuotaDetail{Used: 50, Total: 100},
+				Reward: QuotaDetail{Used: 0, Total: 500},
+			}
+			return buildUsageLimitsResponse(&quota), nil
+		},
+	}
 
 	token := "test-token"
 	accountID := "account-123"
@@ -229,23 +220,22 @@ func TestRefreshQuota(t *testing.T) {
 
 // TestBatchRefreshQuota tests the BatchRefreshQuota method
 func TestBatchRefreshQuota(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		quota := QuotaInfo{
-			Main:   QuotaDetail{Used: 1000, Total: 10000},
-			Trial:  QuotaDetail{Used: 50, Total: 100},
-			Reward: QuotaDetail{Used: 0, Total: 500},
-		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(quota)
-	}))
-	defer server.Close()
-
 	config := &KiroAPIConfig{
-		BaseURL:      server.URL,
-		UserQuotaURL: server.URL + "/user/quota",
+		BaseURL:      "http://localhost",
+		UserQuotaURL: "http://localhost/user/quota",
 		Timeout:      30,
 	}
 	quotaService := NewQuotaServiceWithConfig(config)
+	quotaService.usageClient = &mockQuotaUsageClient{
+		handler: func(token string) (*UsageLimitsResponse, error) {
+			quota := QuotaInfo{
+				Main:   QuotaDetail{Used: 1000, Total: 10000},
+				Trial:  QuotaDetail{Used: 50, Total: 100},
+				Reward: QuotaDetail{Used: 0, Total: 500},
+			}
+			return buildUsageLimitsResponse(&quota), nil
+		},
+	}
 
 	// Create test accounts
 	accounts := []*KiroAccount{
@@ -277,24 +267,23 @@ func TestBatchRefreshQuota(t *testing.T) {
 
 // TestClearExpiredCache tests the ClearExpiredCache method
 func TestClearExpiredCache(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		quota := QuotaInfo{
-			Main:   QuotaDetail{Used: 1000, Total: 10000},
-			Trial:  QuotaDetail{Used: 50, Total: 100},
-			Reward: QuotaDetail{Used: 0, Total: 500},
-		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(quota)
-	}))
-	defer server.Close()
-
 	config := &KiroAPIConfig{
-		BaseURL:      server.URL,
-		UserQuotaURL: server.URL + "/user/quota",
+		BaseURL:      "http://localhost",
+		UserQuotaURL: "http://localhost/user/quota",
 		Timeout:      30,
 	}
 	quotaService := NewQuotaServiceWithConfig(config)
-	
+	quotaService.usageClient = &mockQuotaUsageClient{
+		handler: func(token string) (*UsageLimitsResponse, error) {
+			quota := QuotaInfo{
+				Main:   QuotaDetail{Used: 1000, Total: 10000},
+				Trial:  QuotaDetail{Used: 50, Total: 100},
+				Reward: QuotaDetail{Used: 0, Total: 500},
+			}
+			return buildUsageLimitsResponse(&quota), nil
+		},
+	}
+
 	// Set a very short cache TTL for testing
 	quotaService.cacheTTL = 100 * time.Millisecond
 
@@ -327,23 +316,22 @@ func TestClearExpiredCache(t *testing.T) {
 
 // TestGetCacheStats tests the GetCacheStats method
 func TestGetCacheStats(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		quota := QuotaInfo{
-			Main:   QuotaDetail{Used: 1000, Total: 10000},
-			Trial:  QuotaDetail{Used: 50, Total: 100},
-			Reward: QuotaDetail{Used: 0, Total: 500},
-		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(quota)
-	}))
-	defer server.Close()
-
 	config := &KiroAPIConfig{
-		BaseURL:      server.URL,
-		UserQuotaURL: server.URL + "/user/quota",
+		BaseURL:      "http://localhost",
+		UserQuotaURL: "http://localhost/user/quota",
 		Timeout:      30,
 	}
 	quotaService := NewQuotaServiceWithConfig(config)
+	quotaService.usageClient = &mockQuotaUsageClient{
+		handler: func(token string) (*UsageLimitsResponse, error) {
+			quota := QuotaInfo{
+				Main:   QuotaDetail{Used: 1000, Total: 10000},
+				Trial:  QuotaDetail{Used: 50, Total: 100},
+				Reward: QuotaDetail{Used: 0, Total: 500},
+			}
+			return buildUsageLimitsResponse(&quota), nil
+		},
+	}
 
 	// Initially empty
 	stats := quotaService.GetCacheStats()
@@ -363,23 +351,22 @@ func TestGetCacheStats(t *testing.T) {
 
 // TestQuotaMonitor tests the QuotaMonitor functionality
 func TestQuotaMonitor(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		quota := QuotaInfo{
-			Main:   QuotaDetail{Used: 9500, Total: 10000}, // 95% usage
-			Trial:  QuotaDetail{Used: 50, Total: 100},
-			Reward: QuotaDetail{Used: 0, Total: 500},
-		}
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(quota)
-	}))
-	defer server.Close()
-
 	config := &KiroAPIConfig{
-		BaseURL:      server.URL,
-		UserQuotaURL: server.URL + "/user/quota",
+		BaseURL:      "http://localhost",
+		UserQuotaURL: "http://localhost/user/quota",
 		Timeout:      30,
 	}
 	quotaService := NewQuotaServiceWithConfig(config)
+	quotaService.usageClient = &mockQuotaUsageClient{
+		handler: func(token string) (*UsageLimitsResponse, error) {
+			quota := QuotaInfo{
+				Main:   QuotaDetail{Used: 9500, Total: 10000},
+				Trial:  QuotaDetail{Used: 50, Total: 100},
+				Reward: QuotaDetail{Used: 0, Total: 500},
+			}
+			return buildUsageLimitsResponse(&quota), nil
+		},
+	}
 
 	// Create test accounts
 	accounts := []*KiroAccount{
@@ -459,6 +446,65 @@ func TestQuotaMonitorSetters(t *testing.T) {
 	monitor.SetThreshold(newThreshold)
 	if monitor.threshold != newThreshold {
 		t.Errorf("Expected threshold %v, got %v", newThreshold, monitor.threshold)
+	}
+}
+
+type mockQuotaUsageClient struct {
+	handler func(token string) (*UsageLimitsResponse, error)
+}
+
+func (m *mockQuotaUsageClient) GetUserInfo(accessToken string) (*UsageLimitsResponse, error) {
+	return m.handler(accessToken)
+}
+
+func buildUsageLimitsResponse(quota *QuotaInfo) *UsageLimitsResponse {
+	if quota == nil {
+		return &UsageLimitsResponse{}
+	}
+
+	return &UsageLimitsResponse{
+		UserInfo: &struct {
+			Email  string `json:"email"`
+			UserID string `json:"userId"`
+		}{
+			Email:  "test@example.com",
+			UserID: "user-123",
+		},
+		UsageBreakdownList: []struct {
+			ResourceType  string `json:"resourceType"`
+			UsageLimit    int    `json:"usageLimit"`
+			CurrentUsage  int    `json:"currentUsage"`
+			FreeTrialInfo *struct {
+				UsageLimit   int `json:"usageLimit"`
+				CurrentUsage int `json:"currentUsage"`
+			} `json:"freeTrialInfo"`
+			Bonuses []struct {
+				UsageLimit   float64 `json:"usageLimit"`
+				CurrentUsage float64 `json:"currentUsage"`
+			} `json:"bonuses"`
+		}{
+			{
+				ResourceType: "chat",
+				UsageLimit:   quota.Main.Total,
+				CurrentUsage: quota.Main.Used,
+				FreeTrialInfo: &struct {
+					UsageLimit   int `json:"usageLimit"`
+					CurrentUsage int `json:"currentUsage"`
+				}{
+					UsageLimit:   quota.Trial.Total,
+					CurrentUsage: quota.Trial.Used,
+				},
+				Bonuses: []struct {
+					UsageLimit   float64 `json:"usageLimit"`
+					CurrentUsage float64 `json:"currentUsage"`
+				}{
+					{
+						UsageLimit:   float64(quota.Reward.Total),
+						CurrentUsage: float64(quota.Reward.Used),
+					},
+				},
+			},
+		},
 	}
 }
 
