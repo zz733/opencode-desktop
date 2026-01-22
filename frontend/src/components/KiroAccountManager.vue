@@ -334,7 +334,20 @@ async function switchAccount(account) {
     console.log('✓ 账号列表已重新加载')
   } catch (error) {
     console.error('✗ 切换账号失败:', error)
-    state.errorMessage = '❌ 切换账号失败: ' + error.message
+    console.error('错误类型:', typeof error)
+    console.error('错误内容:', JSON.stringify(error))
+    
+    // 处理不同类型的错误
+    let errorMsg = '未知错误'
+    if (error && error.message) {
+      errorMsg = error.message
+    } else if (typeof error === 'string') {
+      errorMsg = error
+    } else if (error) {
+      errorMsg = String(error)
+    }
+    
+    state.errorMessage = '❌ 切换账号失败: ' + errorMsg
     setTimeout(() => {
       state.errorMessage = ''
     }, 5000)
