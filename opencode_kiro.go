@@ -109,22 +109,36 @@ func (oks *OpenCodeKiroSystem) WriteKiroAccounts(accountsFile *OpenCodeKiroAccou
 	}
 
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
 	data, err := json.MarshalIndent(accountsFile, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal accounts: %w", err)
 	}
 
-	// Atomic write
+	// Atomic write with proper error handling
 	tmpPath := path + ".tmp"
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		return err
+		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 
-	return os.Rename(tmpPath, path)
+	// Remove old file if exists (to avoid permission issues)
+	if _, err := os.Stat(path); err == nil {
+		if err := os.Remove(path); err != nil {
+			os.Remove(tmpPath) // cleanup temp file
+			return fmt.Errorf("failed to remove old file: %w", err)
+		}
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath) // cleanup temp file
+		return fmt.Errorf("failed to rename temp file: %w", err)
+	}
+
+	return nil
 }
 
 // ApplyAccountToOpenCode applies a Kiro account to OpenCode configuration
@@ -137,6 +151,39 @@ func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) erro
 	fmt.Printf("  → 账号邮箱: %s\n", account.Email)
 	fmt.Printf("  → RefreshToken 长度: %d\n", len(account.RefreshToken))
 	fmt.Printf("  → BearerToken 长度: %d\n", len(account.BearerToken))
+
+	// 检查 token 是否过期，如果过期则刷新
+	bearerToken := account.BearerToken
+	refreshToken := account.RefreshToken
+	expiresAt := account.TokenExpiry
+	
+	if time.Now().After(expiresAt.Add(-5 * time.Minute)) {
+		fmt.Printf("  ⚠ Token 已过期或即将过期 (过期时间: %v)\n", expiresAt)
+		fmt.Printf("  → 正在刷新 Token...\n")
+		
+		// 使用 Kiro API 客户端刷新 token
+		kiroClient := NewKiroAPIClient()
+		tokenResp, err := kiroClient.RefreshKiroToken(refreshToken)
+		if err != nil {
+			fmt.Printf("  ✗ Token 刷新失败: %v\n", err)
+			return fmt.Errorf("token 刷新失败: %w", err)
+		}
+		
+		bearerToken = tokenResp.AccessToken
+		if tokenResp.RefreshToken != "" {
+			refreshToken = tokenResp.RefreshToken
+		}
+		expiresAt = time.Now().Add(1 * time.Hour)
+		
+		fmt.Printf("  ✓ Token 刷新成功\n")
+		
+		// 更新账号对象中的 token（这样调用者也能获得新 token）
+		account.BearerToken = bearerToken
+		account.RefreshToken = refreshToken
+		account.TokenExpiry = expiresAt
+	} else {
+		fmt.Printf("  ✓ Token 有效 (过期时间: %v)\n", expiresAt)
+	}
 
 	// Create OpenCode account structure
 	// OpenCode Kiro 插件要求 authMethod='idc' 时必须有 clientId 和 clientSecret
@@ -160,9 +207,9 @@ func (oks *OpenCodeKiroSystem) ApplyAccountToOpenCode(account *KiroAccount) erro
 		Region:             "us-east-1",
 		ClientID:           clientID,
 		ClientSecret:       clientSecret,
-		RefreshToken:       account.RefreshToken,
-		AccessToken:        account.BearerToken,
-		ExpiresAt:          time.Now().Add(1 * time.Hour).UnixMilli(),
+		RefreshToken:       refreshToken,
+		AccessToken:        bearerToken,
+		ExpiresAt:          expiresAt.UnixMilli(),
 		RateLimitResetTime: 0,
 		IsHealthy:          true,
 		RealEmail:          account.Email,
