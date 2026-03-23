@@ -305,9 +305,6 @@ watch(() => fileEdits.value.length, () => {
         <!-- 底部工具栏：在输入框内 -->
         <div class="input-toolbar">
           <div class="toolbar-left">
-            <button class="toolbar-btn" title="Add context (#)">
-              <span style="font-size: 16px; font-weight: 500;">#</span>
-            </button>
             <button class="toolbar-btn" title="Attach image" @click="handleAttachImage">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
