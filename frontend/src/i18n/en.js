@@ -74,7 +74,7 @@ export default {
     howCanIHelp: 'How can I help?',
     askAnything: 'Ask me anything about coding',
     you: 'You',
-    assistant: 'Kiro',
+    assistant: 'OpenCode',
     cancel: 'Cancel',
   },
   model: {

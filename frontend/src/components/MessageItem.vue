@@ -119,7 +119,7 @@ const formatToolInput = (tool) => {
   <div :class="['message', message.role]">
     <div class="avatar" :class="message.role">
       <span v-if="message.role === 'user'">U</span>
-      <span v-else>K</span>
+      <span v-else>O</span>
     </div>
     
     <div class="content">

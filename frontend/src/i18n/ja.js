@@ -72,7 +72,7 @@ export default {
     howCanIHelp: '何かお手伝いできますか？',
     askAnything: 'コーディングについて何でも聞いてください',
     you: 'あなた',
-    assistant: 'Kiro',
+    assistant: 'OpenCode',
     cancel: 'キャンセル',
   },
   model: {

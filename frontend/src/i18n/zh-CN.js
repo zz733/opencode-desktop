@@ -74,7 +74,7 @@ export default {
     howCanIHelp: '有什么可以帮您？',
     askAnything: '问我任何关于编程的问题',
     you: '你',
-    assistant: 'Kiro',
+    assistant: 'OpenCode',
     cancel: '取消',
   },
   model: {

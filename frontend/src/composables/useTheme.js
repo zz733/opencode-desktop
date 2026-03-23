@@ -3,7 +3,7 @@ import { ref, watch } from 'vue'
 // 主题定义
 const themes = {
   kiro: {
-    name: 'Kiro Dark',
+    name: 'OpenCode Dark',
     colors: {
       '--bg-base': '#19161d',
       '--bg-surface': '#211d25',
