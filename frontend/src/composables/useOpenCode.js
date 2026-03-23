@@ -104,52 +104,54 @@ async function fetchModels() {
     if (providerInfo) {
       const providers = providerInfo.all || []
       
+      const connectedProviders = providerInfo.connected || []
+      
       for (const provider of providers) {
         if (!provider.models) continue
         
         const providerId = provider.id
         
+        // 只显示已连接的 provider 的模型
+        if (!connectedProviders.includes(providerId)) {
+          continue
+        }
+        
+        // 遍历所有模型
         for (const [modelId, modelInfo] of Object.entries(provider.models)) {
-          // Antigravity 模型 (antigravity- 前缀)
-          if (providerId === 'google' && modelId.startsWith('antigravity-')) {
-            fetchedModels.push({
-              id: `${providerId}/${modelId}`,
-              name: modelInfo.name || modelId,
-              free: true,
-              builtin: false,
-              provider: providerId,
-              category: 'antigravity'
-            })
+          // 过滤掉已弃用的模型
+          if (modelInfo.status === 'deprecated') {
+            continue
           }
-          // Gemini CLI 模型 (-preview 后缀，不需要 Antigravity 权限)
-          if (providerId === 'google' && (modelId.includes('-preview') || modelId === 'gemini-2.5-flash' || modelId === 'gemini-2.5-pro')) {
-            fetchedModels.push({
-              id: `${providerId}/${modelId}`,
-              name: modelInfo.name || modelId,
-              free: true,
-              builtin: false,
-              provider: providerId,
-              category: 'gemini-cli'
-            })
+
+          // 如果模型名称包含 (latest)，去掉这个后缀以保持界面整洁 (参考官方逻辑)
+          let displayName = modelInfo.name || modelId
+          displayName = displayName.replace('(latest)', '').trim()
+
+          // 判断是否免费
+          let isFree = false
+          if (modelInfo.cost) {
+            const { input, output } = modelInfo.cost
+            if (input === 0 && output === 0) {
+              isFree = true
+            }
           }
-          // Kiro 模型 (kiro provider)
-          if (providerId === 'kiro') {
-            fetchedModels.push({
-              id: `${providerId}/${modelId}`,
-              name: modelInfo.name || modelId,
-              free: true,
-              builtin: false,
-              provider: providerId,
-              category: 'kiro'
-            })
-          }
+
+          // 只保留基本的 provider 信息，完全交给 UI 按 provider 分类
+          fetchedModels.push({
+            id: `${providerId}/${modelId}`,
+            name: displayName,
+            free: isFree,
+            builtin: false,
+            provider: providerId,
+            category: provider.name || providerId // 使用提供商的名称作为分类依据
+          })
         }
       }
     }
     
     if (fetchedModels.length > 0) {
       dynamicModels.value = fetchedModels
-      log(`从 API 加载了 ${fetchedModels.length} 个动态模型 (Antigravity + Kiro)`)
+      log(`从 API 加载了 ${fetchedModels.length} 个动态模型`)
       return
     }
     
@@ -158,13 +160,16 @@ async function fetchModels() {
     const configModels = await GetConfigModels()
     
     if (configModels && configModels.length > 0) {
-      dynamicModels.value = configModels.map(m => ({
-        id: m.id,
-        name: m.name,
-        free: true,
-        builtin: false,
-        provider: m.provider
-      }))
+      dynamicModels.value = configModels.map(cm => {
+        return {
+          id: cm.id,
+          name: cm.name,
+          free: false,
+          builtin: false,
+          provider: cm.provider,
+          category: cm.provider // 直接使用 provider 作为分类
+        }
+      })
       log(`从配置文件加载了 ${configModels.length} 个模型`)
     } else {
       log('配置文件中也没有找到自定义模型')

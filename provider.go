@@ -7,8 +7,9 @@ import (
 
 // Provider 信息
 type Provider struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID     string                 `json:"id"`
+	Name   string                 `json:"name"`
+	Models map[string]interface{} `json:"models"`
 }
 
 // Model 信息

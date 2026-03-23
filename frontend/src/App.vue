@@ -25,7 +25,6 @@ const activeTab = ref('files')
 const showSidebar = ref(true)
 const showSettings = ref(false)
 const showTerminal = ref(true)
-const showKiroSettings = ref(false) // 新增：标记是否显示 Kiro 账号设置
 
 // 从 localStorage 读取上次的工作目录
 const workDir = ref(localStorage.getItem('lastWorkDir') || '')
@@ -234,10 +233,9 @@ const startDrag = (type, e) => {
       <div v-if="showSidebar && !editorMaximized" class="sidebar-container" :style="{ width: sidebarWidth + 'px' }">
         <SettingsPanel 
           v-if="showSettings" 
-          @close="showSettings = false; showSidebar = false; showKiroSettings = false" 
-          @open-file="handleOpenFile" 
+          @close="showSettings = false; showSidebar = false" 
+          @open-file="handleOpenFile"
           @runCommand="handleRunCommand"
-          @kiro-settings-active="showKiroSettings = $event"
         />
         <Sidebar v-else :activeTab="activeTab" :workDir="workDir" @openFile="handleOpenFile" @update:workDir="handleWorkDirChange" @runCommand="handleRunCommand" />
         <div class="resize-handle" @mousedown="startDrag('sidebar', $event)"></div>

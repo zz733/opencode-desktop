@@ -17,30 +17,25 @@ const currentModelName = () => {
   return m ? m.name : t('model.select')
 }
 
-// 分类模型
-const antigravityModels = computed(() => 
-  props.models.filter(m => m.category === 'antigravity' || m.id?.includes('antigravity'))
-)
-
-const kiroModels = computed(() => 
-  props.models.filter(m => m.category === 'kiro' || m.provider === 'kiro')
-)
-
-const geminiCliModels = computed(() => 
-  props.models.filter(m => m.category === 'gemini-cli')
-)
-
-const freeModels = computed(() => 
-  props.models.filter(m => m.free && m.builtin && !m.id?.includes('antigravity'))
-)
-
-const premiumModels = computed(() => 
-  props.models.filter(m => !m.free && m.builtin)
-)
-
-const customModels = computed(() => 
-  props.models.filter(m => !m.builtin && !m.provider)
-)
+// 完全按照 provider 对模型进行分组，与官方保持一致
+const providerGroups = computed(() => {
+  const groups = {}
+  
+  // 过滤掉所有未设置 provider 或被标记为 builtin 的杂项
+  const validModels = props.models.filter(m => !m.builtin && m.provider)
+  
+  validModels.forEach(m => {
+    // 使用 category (我们在 useOpenCode 里设置的 provider.name) 或 provider ID
+    const pName = m.category || m.provider
+    if (!groups[pName]) {
+      groups[pName] = []
+    }
+    groups[pName].push(m)
+  })
+  
+  // 可以根据需要排序 groups 的 keys，这里保持默认
+  return groups
+})
 
 const select = (id) => {
   emit('update:modelValue', id)
@@ -62,68 +57,23 @@ const select = (id) => {
     <div v-if="show" class="dropdown" @click.stop>
       <div class="header">{{ t('model.select') }}</div>
       
-      <!-- Kiro 模型 -->
-      <div v-if="kiroModels.length" class="group">
-        <div class="group-label">🚀 Kiro (AWS Builder ID)</div>
-        <div 
-          v-for="m in kiroModels" 
-          :key="m.id"
-          :class="['option', { active: modelValue === m.id }]"
-          @click="select(m.id)"
-        >
-          {{ m.name }}
+      <div v-if="Object.keys(providerGroups).length === 0" class="group">
+        <div class="option" style="color: var(--text-muted); cursor: default; pointer-events: none;">
+          没有配置任何可用的模型
         </div>
       </div>
       
-      <!-- Antigravity 模型 -->
-      <div v-if="antigravityModels.length" class="group">
-        <div class="group-label">🌐 Antigravity (Google OAuth)</div>
+      <!-- 动态按提供商分组，与官方对齐 -->
+      <div v-for="(models, providerName) in providerGroups" :key="providerName" class="group">
+        <div class="group-label">{{ providerName }}</div>
         <div 
-          v-for="m in antigravityModels" 
+          v-for="m in models" 
           :key="m.id"
           :class="['option', { active: modelValue === m.id }]"
           @click="select(m.id)"
         >
-          {{ m.name }}
-        </div>
-      </div>
-      
-      <!-- 免费模型 -->
-      <div v-if="freeModels.length" class="group">
-        <div class="group-label">🆓 {{ t('model.freeModels') }}</div>
-        <div 
-          v-for="m in freeModels" 
-          :key="m.id"
-          :class="['option', { active: modelValue === m.id }]"
-          @click="select(m.id)"
-        >
-          {{ m.name }}
-        </div>
-      </div>
-      
-      <!-- 付费模型 -->
-      <div v-if="premiumModels.length" class="group">
-        <div class="group-label">⭐ {{ t('model.premiumModels') }}</div>
-        <div 
-          v-for="m in premiumModels" 
-          :key="m.id"
-          :class="['option', { active: modelValue === m.id }]"
-          @click="select(m.id)"
-        >
-          {{ m.name }}
-        </div>
-      </div>
-      
-      <!-- 自定义模型 -->
-      <div v-if="customModels.length" class="group">
-        <div class="group-label">🔧 {{ t('model.customModels') }}</div>
-        <div 
-          v-for="m in customModels" 
-          :key="m.id"
-          :class="['option', { active: modelValue === m.id }]"
-          @click="select(m.id)"
-        >
-          {{ m.name }}
+          <span class="model-name">{{ m.name }}</span>
+          <span v-if="m.free" class="free-badge">免费</span>
         </div>
       </div>
     </div>
@@ -157,8 +107,8 @@ const select = (id) => {
   bottom: 100%;
   right: 0;
   margin-bottom: 4px;
-  width: 200px;
-  max-height: 260px;
+  width: 240px;
+  max-height: 320px;
   overflow-y: auto;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
@@ -182,17 +132,43 @@ const select = (id) => {
 }
 
 .group-label {
-  padding: 6px 8px;
-  font-size: 10px;
-  color: var(--text-muted);
+  padding: 12px 10px 6px 10px;
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--accent-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
 }
 
 .option {
-  padding: 8px 10px;
-  border-radius: 4px;
+  padding: 10px 12px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.model-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.free-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  background-color: rgba(128, 255, 181, 0.15);
+  color: var(--green, #4ade80);
+  border: 1px solid rgba(128, 255, 181, 0.3);
+  border-radius: 4px;
+  margin-left: 8px;
+  flex-shrink: 0;
 }
 
 .option:hover {
@@ -200,9 +176,19 @@ const select = (id) => {
   color: var(--text-primary);
 }
 
+.option:hover .free-badge {
+  background-color: var(--bg-elevated);
+}
+
 .option.active {
   background: var(--accent-button);
   color: white;
+}
+
+.option.active .free-badge {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: white;
+  border-color: transparent;
 }
 
 .backdrop {

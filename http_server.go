@@ -210,22 +210,7 @@ func (s *HTTPServer) handleModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 内置模型列表（与桌面端 useOpenCode.js 保持一致）
-	builtinModels := []map[string]interface{}{
-		// OpenCode Zen 免费模型
-		{"id": "opencode/big-pickle", "name": "Big Pickle", "free": true, "builtin": true, "category": "free"},
-		{"id": "opencode/grok-code", "name": "Grok Code Fast", "free": true, "builtin": true, "category": "free"},
-		{"id": "opencode/minimax-m2.1-free", "name": "MiniMax M2.1", "free": true, "builtin": true, "category": "free"},
-		{"id": "opencode/glm-4.7-free", "name": "GLM 4.7", "free": true, "builtin": true, "category": "free"},
-		{"id": "opencode/gpt-5-nano", "name": "GPT 5 Nano", "free": true, "builtin": true, "category": "free"},
-		// OpenCode Zen 付费模型
-		{"id": "opencode/kimi-k2", "name": "Kimi K2", "free": false, "builtin": true, "category": "paid"},
-		{"id": "opencode/claude-opus-4-5", "name": "Claude Opus 4.5", "free": false, "builtin": true, "category": "paid"},
-		{"id": "opencode/claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "free": false, "builtin": true, "category": "paid"},
-		{"id": "opencode/gpt-5.1-codex", "name": "GPT 5.1 Codex", "free": false, "builtin": true, "category": "paid"},
-	}
-
-	// 动态模型列表（从 OpenCode API 获取）
+	// 动态模型列表（从 OpenCode API 获取，完全依赖官方接口）
 	var dynamicModels []map[string]interface{}
 
 	resp, err := s.app.httpClient.Get(s.app.serverURL + "/provider")
@@ -238,68 +223,72 @@ func (s *HTTPServer) handleModels(w http.ResponseWriter, r *http.Request) {
 				Name   string                 `json:"name"`
 				Models map[string]interface{} `json:"models"`
 			} `json:"all"`
+			Connected []string `json:"connected"`
 		}
 
 		if err := json.NewDecoder(resp.Body).Decode(&providerResp); err == nil {
-			// 遍历每个 provider，只添加特定的模型
+			// 建立 connected 集合以便快速查找，只有配置了 key 的才算 connected
+			connectedMap := make(map[string]bool)
+			for _, c := range providerResp.Connected {
+				connectedMap[c] = true
+			}
+
+			// 遍历每个 provider，只添加已连接的提供商的模型
 			for _, provider := range providerResp.All {
-				if provider.Models == nil {
+				if provider.Models == nil || !connectedMap[provider.ID] {
 					continue
 				}
 
+				// 只保留未被弃用的模型
 				for modelID, modelData := range provider.Models {
+					modelMap, ok := modelData.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					
+					status, _ := modelMap["status"].(string)
+					if status == "deprecated" {
+						continue
+					}
+
 					modelName := modelID
-					if modelMap, ok := modelData.(map[string]interface{}); ok {
-						if name, ok := modelMap["name"].(string); ok && name != "" {
-							modelName = name
+					if name, ok := modelMap["name"].(string); ok && name != "" {
+						modelName = name
+					}
+					// 清理 (latest) 后缀
+					modelName = strings.TrimSpace(strings.ReplaceAll(modelName, "(latest)", ""))
+
+					// 判断是否免费
+					isFree := false
+					if costObj, ok := modelMap["cost"].(map[string]interface{}); ok {
+						inputCost, _ := costObj["input"].(float64)
+						outputCost, _ := costObj["output"].(float64)
+						if inputCost == 0 && outputCost == 0 {
+							isFree = true
 						}
 					}
 
-					shouldAdd := false
-					category := ""
-
-					// Kiro 模型
-					if provider.ID == "kiro" {
-						shouldAdd = true
-						category = "kiro"
-					}
-
-					// Google Antigravity 模型
-					if provider.ID == "google" && strings.HasPrefix(modelID, "antigravity-") {
-						shouldAdd = true
-						category = "antigravity"
-					}
-
-					// Google Gemini 模型
-					if provider.ID == "google" && (strings.Contains(modelID, "-preview") || modelID == "gemini-2.5-flash" || modelID == "gemini-2.5-pro") {
-						shouldAdd = true
-						category = "gemini"
-					}
-
-					if shouldAdd {
-						dynamicModels = append(dynamicModels, map[string]interface{}{
-							"id":       fmt.Sprintf("%s/%s", provider.ID, modelID),
-							"name":     modelName,
-							"provider": provider.ID,
-							"category": category,
-							"free":     true,
-							"builtin":  false,
-						})
-					}
+					dynamicModels = append(dynamicModels, map[string]interface{}{
+						"id":       fmt.Sprintf("%s/%s", provider.ID, modelID),
+						"name":     modelName,
+						"provider": provider.ID,
+						"category": provider.Name, // 直接使用官方的 Provider 名称作为分类
+						"free":     isFree,
+						"builtin":  false,
+					})
 				}
 			}
 		}
 	}
 
-	// 合并：动态模型 + 内置模型（与桌面端顺序一致）
-	allModels := append(dynamicModels, builtinModels...)
+	fmt.Printf("✅ 返回 %d 个模型给手机端\n", len(dynamicModels))
 
-	fmt.Printf("✅ 返回 %d 个模型给手机端 (动态: %d, 内置: %d)\n", len(allModels), len(dynamicModels), len(builtinModels))
-
+	// 返回模型列表
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"models": allModels,
-		"count":  len(allModels),
+		"success": true,
+		"models":  dynamicModels,
+		"count":   len(dynamicModels),
 	})
 }
 

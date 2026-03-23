@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -62,9 +61,15 @@ func (a *App) GetAllModels() ([]ConfigModel, error) {
 
 	fmt.Printf("📋 从 OpenCode API 获取到 %d 个 provider\n", len(providerResp.All))
 
-	// 遍历每个 provider，只添加特定的模型
+	// 建立 connected 集合以便快速查找
+	connectedMap := make(map[string]bool)
+	for _, c := range providerResp.Connected {
+		connectedMap[c] = true
+	}
+
+	// 遍历每个 provider，只添加已连接的提供商的模型
 	for _, provider := range providerResp.All {
-		if provider.Models == nil {
+		if provider.Models == nil || !connectedMap[provider.ID] {
 			continue
 		}
 
@@ -79,35 +84,11 @@ func (a *App) GetAllModels() ([]ConfigModel, error) {
 				}
 			}
 
-			// 只添加特定的模型（与桌面端保持一致）
-			shouldAdd := false
-
-			// 1. Kiro 模型
-			if provider.ID == "kiro" {
-				shouldAdd = true
-				fmt.Printf("    ✓ Kiro 模型: %s\n", modelID)
-			} else if provider.ID == "google" {
-				// 2. Google Antigravity 模型
-				if strings.HasPrefix(modelID, "antigravity-") {
-					shouldAdd = true
-					fmt.Printf("    ✓ Antigravity 模型: %s\n", modelID)
-				}
-				// 3. Google Gemini 模型（preview 或特定模型）
-				if strings.Contains(modelID, "-preview") ||
-					modelID == "gemini-2.5-flash" ||
-					modelID == "gemini-2.5-pro" {
-					shouldAdd = true
-					fmt.Printf("    ✓ Gemini 模型: %s\n", modelID)
-				}
-			}
-
-			if shouldAdd {
-				models = append(models, ConfigModel{
-					ID:       fmt.Sprintf("%s/%s", provider.ID, modelID),
-					Name:     modelName,
-					Provider: provider.ID,
-				})
-			}
+			models = append(models, ConfigModel{
+				ID:       fmt.Sprintf("%s/%s", provider.ID, modelID),
+				Name:     modelName,
+				Provider: provider.ID,
+			})
 		}
 	}
 

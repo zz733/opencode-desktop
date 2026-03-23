@@ -1,8 +1,6 @@
 <script setup>
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import KiroAccountManager from './KiroAccountManager.vue'
-import KiroAccountDialog from './KiroAccountDialog.vue'
 import SkillsManager from './SkillsManager.vue'
 import { languages, setLocale } from '../i18n'
 import { useTheme } from '../composables/useTheme'
@@ -13,16 +11,18 @@ import {
   DisconnectMCPServer, GetMCPTools,
   GetOhMyOpenCodeStatus, InstallOhMyOpenCode, UninstallOhMyOpenCode, FixOhMyOpenCode,
   GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth, UpdateAntigravityAuth,
-  GetKiroAuthStatus, InstallKiroAuth, UninstallKiroAuth, UpdateKiroAuth,
   GetUIUXProMaxStatus, InstallUIUXProMax, UninstallUIUXProMax, UpdateUIUXProMax,
   RestartOpenCode,
   GetRemoteControlInfo
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL, EventsOn } from '../../wailsjs/runtime/runtime'
 
+import { useOpenCode } from '../composables/useOpenCode'
+
 const { t, locale } = useI18n()
 const { currentTheme, themes, setTheme } = useTheme()
-const emit = defineEmits(['close', 'open-file', 'runCommand', 'kiro-settings-active'])
+const { dynamicModels, fetchModels } = useOpenCode()
+const emit = defineEmits(['close', 'open-file', 'runCommand'])
 
 const activeCategory = ref('theme')
 const mcpConfig = ref({ mcp: {} })
@@ -44,18 +44,6 @@ const serverForm = ref({
 const envVars = ref([])
 
 // ========== 模型管理 ==========
-const defaultModels = [
-  { id: 'opencode/big-pickle', name: 'Big Pickle', free: true, builtin: true },
-  { id: 'opencode/grok-code', name: 'Grok Code Fast', free: true, builtin: true },
-  { id: 'opencode/minimax-m2.1-free', name: 'MiniMax M2.1', free: true, builtin: true },
-  { id: 'opencode/glm-4.7-free', name: 'GLM 4.7', free: true, builtin: true },
-  { id: 'opencode/gpt-5-nano', name: 'GPT 5 Nano', free: true, builtin: true },
-  { id: 'opencode/kimi-k2', name: 'Kimi K2', free: false, builtin: true },
-  { id: 'opencode/claude-opus-4-5', name: 'Claude Opus 4.5', free: false, builtin: true },
-  { id: 'opencode/claude-sonnet-4-5', name: 'Claude Sonnet 4.5', free: false, builtin: true },
-  { id: 'opencode/gpt-5.1-codex', name: 'GPT 5.1 Codex', free: false, builtin: true },
-]
-
 const customModels = ref(JSON.parse(localStorage.getItem('customModels') || '[]'))
 const showModelDialog = ref(false)
 const showModelConfirmDialog = ref(false)
@@ -65,9 +53,29 @@ const modelForm = ref({ id: '', name: '', free: true, baseUrl: '', apiKey: '', s
 
 function saveCustomModels() {
   localStorage.setItem('customModels', JSON.stringify(customModels.value))
-  // 通知其他组件模型列表已更新
   EventsEmit('models-updated')
 }
+
+// 提取并按分类分组的模型
+const groupedModels = computed(() => {
+  const groups = {}
+  
+  // 添加动态获取的模型 (已在 fetchModels 中过滤了未配置 API Key 的 provider)
+  dynamicModels.value.forEach(m => {
+    const cat = m.category || '未分类'
+    if (!groups[cat]) groups[cat] = []
+    groups[cat].push(m)
+  })
+  
+  // 如果还需要添加自定义模型
+  customModels.value.forEach(m => {
+    const cat = '自定义模型'
+    if (!groups[cat]) groups[cat] = []
+    groups[cat].push(m)
+  })
+  
+  return groups
+})
 
 function openModelDialog(model = null) {
   if (model) {
@@ -132,16 +140,14 @@ function confirmRemoveModel() {
   }
 }
 
-const allModels = computed(() => [...defaultModels, ...customModels.value])
+const allModels = computed(() => [...dynamicModels.value, ...customModels.value])
 
 // ========== 插件管理 ==========
 const ohMyOpenCodeStatus = ref({ installed: false, version: '' })
 const antigravityAuthStatus = ref({ installed: false, version: '' })
-const kiroAuthStatus = ref({ installed: false, version: '' })
 const uiuxProMaxStatus = ref({ installed: false, version: '' })
 const pluginLoading = ref(false)
 const pluginLoadingName = ref('')
-const showKiroAccountManager = ref(false) // 控制 Kiro 账号管理器的显示
 
 // ========== 远程控制 ==========
 const remoteControlInfo = ref({ active: false, port: 0, token: '', url: '' })
@@ -160,7 +166,6 @@ async function loadPluginStatus() {
   try {
     ohMyOpenCodeStatus.value = await GetOhMyOpenCodeStatus() || { installed: false, version: '' }
     antigravityAuthStatus.value = await GetAntigravityAuthStatus() || { installed: false, version: '' }
-    kiroAuthStatus.value = await GetKiroAuthStatus() || { installed: false, version: '' }
     uiuxProMaxStatus.value = await GetUIUXProMaxStatus() || { installed: false, version: '' }
   } catch (e) {
     console.error('获取插件状态失败:', e)
@@ -245,49 +250,6 @@ function runAntigravityAuth() {
   emit('runCommand', 'opencode auth login')
 }
 
-async function installKiroAuth() {
-  pluginLoading.value = true
-  pluginLoadingName.value = 'kiro-auth'
-  try {
-    await InstallKiroAuth()
-    await loadPluginStatus()
-    // 通知重新加载模型列表
-    EventsEmit('kiro-models-changed', true)
-    // 提示用户重启 OpenCode 以确保插件生效
-    setTimeout(() => {
-      if (confirm('Kiro Auth 插件安装成功！建议重启 OpenCode 以确保插件完全生效。是否现在重启？')) {
-        restartOpenCode()
-      }
-    }, 1000)
-  } catch (e) {
-    console.error('安装失败:', e)
-  } finally {
-    pluginLoading.value = false
-    pluginLoadingName.value = ''
-  }
-}
-
-async function uninstallKiroAuth() {
-  pluginLoading.value = true
-  pluginLoadingName.value = 'kiro-auth'
-  try {
-    await UninstallKiroAuth()
-    await loadPluginStatus()
-    // 通知清空模型列表
-    EventsEmit('kiro-models-changed', false)
-  } catch (e) {
-    console.error('卸载失败:', e)
-  } finally {
-    pluginLoading.value = false
-    pluginLoadingName.value = ''
-  }
-}
-
-function runKiroAuth() {
-  // 直接执行认证命令，让用户在终端中手动选择
-  emit('runCommand', 'opencode auth login')
-}
-
 async function installUIUXProMax() {
   pluginLoading.value = true
   pluginLoadingName.value = 'uiux-pro-max'
@@ -310,22 +272,6 @@ async function updateAntigravityAuth() {
     await loadPluginStatus()
     // 通知重新加载模型列表
     EventsEmit('antigravity-models-changed', true)
-  } catch (e) {
-    console.error('升级失败:', e)
-  } finally {
-    pluginLoading.value = false
-    pluginLoadingName.value = ''
-  }
-}
-
-async function updateKiroAuth() {
-  pluginLoading.value = true
-  pluginLoadingName.value = 'kiro-auth-update'
-  try {
-    await UpdateKiroAuth()
-    await loadPluginStatus()
-    // 通知重新加载模型列表
-    EventsEmit('kiro-models-changed', true)
   } catch (e) {
     console.error('升级失败:', e)
   } finally {
@@ -591,11 +537,6 @@ function copyToClipboard(text) {
     console.error('复制失败:', err)
   })
 }
-
-// 监听 activeCategory 变化，通知父组件是否显示 Kiro 设置
-watch(activeCategory, (newValue) => {
-  emit('kiro-settings-active', newValue === 'kiro')
-})
 </script>
 
 <template>
@@ -641,13 +582,6 @@ watch(activeCategory, (newValue) => {
           </svg>
           <span>技能</span>
         </div>
-        <div :class="['nav-item', { active: activeCategory === 'kiro' }]" @click="activeCategory = 'kiro'">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-            <circle cx="12" cy="7" r="4"/>
-          </svg>
-          <span>Kiro 账号</span>
-        </div>
         <div :class="['nav-item', { active: activeCategory === 'remote' }]" @click="activeCategory = 'remote'">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
@@ -686,50 +620,52 @@ watch(activeCategory, (newValue) => {
       <!-- 模型管理 -->
       <div v-if="activeCategory === 'models'" class="settings-section models-section">
         <div class="section-header">
-          <span class="section-title">{{ t('settings.models.custom') }}</span>
+          <span class="section-title">模型管理</span>
           <div class="section-actions">
             <button class="btn-icon" @click="openModelDialog()" :title="t('settings.models.add')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
             </button>
+            <button class="btn-icon" @click="fetchModels()" title="刷新模型列表">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            </button>
           </div>
         </div>
         
-        <div v-if="customModels.length === 0" class="empty-state">{{ t('settings.models.noCustom') }}</div>
+        <div v-if="Object.keys(groupedModels).length === 0" class="empty-state">暂无模型，请先配置插件或添加自定义模型。</div>
         
-        <div v-else class="model-list">
-          <div v-for="model in customModels" :key="model.id" class="model-item">
-            <div class="model-info">
-              <div class="model-name">
-                <span :class="['model-badge', model.free ? 'free' : 'premium']">{{ model.free ? '🆓' : '⭐' }}</span>
-                {{ model.name }}
-                <span v-if="model.supportsImage" class="model-feature" :title="t('settings.models.supportsImage')">🖼️</span>
+        <div class="grouped-models-container">
+          <div v-for="(models, category) in groupedModels" :key="category" class="model-category-group">
+            <div class="category-header">
+              <div class="category-icon">
+                <template v-if="category === '自定义模型'">🛠️</template>
+                <template v-else-if="category.toLowerCase().includes('google') || category.toLowerCase().includes('gemini')">🌐</template>
+                <template v-else-if="category.toLowerCase().includes('anthropic') || category.toLowerCase().includes('claude')">🤖</template>
+                <template v-else-if="category.toLowerCase().includes('opencode')">✨</template>
+                <template v-else>📦</template>
               </div>
-              <div class="model-id">{{ model.id }}</div>
-              <div v-if="model.baseUrl" class="model-url">{{ model.baseUrl }}</div>
+              <span class="category-title">{{ category }}</span>
+              <span class="category-count">{{ models.length }}</span>
             </div>
-            <div class="model-actions">
-              <button class="btn-icon" @click="openModelDialog(model)" :title="t('common.edit')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              </button>
-              <button class="btn-icon danger" @click="askRemoveModel(model)" :title="t('common.delete')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        <div class="section-header builtin-header">
-          <span class="section-title">{{ t('settings.models.builtin') }}</span>
-        </div>
-        
-        <div class="model-list builtin-list">
-          <div v-for="model in defaultModels" :key="model.id" class="model-item builtin">
-            <div class="model-info">
-              <div class="model-name">
-                <span :class="['model-badge', model.free ? 'free' : 'premium']">{{ model.free ? '🆓' : '⭐' }}</span>
-                {{ model.name }}
+            
+            <div class="model-grid">
+              <div v-for="model in models" :key="model.id" class="model-card">
+                <div class="model-card-header">
+                  <div class="model-name-wrapper">
+                    <span class="model-name">{{ model.name }}</span>
+                    <span v-if="model.free" class="free-badge">免费</span>
+                  </div>
+                  <div v-if="category === '自定义模型'" class="model-card-actions">
+                    <button class="btn-icon small" @click="openModelDialog(model)" :title="t('common.edit')">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <button class="btn-icon danger small" @click="askRemoveModel(model)" :title="t('common.delete')">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="model-card-id" :title="model.id">{{ model.id }}</div>
+                <div v-if="model.baseUrl" class="model-card-url" :title="model.baseUrl">{{ model.baseUrl }}</div>
               </div>
-              <div class="model-id">{{ model.id }}</div>
             </div>
           </div>
         </div>
@@ -993,52 +929,6 @@ watch(activeCategory, (newValue) => {
           </div>
         </div>
         
-        <!-- Kiro Auth -->
-        <div class="plugin-card">
-          <div class="plugin-header">
-            <div class="plugin-icon">🚀</div>
-            <div class="plugin-info">
-              <div class="plugin-name">Kiro Auth</div>
-              <div class="plugin-desc">{{ t('settings.plugins.kiroDesc') }}</div>
-            </div>
-          </div>
-          <div class="plugin-body">
-            <div class="plugin-features">
-              <span class="feature-tag">AWS Kiro</span>
-              <span class="feature-tag">Claude 4.5</span>
-              <span class="feature-tag">550+ Free</span>
-            </div>
-          </div>
-          <div class="plugin-footer">
-            <div v-if="kiroAuthStatus.installed" class="plugin-status installed">
-              <span class="status-badge">✓ {{ t('settings.plugins.installed') }}</span>
-              <span v-if="kiroAuthStatus.version" class="version">v{{ kiroAuthStatus.version }}</span>
-            </div>
-            <div v-else class="plugin-status">
-              <span class="status-badge">{{ t('settings.plugins.notInstalled') }}</span>
-            </div>
-            <div class="plugin-actions">
-              <button v-if="!kiroAuthStatus.installed" class="btn-install" @click="installKiroAuth" :disabled="pluginLoading">
-                {{ pluginLoadingName === 'kiro-auth' ? t('common.loading') + '...' : t('settings.mcp.install') }}
-              </button>
-              <template v-else>
-                <button class="btn-auth" @click="showKiroAccountManager = true">
-                  账号管理
-                </button>
-                <button v-if="kiroAuthStatus.updateAvailable" class="btn-update" @click="updateKiroAuth" :disabled="pluginLoading">
-                  {{ pluginLoadingName === 'kiro-auth-update' ? t('settings.plugins.updating') : t('settings.plugins.update') }}
-                </button>
-                <button class="btn-uninstall" @click="uninstallKiroAuth" :disabled="pluginLoading">
-                  {{ pluginLoadingName === 'kiro-auth' ? t('common.loading') + '...' : t('settings.plugins.uninstall') }}
-                </button>
-              </template>
-              <a class="btn-docs" href="https://github.com/tickernelz/opencode-kiro-auth" target="_blank" @click.prevent="openDocs('https://github.com/tickernelz/opencode-kiro-auth')">
-                {{ t('settings.mcp.viewDocs') }}
-              </a>
-            </div>
-          </div>
-        </div>
-        
         <!-- UI/UX Pro Max Skill -->
         <div class="plugin-card">
           <div class="plugin-header">
@@ -1241,9 +1131,6 @@ watch(activeCategory, (newValue) => {
       </div>
     </div>
   </aside>
-  
-  <!-- Kiro 账号管理弹窗 -->
-  <KiroAccountDialog v-if="showKiroAccountManager" @close="showKiroAccountManager = false" />
 </template>
 
 <style scoped>
@@ -1263,7 +1150,6 @@ watch(activeCategory, (newValue) => {
 
 /* 右侧内容 */
 .settings-content { flex: 1; overflow-y: auto; padding: 12px; max-width: none; min-width: 0; }
-.settings-content:has(.kiro-section) { padding: 0; overflow-y: auto; overflow-x: hidden; }
 .settings-section { display: flex; flex-direction: column; gap: 8px; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .section-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
@@ -1350,42 +1236,62 @@ input:checked + .slider:before { transform: translateX(16px); }
 .tool-desc { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
 
 /* 模型管理样式 */
-.models-section { gap: 0; }
-.model-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
-.model-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--bg-elevated); border-radius: 6px; border: 1px solid var(--border-subtle); }
-.model-item.builtin { opacity: 0.8; }
-.model-info { flex: 1; min-width: 0; }
-.model-name { font-size: 13px; font-weight: 500; color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
-.model-badge { font-size: 12px; }
-.model-feature { font-size: 11px; opacity: 0.8; }
-.model-id { font-size: 11px; color: var(--text-muted); font-family: monospace; margin-top: 2px; }
-.model-url { font-size: 10px; color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.model-actions { display: flex; align-items: center; gap: 8px; }
+.models-section { gap: 16px; display: flex; flex-direction: column; }
+.grouped-models-container { display: flex; flex-direction: column; gap: 24px; padding-bottom: 20px; }
+
+.model-category-group { display: flex; flex-direction: column; gap: 12px; }
+
+.category-header { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px; }
+.category-icon { font-size: 16px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: var(--bg-elevated); border-radius: 6px; }
+.category-title { font-size: 16px; font-weight: bold; color: var(--text-primary); text-transform: capitalize; }
+.category-count { font-size: 11px; color: var(--text-muted); background: var(--bg-hover); padding: 2px 6px; border-radius: 10px; }
+
+.model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+
+.model-card { 
+  display: flex; flex-direction: column; gap: 8px; 
+  padding: 14px; 
+  background: var(--bg-elevated); 
+  border-radius: 8px; 
+  border: 1px solid var(--border-subtle); 
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+.model-card:hover { border-color: var(--accent-primary); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+
+.model-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 4px; height: 100%;
+  background: var(--accent-primary);
+  opacity: 0.5;
+}
+
+.model-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.model-name-wrapper { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.model-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+
+.free-badge { 
+  font-size: 10px; font-weight: 600; 
+  padding: 2px 6px; 
+  background: rgba(128, 255, 181, 0.15); 
+  color: var(--green); 
+  border: 1px solid rgba(128, 255, 181, 0.3);
+  border-radius: 4px; 
+  flex-shrink: 0;
+}
+
+.model-card-actions { display: flex; gap: 4px; }
+.btn-icon.small { width: 24px; height: 24px; }
+
+.model-card-id { font-size: 11px; color: var(--text-secondary); font-family: monospace; word-break: break-all; }
+.model-card-url { font-size: 10px; color: var(--text-muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .builtin-header { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
-.builtin-list { opacity: 0.7; }
 .model-dialog { width: 420px; }
 .required { color: var(--red); }
 .form-group input[type="password"] { padding: 8px 10px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-primary); font-size: 13px; outline: none; }
-
-/* Kiro 账号管理样式 */
-.kiro-section {
-  padding: 0 !important;
-  margin: 0 !important;
-  height: 100%;
-  width: 100%;
-  max-width: none !important;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-}
-
-.kiro-section :deep(.kiro-account-manager) {
-  width: 100%;
-  min-width: 0;
-  flex: 1;
-}
 
 /* 技能管理样式 */
 .skills-section {

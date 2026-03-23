@@ -611,6 +611,7 @@ export namespace main {
 	export class Provider {
 	    id: string;
 	    name: string;
+	    models: Record<string, any>;
 	
 	    static createFrom(source: any = {}) {
 	        return new Provider(source);
@@ -620,6 +621,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
+	        this.models = source["models"];
 	    }
 	}
 	export class ProviderInfo {
