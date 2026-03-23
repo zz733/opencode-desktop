@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<body style="background: #333; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;">
+  <canvas id="canvas" width="1024" height="1024" style="width: 512px; height: 512px; background: transparent;"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    function drawRoundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    ctx.clearRect(0, 0, 1024, 1024);
+
+    const padding = 110; 
+    const size = 1024 - (padding * 2);
+    const radius = 180;
+
+    const gradient = ctx.createLinearGradient(padding, padding, 1024-padding, 1024-padding);
+    gradient.addColorStop(0, '#1E1E2E');
+    gradient.addColorStop(1, '#0F0F1A');
+    
+    drawRoundRect(padding, padding, size, size, radius);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    ctx.font = 'bold 440px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    ctx.shadowColor = '#B080FF';
+    ctx.shadowBlur = 30;
+    ctx.fillText('O', 512, 530);
+    
+    ctx.shadowBlur = 0;
+    ctx.fillText('O', 512, 530);
+
+    setTimeout(() => {
+        const dataUrl = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = 'appicon.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }, 500);
+  </script>
+</body>
+</html>

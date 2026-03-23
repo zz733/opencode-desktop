@@ -315,11 +315,6 @@ watch(() => fileEdits.value.length, () => {
                 <polyline points="21 15 16 10 5 21"/>
               </svg>
             </button>
-            <button class="toolbar-btn" title="Voice input">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-              </svg>
-            </button>
           </div>
           <div class="toolbar-right">
             <ModelSelector 
