@@ -51,7 +51,7 @@ type OpenCodeMessage struct {
 
 // GetSessions 获取会话列表
 func (a *App) GetSessions() ([]Session, error) {
-	resp, err := a.httpClient.Get(a.serverURL + "/session")
+	resp, err := a.apiClient.Get(a.serverURL + "/session")
 	if err != nil {
 		return nil, fmt.Errorf("连接失败: %v", err)
 	}
@@ -66,7 +66,7 @@ func (a *App) GetSessions() ([]Session, error) {
 
 // CreateSession 创建新会话
 func (a *App) CreateSession() (*Session, error) {
-	resp, err := a.httpClient.Post(a.serverURL+"/session", "application/json", bytes.NewBuffer([]byte("{}")))
+	resp, err := a.apiClient.Post(a.serverURL+"/session", "application/json", bytes.NewBuffer([]byte("{}")))
 	if err != nil {
 		return nil, fmt.Errorf("创建会话失败: %v", err)
 	}
@@ -98,7 +98,7 @@ func (a *App) SendMessage(sessionID, content string) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := a.httpClient.Do(req)
+	resp, err := a.apiClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("发送失败: %v", err)
 	}
@@ -223,7 +223,7 @@ func (a *App) SendMessageWithModel(sessionID, content, model string, images []Im
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := a.httpClient.Do(req)
+	resp, err := a.apiClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("发送失败: %v", err)
 	}
@@ -238,13 +238,15 @@ func (a *App) SendMessageWithModel(sessionID, content, model string, images []Im
 
 // CancelSession 取消会话中正在进行的请求
 func (a *App) CancelSession(sessionID string) error {
-	url := fmt.Sprintf("%s/session/%s/cancel", a.serverURL, sessionID)
-	req, err := http.NewRequest("POST", url, nil)
+	url := fmt.Sprintf("%s/session/%s/abort", a.serverURL, sessionID)
+	// 发送空 JSON 体，避免一些框架拒绝无 body 的 POST 请求
+	req, err := http.NewRequest("POST", url, bytes.NewBufferString("{}"))
 	if err != nil {
 		return fmt.Errorf("创建请求失败: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := a.httpClient.Do(req)
+	resp, err := a.apiClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("取消失败: %v", err)
 	}
@@ -279,7 +281,7 @@ func (a *App) SetActiveFile(sessionID, filePath string) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := a.httpClient.Do(req)
+	resp, err := a.apiClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("设置活动文件失败: %v", err)
 	}
@@ -293,7 +295,7 @@ func (a *App) GetSessionMessages(sessionID string) ([]Message, error) {
 	url := fmt.Sprintf("%s/session/%s/message", a.serverURL, sessionID)
 	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("获取历史消息: %s", url))
 
-	resp, err := a.httpClient.Get(url)
+	resp, err := a.apiClient.Get(url)
 	if err != nil {
 		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("获取消息失败: %v", err))
 		return nil, fmt.Errorf("获取消息失败: %v", err)
@@ -460,7 +462,7 @@ func (a *App) SubscribeEvents() error {
 				continue
 			}
 
-			resp, err := a.httpClient.Do(req)
+			resp, err := a.sseClient.Do(req)
 			if err != nil {
 				if ctx.Err() != nil {
 					return // 上下文已取消
@@ -524,8 +526,15 @@ func (a *App) SubscribeEvents() error {
 
 // CheckConnection 检查连接状态
 func (a *App) CheckConnection() (bool, error) {
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(a.serverURL + "/session")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", a.serverURL+"/session", nil)
+	if err != nil {
+		return false, fmt.Errorf("创建请求失败: %v", err)
+	}
+
+	resp, err := a.apiClient.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("无法连接到 %s", a.serverURL)
 	}

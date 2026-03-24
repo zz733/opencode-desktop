@@ -213,7 +213,7 @@ func (s *HTTPServer) handleModels(w http.ResponseWriter, r *http.Request) {
 	// 动态模型列表（从 OpenCode API 获取，完全依赖官方接口）
 	var dynamicModels []map[string]interface{}
 
-	resp, err := s.app.httpClient.Get(s.app.serverURL + "/provider")
+	resp, err := s.app.apiClient.Get(s.app.serverURL + "/provider")
 	if err == nil {
 		defer resp.Body.Close()
 

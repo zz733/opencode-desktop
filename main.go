@@ -5,6 +5,8 @@ import (
 	"runtime"
 
 	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/menu"
+	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
@@ -21,6 +23,26 @@ func main() {
 	// Windows 使用无边框窗口（自定义标题栏），Mac 使用系统标题栏
 	frameless := runtime.GOOS == "windows"
 
+	// 初始化系统菜单
+	AppMenu := menu.NewMenu()
+
+	if runtime.GOOS == "darwin" {
+		AppMenu.Append(menu.AppMenu())
+
+		fileMenu := AppMenu.AddSubmenu("File")
+		fileMenu.AddText(getOpenDirectoryText(), keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
+			app.OpenFolder()
+		})
+
+		AppMenu.Append(menu.EditMenu())
+		AppMenu.Append(menu.WindowMenu())
+	} else {
+		fileMenu := AppMenu.AddSubmenu("File")
+		fileMenu.AddText(getOpenDirectoryText(), keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
+			app.OpenFolder()
+		})
+	}
+
 	// Create application with options
 	err := wails.Run(&options.App{
 		Title:             "OpenCode Desktop",
@@ -30,6 +52,7 @@ func main() {
 		MinHeight:         768,
 		WindowStartState:  options.Maximised,
 		HideWindowOnClose: true,
+		Menu:              AppMenu,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

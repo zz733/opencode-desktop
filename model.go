@@ -29,7 +29,7 @@ func (a *App) GetAllModels() ([]ConfigModel, error) {
 	var models []ConfigModel
 
 	// 调用 OpenCode /provider API
-	resp, err := a.httpClient.Get(a.serverURL + "/provider")
+	resp, err := a.apiClient.Get(a.serverURL + "/provider")
 	if err != nil {
 		fmt.Printf("❌ 获取 provider 失败: %v\n", err)
 		// 降级到配置文件

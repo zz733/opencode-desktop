@@ -161,7 +161,7 @@ func (a *App) AddMCPServer(name string, server MCPServer) (map[string]MCPServerS
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := a.httpClient.Do(req)
+	resp, err := a.apiClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("添加 MCP 服务器失败: %v", err)
 	}
@@ -436,7 +436,7 @@ func (a *App) syncMCPToOpenCodeWithStatus(name string, server MCPServer) (map[st
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := a.httpClient.Do(req)
+	resp, err := a.apiClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -472,7 +472,7 @@ func (a *App) ConnectMCPServer(name string) error {
 		return fmt.Errorf("创建请求失败: %v", err)
 	}
 
-	resp, err := a.httpClient.Do(req)
+	resp, err := a.apiClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("连接 MCP 服务器失败: %v", err)
 	}
@@ -495,7 +495,7 @@ func (a *App) DisconnectMCPServer(name string) error {
 		return fmt.Errorf("创建请求失败: %v", err)
 	}
 
-	resp, err := a.httpClient.Do(req)
+	resp, err := a.apiClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("断开 MCP 服务器失败: %v", err)
 	}
@@ -514,7 +514,7 @@ func (a *App) DisconnectMCPServer(name string) error {
 func (a *App) GetMCPTools() ([]MCPTool, error) {
 	// 1. 尝试从 OpenCode API 获取动态工具列表
 	url := fmt.Sprintf("%s/mcp/tools", a.serverURL)
-	resp, err := a.httpClient.Get(url)
+	resp, err := a.apiClient.Get(url)
 	if err == nil && resp.StatusCode == 200 {
 		defer resp.Body.Close()
 		var tools []MCPTool

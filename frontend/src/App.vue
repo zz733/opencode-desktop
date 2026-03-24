@@ -219,10 +219,8 @@ const startDrag = (type, e) => {
 
 <template>
   <div class="app" :class="{ dragging: isDragging, mac: isMac }">
-    <!-- Mac 标题栏区域（用于拖动窗口） -->
-    <div v-if="isMac" class="mac-titlebar" style="--wails-draggable:drag"></div>
-    
-    <TitleBar v-if="!isMac" />
+    <!-- Mac 标题栏区域（用于拖动窗口），使用 TitleBar 组件 -->
+    <TitleBar :isMac="isMac" @update:workDir="handleWorkDirChange" />
     
     <div class="main">
       <!-- 活动栏 -->

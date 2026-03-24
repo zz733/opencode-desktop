@@ -396,12 +396,12 @@ watch(() => fileEdits.value.length, () => {
             />
             <button 
               v-if="sending" 
-              @click="cancel" 
+              @click.stop="cancel" 
               class="btn-cancel"
               :title="t('chat.cancel')"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <rect x="4" y="4" width="16" height="16" rx="2"/>
               </svg>
             </button>
             <button 
@@ -711,8 +711,12 @@ watch(() => fileEdits.value.length, () => {
 }
 
 .btn-cancel {
-  background: var(--red);
-  color: white;
+  background: var(--bg-hover);
+  color: var(--red);
+}
+
+.btn-cancel:hover {
+  background: var(--bg-active);
 }
 
 .input-toolbar {

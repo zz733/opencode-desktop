@@ -19,7 +19,8 @@ import (
 type App struct {
 	ctx           context.Context
 	serverURL     string
-	httpClient    *http.Client
+	sseClient     *http.Client // 专用于 SSE 长连接
+	apiClient     *http.Client // 专用于普通 API 请求，有超时控制
 	termMgr       *TerminalManager
 	openCode      *OpenCodeManager
 	fileMgr       *FileManager
@@ -39,9 +40,12 @@ func NewApp() *App {
 
 	app := &App{
 		serverURL: "http://localhost:4096",
-		httpClient: &http.Client{
+		sseClient: &http.Client{
 			Timeout:   0, // no timeout for SSE
 			Transport: transport,
+		},
+		apiClient: &http.Client{
+			Timeout:   30 * time.Second, // 普通 API 请求 30 秒超时
 		},
 	}
 	app.termMgr = NewTerminalManager(app)

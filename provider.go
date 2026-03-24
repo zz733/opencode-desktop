@@ -33,7 +33,7 @@ type ConfigInfo struct {
 
 // GetProviders 获取所有 provider 和模型信息
 func (a *App) GetProviders() (*ProviderInfo, error) {
-	resp, err := a.httpClient.Get(a.serverURL + "/provider")
+	resp, err := a.apiClient.Get(a.serverURL + "/provider")
 	if err != nil {
 		return nil, fmt.Errorf("获取 provider 失败: %v", err)
 	}
@@ -48,7 +48,7 @@ func (a *App) GetProviders() (*ProviderInfo, error) {
 
 // GetConfig 获取当前配置
 func (a *App) GetConfig() (*ConfigInfo, error) {
-	resp, err := a.httpClient.Get(a.serverURL + "/config")
+	resp, err := a.apiClient.Get(a.serverURL + "/config")
 	if err != nil {
 		return nil, fmt.Errorf("获取配置失败: %v", err)
 	}

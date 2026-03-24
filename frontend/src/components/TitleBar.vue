@@ -1,19 +1,22 @@
 <script setup>
 import { WindowMinimise, WindowToggleMaximise, Quit } from '../../wailsjs/runtime/runtime'
 
+defineProps({
+  isMac: {
+    type: Boolean,
+    default: false
+  }
+})
+
 const minimize = () => WindowMinimise()
 const toggleMaximize = () => WindowToggleMaximise()
 const close = () => Quit()
 </script>
 
 <template>
-  <div class="titlebar" style="--wails-draggable:drag">
-    <!-- 左侧菜单 -->
+  <div class="titlebar" style="--wails-draggable:drag" :class="{ 'mac-style': isMac }">
+    <!-- 左侧占位 -->
     <div class="titlebar-left">
-      <div class="menu-item">File</div>
-      <div class="menu-item">Edit</div>
-      <div class="menu-item">View</div>
-      <div class="menu-item">Help</div>
     </div>
     
     <!-- 中间标题 -->
@@ -22,7 +25,7 @@ const close = () => Quit()
     </div>
     
     <!-- 右侧窗口控制按钮 -->
-    <div class="titlebar-right" style="--wails-draggable:no-drag">
+    <div class="titlebar-right" style="--wails-draggable:no-drag" v-if="!isMac">
       <button class="window-btn" @click="minimize">
         <svg width="10" height="10" viewBox="0 0 10 10">
           <path d="M0 5h10" stroke="currentColor" stroke-width="1"/>
@@ -52,6 +55,11 @@ const close = () => Quit()
   padding: 0 8px;
   user-select: none;
   border-bottom: 1px solid var(--border-default);
+}
+
+.titlebar.mac-style {
+  height: 38px;
+  padding-left: 70px; /* Leave space for Mac traffic lights */
 }
 
 .titlebar-left {

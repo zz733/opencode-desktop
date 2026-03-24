@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -164,10 +165,16 @@ func (m *OpenCodeManager) GetVersion(path string) string {
 }
 
 func (m *OpenCodeManager) CheckConnectionForPort(port int) bool {
-	client := &http.Client{Timeout: 1 * time.Second} // 将超时缩短到 1 秒，避免长时间阻塞
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
 
 	healthURL := fmt.Sprintf("http://localhost:%d/global/health", port)
-	if resp, err := client.Get(healthURL); err == nil {
+	req, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
+	if err != nil {
+		return false
+	}
+
+	if resp, err := m.app.apiClient.Do(req); err == nil {
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
 			var result struct {
@@ -188,7 +195,8 @@ func (m *OpenCodeManager) CheckConnectionForPort(port int) bool {
 	}
 
 	eventURL := fmt.Sprintf("http://localhost:%d/event", port)
-	if resp, err := client.Get(eventURL); err == nil {
+	reqEvent, _ := http.NewRequestWithContext(ctx, "GET", eventURL, nil)
+	if resp, err := m.app.apiClient.Do(reqEvent); err == nil {
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
 			return true
@@ -196,7 +204,9 @@ func (m *OpenCodeManager) CheckConnectionForPort(port int) bool {
 		return false
 	}
 
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/session", port))
+	sessionURL := fmt.Sprintf("http://localhost:%d/session", port)
+	reqSession, _ := http.NewRequestWithContext(ctx, "GET", sessionURL, nil)
+	resp, err := m.app.apiClient.Do(reqSession)
 	if err != nil {
 		return false
 	}

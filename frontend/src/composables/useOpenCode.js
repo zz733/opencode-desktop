@@ -661,6 +661,11 @@ let currentAssistantMessageId = null
 function handleEvent(event) {
   console.log('处理事件:', event.type, JSON.stringify(event.properties || {}).substring(0, 300))
   
+  // 如果已经不在发送状态，忽略后续更新，确保界面立即停止
+  if (!sending.value && event.type !== 'session.error' && event.type !== 'error') {
+    return
+  }
+
   if (event.type === 'message.part.updated') {
     const part = event.properties?.part
     
@@ -836,11 +841,11 @@ async function cancelMessage() {
   if (!sending.value || !currentSession.value) return
   
   try {
-    await CancelSession(currentSession.value.id)
+    // 先立刻停止前端状态，确保用户有立即的反馈
     sending.value = false
+    await CancelSession(currentSession.value.id)
   } catch (e) {
     console.error('取消失败:', e)
-    // 即使取消失败也停止 sending 状态
     sending.value = false
   }
 }
