@@ -80,9 +80,11 @@ func (m *OpenCodeManager) getAvailablePort(preferred int) int {
 		// 端口被占用，检查是否是我们自己的实例
 		if !m.isPortUsedByUs(p) {
 			// 不是我们当前管理的实例占用的（可能是僵尸进程），清理掉并复用
-			m.cleanupPortProcesses(p)
-			if check(p) {
-				return p
+			// 只有在真正清理了进程后，才重新检查端口
+			if m.cleanupPortProcesses(p) {
+				if check(p) {
+					return p
+				}
 			}
 		}
 	}
@@ -162,7 +164,7 @@ func (m *OpenCodeManager) GetVersion(path string) string {
 }
 
 func (m *OpenCodeManager) CheckConnectionForPort(port int) bool {
-	client := &http.Client{Timeout: 2 * time.Second}
+	client := &http.Client{Timeout: 1 * time.Second} // 将超时缩短到 1 秒，避免长时间阻塞
 
 	healthURL := fmt.Sprintf("http://localhost:%d/global/health", port)
 	if resp, err := client.Get(healthURL); err == nil {
@@ -178,6 +180,11 @@ func (m *OpenCodeManager) CheckConnectionForPort(port int) bool {
 				return true
 			}
 		}
+		// 如果能连上但不是 200，说明这不是 opencode，直接返回 false，不要再试其他 endpoint
+		return false
+	} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		// 如果第一个请求超时，说明该端口响应迟缓（可能是其他服务），直接返回 false
+		return false
 	}
 
 	eventURL := fmt.Sprintf("http://localhost:%d/event", port)
@@ -186,6 +193,7 @@ func (m *OpenCodeManager) CheckConnectionForPort(port int) bool {
 		if resp.StatusCode == http.StatusOK {
 			return true
 		}
+		return false
 	}
 
 	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/session", port))
@@ -339,16 +347,17 @@ func (m *OpenCodeManager) waitForReadyOnPort(port int) {
 	wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "timeout")
 }
 
-// cleanupPortProcesses 清理占用指定端口的 OpenCode 进程
-func (m *OpenCodeManager) cleanupPortProcesses(port int) {
+// cleanupPortProcesses 清理占用指定端口的 OpenCode 进程，如果清理了进程则返回 true
+func (m *OpenCodeManager) cleanupPortProcesses(port int) bool {
 	currentPID := fmt.Sprintf("%d", os.Getpid())
+	killed := false
 
 	if goruntime.GOOS == "windows" {
 		// Windows: 使用 netstat 查找占用端口的进程
 		netstatCmd := exec.Command("netstat", "-ano")
 		output, err := netstatCmd.Output()
 		if err != nil {
-			return
+			return false
 		}
 
 		lines := strings.Split(string(output), "\n")
@@ -377,6 +386,7 @@ func (m *OpenCodeManager) cleanupPortProcesses(port int) {
 									wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("进程 %s 未响应，强制终止", pid))
 									exec.Command("taskkill", "/F", "/PID", pid).Run()
 								}
+								killed = true
 							}
 						}
 					}
@@ -412,6 +422,7 @@ func (m *OpenCodeManager) cleanupPortProcesses(port int) {
 									wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("进程 %s 未响应 SIGTERM，强制终止", pid))
 									exec.Command("kill", "-KILL", pid).Run()
 								}
+								killed = true
 							}
 						}
 					}
@@ -419,7 +430,11 @@ func (m *OpenCodeManager) cleanupPortProcesses(port int) {
 			}
 		}
 	}
-	time.Sleep(500 * time.Millisecond)
+
+	if killed {
+		time.Sleep(500 * time.Millisecond)
+	}
+	return killed
 }
 
 func (m *OpenCodeManager) Stop() {
