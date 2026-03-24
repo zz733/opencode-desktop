@@ -363,7 +363,7 @@ watch(() => fileEdits.value.length, () => {
               </button>
               
               <!-- 上下文选项菜单 -->
-              <div v-if="showContextOptions" class="context-dropdown">
+              <div v-if="showContextOptions" class="context-dropdown" @click.stop>
                 <div class="context-menu-item" @click="handleAttachContext">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
@@ -761,7 +761,7 @@ watch(() => fileEdits.value.length, () => {
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   padding: 4px;
-  z-index: 100;
+  z-index: 1000;
   min-width: 120px;
 }
 
