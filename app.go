@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -66,7 +67,7 @@ func (a *App) startup(ctx context.Context) {
 	runtime.EventsOn(ctx, "server-event", func(data ...interface{}) {
 		if a.httpServer != nil && len(data) > 0 {
 			fmt.Printf("📨 收到 OpenCode 事件，转发到手机端: %v\n", data[0])
-			
+
 			// 解析事件，更新当前会话
 			if dataStr, ok := data[0].(string); ok {
 				var event map[string]interface{}
@@ -85,7 +86,7 @@ func (a *App) startup(ctx context.Context) {
 					}
 				}
 			}
-			
+
 			// 转发事件到所有连接的手机端
 			a.httpServer.BroadcastEvent("server-event", data[0])
 		}
@@ -109,7 +110,7 @@ func (a *App) startup(ctx context.Context) {
 			fmt.Println("2. 输入连接码")
 			fmt.Println("3. 开始使用")
 			fmt.Println("========================================")
-			
+
 			// 发送事件到前端
 			runtime.EventsEmit(ctx, "remote-control-started", info)
 		}
@@ -180,9 +181,13 @@ func (a *App) AutoStartOpenCode() error {
 
 // SetOpenCodeWorkDir 设置 OpenCode 工作目录
 func (a *App) SetOpenCodeWorkDir(dir string) error {
+	if strings.TrimSpace(dir) == "" {
+		return fmt.Errorf("目录不能为空")
+	}
 	a.openCode.SetWorkDir(dir)
-	// 同时更新文件管理器的根目录
-	a.fileMgr.SetRootDir(dir)
+	if err := a.fileMgr.SetRootDir(dir); err != nil {
+		return err
+	}
 	// 不自动重启，让 autoConnect 处理连接
 	return nil
 }
@@ -379,24 +384,61 @@ func (a *App) findCargoToml(dir string) string {
 	return ""
 }
 
+func (a *App) writeOpenFolderLog(message string) {
+	file, err := os.OpenFile("/tmp/opencode-desktop-openfolder.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	_, _ = file.WriteString(fmt.Sprintf("%s %s\n", time.Now().Format(time.RFC3339Nano), message))
+}
+
+func (a *App) chooseDirectory(title string) (string, error) {
+	if _, err := exec.LookPath("osascript"); err == nil {
+		safeTitle := strings.ReplaceAll(title, `"`, `\"`)
+		script := fmt.Sprintf(`set selectedFolder to choose folder with prompt "%s"%sPOSIX path of selectedFolder`, safeTitle, "\n")
+		output, cmdErr := exec.Command("osascript", "-e", script).CombinedOutput()
+		result := strings.TrimSpace(string(output))
+		if cmdErr != nil {
+			text := strings.ToLower(result + " " + cmdErr.Error())
+			if strings.Contains(text, "user canceled") || strings.Contains(text, "cancelled") {
+				return "", nil
+			}
+			return "", fmt.Errorf("选择目录失败: %v %s", cmdErr, result)
+		}
+		return strings.TrimSpace(result), nil
+	}
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: title})
+}
+
 // OpenFolder 打开文件夹选择对话框并设置为工作目录
 func (a *App) OpenFolder() (string, error) {
-	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择工作目录",
-	})
+	if a.ctx == nil {
+		return "", fmt.Errorf("应用尚未初始化完成")
+	}
+	a.writeOpenFolderLog("OpenFolder begin")
+	runtime.EventsEmit(a.ctx, "output-log", "开始打开目录选择对话框")
+
+	dir, err := a.chooseDirectory("选择工作目录")
 	if err != nil {
+		a.writeOpenFolderLog(fmt.Sprintf("OpenFolder dialog error: %v", err))
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("目录对话框错误: %v", err))
 		return "", err
 	}
 	if dir != "" {
-		// 设置文件管理器根目录
-		a.fileMgr.SetRootDir(dir)
-		// 设置 OpenCode 工作目录（会自动更新 serverURL）
-		a.openCode.SetWorkDir(dir)
+		a.writeOpenFolderLog(fmt.Sprintf("OpenFolder selected: %s", dir))
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("已选择目录: %s", dir))
+		if err := a.SetOpenCodeWorkDir(dir); err != nil {
+			a.writeOpenFolderLog(fmt.Sprintf("OpenFolder set dir error: %v", err))
+			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("设置目录失败: %v", err))
+			return "", err
+		}
 		// 更新 app 的 serverURL
 		a.serverURL = fmt.Sprintf("http://localhost:%d", a.openCode.GetCurrentPort())
 		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("服务器地址已更新: %s", a.serverURL))
-		// 启动该目录的 OpenCode 实例（如果已运行则复用）
-		go a.openCode.StartForDir(dir)
+	} else {
+		a.writeOpenFolderLog("OpenFolder cancelled")
+		runtime.EventsEmit(a.ctx, "output-log", "目录选择已取消")
 	}
 	return dir, nil
 }
@@ -1255,7 +1297,6 @@ func (a *App) ResetConfiguration() error {
 	return a.configMgr.Reset()
 }
 
-
 // --- Skills Management API ---
 
 // skillsMgr 技能管理器（延迟初始化）
@@ -1359,46 +1400,46 @@ func (a *App) CreateSkillFromTemplate(templateID, customName string, global bool
 // StartRemoteControl 启动远程控制服务器
 func (a *App) StartRemoteControl(port int) (map[string]interface{}, error) {
 	fmt.Printf("=== API 调用: StartRemoteControl (port=%d) ===\n", port)
-	
+
 	if a.httpServer == nil {
 		a.httpServer = NewHTTPServer(a)
 	}
-	
+
 	err := a.httpServer.Start(port)
 	if err != nil {
 		fmt.Printf("✗ 启动失败: %v\n", err)
 		return nil, err
 	}
-	
+
 	info := map[string]interface{}{
 		"active": true,
 		"port":   a.httpServer.GetPort(),
 		"token":  a.httpServer.GetToken(),
 		"url":    fmt.Sprintf("http://localhost:%d", a.httpServer.GetPort()),
 	}
-	
+
 	fmt.Printf("✓ 远程控制服务器已启动\n")
 	fmt.Printf("  端口: %d\n", info["port"])
 	fmt.Printf("  令牌: %s\n", info["token"])
-	
+
 	return info, nil
 }
 
 // StopRemoteControl 停止远程控制服务器
 func (a *App) StopRemoteControl() error {
 	fmt.Println("=== API 调用: StopRemoteControl ===")
-	
+
 	if a.httpServer == nil {
 		fmt.Println("✓ 服务器未运行")
 		return nil
 	}
-	
+
 	err := a.httpServer.Stop()
 	if err != nil {
 		fmt.Printf("✗ 停止失败: %v\n", err)
 		return err
 	}
-	
+
 	fmt.Println("✓ 远程控制服务器已停止")
 	return nil
 }
@@ -1410,7 +1451,7 @@ func (a *App) GetRemoteControlInfo() (map[string]interface{}, error) {
 			"active": false,
 		}, nil
 	}
-	
+
 	return map[string]interface{}{
 		"active": true,
 		"port":   a.httpServer.GetPort(),

@@ -3,7 +3,7 @@ import {
   GetServerURL, SetServerURL, CheckConnection,
   GetSessions, CreateSession, SendMessage, SendMessageWithModel, 
   SubscribeEvents, GetOpenCodeStatus, AutoStartOpenCode, InstallOpenCode,
-  CancelSession, GetSessionMessages, GetMCPToolsPrompt, GetProviders, GetConfigModels
+  CancelSession, GetSessionMessages, GetMCPToolsPrompt, GetProviders, GetConfigModels, RestartOpenCode
 } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsEmit } from '../../wailsjs/runtime/runtime'
 import { i18n } from '../i18n'
@@ -64,7 +64,7 @@ const currentSession = ref(null)
 const messages = ref([])
 const sending = ref(false)
 // 从 localStorage 读取上次选择的模型
-const currentModel = ref(localStorage.getItem('selectedModel') || 'opencode/claude-opus-4-5')
+const currentModel = ref(localStorage.getItem('selectedModel') || '')
 const openCodeStatus = ref(null) // 'not-installed', 'installing', 'starting', 'connected'
 const currentWorkDir = ref('') // 当前工作目录
 
@@ -74,9 +74,21 @@ const dynamicModels = ref([])
 // 目录 -> 会话ID 的映射
 const dirSessionMap = ref(JSON.parse(localStorage.getItem('dirSessionMap') || '{}'))
 
+function normalizeDir(dir) {
+  if (!dir) return dir
+  const normalized = dir.replace(/[\\/]+$/, '')
+  return normalized || dir
+}
+
 // 保存映射到 localStorage
 function saveDirSessionMap() {
   localStorage.setItem('dirSessionMap', JSON.stringify(dirSessionMap.value))
+}
+
+// 目录 -> 模型ID 的映射
+const dirModelMap = ref(JSON.parse(localStorage.getItem('dirModelMap') || '{}'))
+function saveDirModelMap() {
+  localStorage.setItem('dirModelMap', JSON.stringify(dirModelMap.value))
 }
 
 const models = [
@@ -97,7 +109,15 @@ const models = [
 async function fetchModels() {
   try {
     // 1. 先尝试从 OpenCode API 获取
-    const providerInfo = await GetProviders()
+    let providerInfo = null
+    for (let i = 0; i < 3; i++) {
+      providerInfo = await GetProviders()
+      const connectedProviders = providerInfo?.connected || []
+      if (connectedProviders.length > 0 || i === 2) {
+        break
+      }
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
     
     const fetchedModels = []
     
@@ -185,6 +205,51 @@ function getAllModels() {
   // 合并：内置模型 + 动态模型 + 自定义模型
   // 动态模型放在前面，因为它们是用户已认证可用的
   return [...dynamicModels.value, ...models, ...customModels]
+}
+
+async function ensureModelForCurrentDir() {
+  const dir = normalizeDir(currentWorkDir.value)
+  const list = getAllModels()
+  const hasModel = (id) => !!list.find(m => `${m.provider || (m.id?.split('/')[0] || '')}/${m.id?.split('/')[1] || m.id}` === id || m.id === id)
+
+  const mapped = dir && dirModelMap.value[dir]
+  if (mapped) {
+    // 先用目录绑定的模型，保证切换目录后模型不变
+    setModel(mapped)
+    return true
+  }
+
+  try {
+    const info = await GetProviders()
+    const connected = info?.connected || []
+    const def = info?.default || {}
+    for (const pid of connected) {
+      const mid = def[pid]
+      if (!mid) continue
+      const candidate = `${pid}/${mid}`
+      if (hasModel(candidate)) {
+        setModel(candidate)
+        if (dir) {
+          dirModelMap.value[dir] = candidate
+          saveDirModelMap()
+        }
+        return true
+      }
+    }
+  } catch {}
+
+  const cfg = await GetConfigModels().catch(() => null)
+  if (cfg && cfg.length > 0) {
+    const first = cfg[0]
+    const candidate = `${first.provider}/${first.id}`
+    setModel(candidate)
+    if (dir) {
+      dirModelMap.value[dir] = candidate
+      saveDirModelMap()
+    }
+    return true
+  }
+  return false
 }
 
 // 自动连接（包含检测、安装、启动）
@@ -299,11 +364,33 @@ async function onConnected() {
   // 动态获取模型列表
   log('正在获取可用模型列表...')
   await fetchModels()
+  await ensureModelForCurrentDir()
   
   // 只在首次连接时订阅事件
   log('订阅服务器事件...')
   await SubscribeEvents()
   log('OpenCode 连接成功')
+
+  // 连接后如当前无会话，按目录映射绑定或选择最近
+  if (!currentSession.value) {
+    const dir = normalizeDir(currentWorkDir.value)
+    const mappedId = dir && dirSessionMap.value[dir]
+    if (mappedId) {
+      const found = sessions.value.find(s => s.id === mappedId)
+      if (found) {
+        log(`根据目录映射绑定会话: ${found.id}`)
+        await selectSession(found)
+        return
+      }
+    }
+    if (sessions.value.length > 0) {
+      log('未找到映射，选择最近的会话')
+      await selectSession(sessions.value[0])
+    } else {
+      log('无任何会话，创建新会话')
+      await createSession()
+    }
+  }
 }
 
 // 监听 OpenCode 状态事件
@@ -373,10 +460,7 @@ async function loadSessions() {
   try {
     sessions.value = await GetSessions()
     log(`已加载 ${sessions.value.length} 个会话`)
-    // 自动选择最近的会话或创建新会话
-    if (sessions.value.length > 0) {
-      selectSession(sessions.value[0])
-    }
+    // 不在这里自动选择，交由 onConnected / switchWorkDir 基于映射或用户操作选择
   } catch (e) {
     log(`加载会话失败: ${e}`)
   }
@@ -385,6 +469,12 @@ async function loadSessions() {
 async function selectSession(session) {
   currentSession.value = session
   messages.value = []
+  // 绑定当前目录到所选会话
+  if (session?.id && currentWorkDir.value) {
+    const dir = normalizeDir(currentWorkDir.value)
+    dirSessionMap.value[dir] = session.id
+    saveDirSessionMap()
+  }
   
   // 加载历史消息
   if (session?.id) {
@@ -470,6 +560,13 @@ async function sendMessage(text, images = []) {
     session = await createSession()
     if (!session) {
       console.error('创建会话失败')
+      return
+    }
+  }
+  if (!currentModel.value) {
+    const ok = await ensureModelForCurrentDir()
+    if (!ok) {
+      messages.value.push({ role: 'assistant', content: '❌ 当前目录未配置可用模型，请在设置中连接 Provider 或在 opencode.json 指定 model。', reasoning: '', tools: {} })
       return
     }
   }
@@ -727,6 +824,11 @@ function handleEvent(event) {
 function setModel(modelId) {
   currentModel.value = modelId
   localStorage.setItem('selectedModel', modelId)
+  const dir = normalizeDir(currentWorkDir.value)
+  if (dir) {
+    dirModelMap.value[dir] = modelId
+    saveDirModelMap()
+  }
 }
 
 // 取消当前请求
@@ -746,33 +848,71 @@ async function cancelMessage() {
 // 切换工作目录时切换或创建会话
 async function switchWorkDir(dir) {
   if (!dir) return
+  const targetDir = normalizeDir(dir)
   
   // 即使是同一个目录，也需要确保连接正常
-  const isSameDir = dir === currentWorkDir.value
-  currentWorkDir.value = dir
+  const isSameDir = targetDir === normalizeDir(currentWorkDir.value)
+  currentWorkDir.value = targetDir
   
   if (!isSameDir) {
-    log(`工作目录已切换到: ${dir}`)
+    log(`工作目录已切换到: ${targetDir}`)
     
     // 重置连接状态，等待新目录的 OpenCode 实例就绪
     connecting.value = true
     connected.value = false
     messages.value = []
+    currentSession.value = null
+    // 立即应用该目录上次选择的模型（若存在），避免视觉上“模型改变”
+    const quickMapped = dirModelMap.value[targetDir]
+    if (quickMapped) {
+      setModel(quickMapped)
+    }
+
+    try {
+      log('检查并启动新目录的 OpenCode（不重启已在运行的实例）...')
+      await AutoStartOpenCode()
+    } catch (e) {
+      log(`启动 OpenCode 失败: ${e}`)
+      connecting.value = false
+      throw e
+    }
+  } else {
+    try {
+      const initialStatus = await GetOpenCodeStatus()
+      if (!initialStatus.connected) {
+        log('当前目录未连接，尝试自动启动 OpenCode...')
+        await AutoStartOpenCode()
+      }
+    } catch (e) {
+      log(`自动启动 OpenCode 失败: ${e}`)
+    }
   }
   
   // 轮询等待连接
   let retries = 0
-  const maxRetries = 30
+  const maxRetries = 24 // 最多等 ~12s（前10次快速 300ms，其后 800ms）
   
   while (retries < maxRetries) {
     try {
       const status = await GetOpenCodeStatus()
       log(`检查连接状态: connected=${status.connected}, port=${status.port}, workDir=${status.workDir}`)
+      const statusWorkDir = normalizeDir(status.workDir)
       
-      if (status.connected && status.workDir === dir) {
+      if (status.connected && statusWorkDir === targetDir) {
         connected.value = true
         connecting.value = false
-        log(`已连接到 ${dir} 的 OpenCode (端口 ${status.port})`)
+        log(`已连接到 ${targetDir} 的 OpenCode (端口 ${status.port})`)
+
+        // 切换目录后刷新模型（异步进行，避免阻塞会话恢复）
+        ;(async () => {
+          try {
+            log('异步刷新当前目录的模型列表...')
+            await fetchModels()
+            await ensureModelForCurrentDir()
+          } catch (e) {
+            log(`刷新模型失败: ${e}`)
+          }
+        })()
         
         // 重新加载会话列表
         await loadSessions()
@@ -782,26 +922,31 @@ async function switchWorkDir(dir) {
         await SubscribeEvents()
         
         // 检查该目录是否有绑定的会话
-        const sessionId = dirSessionMap.value[dir]
+        const sessionId = dirSessionMap.value[targetDir]
         if (sessionId) {
           const existingSession = sessions.value.find(s => s.id === sessionId)
           if (existingSession) {
-            log(`切换到目录 ${dir} 的已有会话: ${existingSession.id}`)
+            log(`切换到目录 ${targetDir} 的已有会话: ${existingSession.id}`)
             selectSession(existingSession)
             return
           }
         }
         
-        // 没有绑定的会话，创建新会话
-        log(`为目录 ${dir} 创建新会话`)
-        await createSession()
+        if (sessions.value.length > 0) {
+          log(`目录 ${targetDir} 未发现映射，绑定最近会话: ${sessions.value[0].id}`)
+          await selectSession(sessions.value[0])
+        } else {
+          log(`为目录 ${targetDir} 创建新会话`)
+          await createSession()
+        }
         return
       }
     } catch (e) {
       log(`连接检查出错: ${e}`)
     }
     retries++
-    await new Promise(r => setTimeout(r, 1000))
+    const delay = retries < 10 ? 300 : 800
+    await new Promise(r => setTimeout(r, delay))
   }
   
   connecting.value = false

@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -45,11 +47,34 @@ func (m *OpenCodeManager) getPortForDir(dir string) int {
 	return 4096
 }
 
+func (m *OpenCodeManager) getAvailablePort(preferred int) int {
+	check := func(port int) bool {
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			return false
+		}
+		_ = ln.Close()
+		return true
+	}
+	if check(preferred) {
+		return preferred
+	}
+	for p := preferred + 1; p <= preferred+50; p++ {
+		if check(p) {
+			return p
+		}
+	}
+	return preferred
+}
+
 func (m *OpenCodeManager) SetWorkDir(dir string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.currentDir = dir
 	port := m.getPortForDir(dir)
+	if inst, ok := m.instances[dir]; ok && inst.running && inst.port > 0 {
+		port = inst.port
+	}
 	m.app.serverURL = fmt.Sprintf("http://localhost:%d", port)
 }
 
@@ -64,6 +89,9 @@ func (m *OpenCodeManager) GetCurrentPort() int {
 	defer m.mu.Unlock()
 	if m.currentDir == "" {
 		return 4096
+	}
+	if inst, ok := m.instances[m.currentDir]; ok && inst.running && inst.port > 0 {
+		return inst.port
 	}
 	return m.getPortForDir(m.currentDir)
 }
@@ -113,12 +141,37 @@ func (m *OpenCodeManager) GetVersion(path string) string {
 
 func (m *OpenCodeManager) CheckConnectionForPort(port int) bool {
 	client := &http.Client{Timeout: 2 * time.Second}
+
+	healthURL := fmt.Sprintf("http://localhost:%d/global/health", port)
+	if resp, err := client.Get(healthURL); err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			var result struct {
+				Healthy bool `json:"healthy"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				return true
+			}
+			if result.Healthy {
+				return true
+			}
+		}
+	}
+
+	eventURL := fmt.Sprintf("http://localhost:%d/event", port)
+	if resp, err := client.Get(eventURL); err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			return true
+		}
+	}
+
 	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/session", port))
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == 200
+	return resp.StatusCode == http.StatusOK
 }
 
 func (m *OpenCodeManager) CheckConnection() bool {
@@ -166,41 +219,11 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 	if dir == "" {
 		return fmt.Errorf("目录不能为空")
 	}
-	port := m.getPortForDir(dir)
+	preferredPort := m.getPortForDir(dir)
+	port := preferredPort
 
-	// 如果已经有实例在运行，检查是否是同一个目录
+	// 如果该目录实例已在运行，复用之
 	m.mu.Lock()
-	for d, inst := range m.instances {
-		if d != dir && inst.running {
-			// 优雅停止其他目录的实例
-			wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("停止目录 %s 的实例", d))
-			if inst.cmd != nil && inst.cmd.Process != nil {
-				// 优雅关闭
-				if goruntime.GOOS == "windows" {
-					pid := fmt.Sprintf("%d", inst.cmd.Process.Pid)
-					exec.Command("taskkill", "/PID", pid).Run()
-					// 等待一小段时间让进程优雅退出
-					go func() {
-						time.Sleep(2 * time.Second)
-						if inst.cmd.ProcessState == nil {
-							exec.Command("taskkill", "/F", "/PID", pid).Run()
-						}
-					}()
-				} else {
-					inst.cmd.Process.Signal(os.Interrupt)
-					// 等待一小段时间让进程优雅退出
-					go func() {
-						time.Sleep(2 * time.Second)
-						if inst.cmd.ProcessState == nil {
-							inst.cmd.Process.Kill()
-						}
-					}()
-				}
-			}
-			delete(m.instances, d)
-		}
-	}
-
 	if inst, ok := m.instances[dir]; ok && inst.running {
 		m.mu.Unlock()
 		wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("目录 %s 已在运行 (端口 %d)", dir, port))
@@ -209,7 +232,11 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 	m.mu.Unlock()
 
 	// 检查端口是否被占用，如果是 OpenCode 进程则优雅关闭
-	m.cleanupPortProcesses(port)
+	m.cleanupPortProcesses(preferredPort)
+	port = m.getAvailablePort(preferredPort)
+	if port != preferredPort {
+		wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("端口 %d 不可用，自动切换到端口 %d", preferredPort, port))
+	}
 
 	installed, path := m.CheckInstalled()
 	if !installed {
@@ -217,6 +244,7 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 	}
 
 	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("启动 OpenCode: %s (端口 %d)", dir, port))
+	wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "starting")
 
 	cmd := exec.Command(path, "serve", "--port", fmt.Sprintf("%d", port), "--print-logs")
 	cmd.Dir = dir
@@ -233,6 +261,9 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 	inst := &OpenCodeInstance{cmd: cmd, workDir: dir, port: port, running: true}
 	m.mu.Lock()
 	m.instances[dir] = inst
+	if m.currentDir == dir {
+		m.app.serverURL = fmt.Sprintf("http://localhost:%d", port)
+	}
 	m.mu.Unlock()
 
 	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("OpenCode 已启动 (PID %d)", cmd.Process.Pid))
@@ -270,8 +301,13 @@ func (m *OpenCodeManager) readOutput(r io.Reader) {
 }
 
 func (m *OpenCodeManager) waitForReadyOnPort(port int) {
-	for i := 0; i < 30; i++ {
-		time.Sleep(time.Second)
+	// 前 20 次每 200ms 检查一次（~4s），接下来 20 次每 500ms（~10s），总计 ~14s
+	for i := 0; i < 40; i++ {
+		if i < 20 {
+			time.Sleep(200 * time.Millisecond)
+		} else {
+			time.Sleep(500 * time.Millisecond)
+		}
 		if m.CheckConnectionForPort(port) {
 			wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("服务就绪 (端口 %d)", port))
 			wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "connected")
@@ -284,6 +320,8 @@ func (m *OpenCodeManager) waitForReadyOnPort(port int) {
 
 // cleanupPortProcesses 清理占用指定端口的 OpenCode 进程
 func (m *OpenCodeManager) cleanupPortProcesses(port int) {
+	currentPID := fmt.Sprintf("%d", os.Getpid())
+
 	if goruntime.GOOS == "windows" {
 		// Windows: 使用 netstat 查找占用端口的进程
 		netstatCmd := exec.Command("netstat", "-ano")
@@ -298,12 +336,15 @@ func (m *OpenCodeManager) cleanupPortProcesses(port int) {
 				fields := strings.Fields(line)
 				if len(fields) >= 5 {
 					pid := fields[len(fields)-1]
-					if pid != "0" {
+					if pid != "0" && pid != currentPID {
 						// 检查是否是 OpenCode 进程
 						tasklistCmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %s", pid), "/FO", "CSV", "/NH")
 						if taskOutput, taskErr := tasklistCmd.Output(); taskErr == nil {
-							taskInfo := string(taskOutput)
-							if strings.Contains(strings.ToLower(taskInfo), "opencode") {
+							taskInfo := strings.ToLower(string(taskOutput))
+							if strings.Contains(taskInfo, "opencode-desktop") {
+								continue
+							}
+							if strings.Contains(taskInfo, "opencode-cli") || strings.Contains(taskInfo, "opencode.exe") {
 								wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("发现 OpenCode 进程占用端口 %d (PID %s)，优雅关闭...", port, pid))
 								// 先尝试优雅关闭
 								exec.Command("taskkill", "/PID", pid).Run()
@@ -331,12 +372,15 @@ func (m *OpenCodeManager) cleanupPortProcesses(port int) {
 				
 				// 检查是否是 OpenCode 进程
 				for _, pid := range strings.Split(pids, "\n") {
-					if pid = strings.TrimSpace(pid); pid != "" {
+					if pid = strings.TrimSpace(pid); pid != "" && pid != currentPID {
 						// 检查进程名称
 						psCmd := exec.Command("ps", "-p", pid, "-o", "comm=")
 						if psOutput, psErr := psCmd.Output(); psErr == nil {
-							processName := strings.TrimSpace(string(psOutput))
-							if strings.Contains(processName, "opencode") {
+							processName := strings.ToLower(strings.TrimSpace(string(psOutput)))
+							if strings.Contains(processName, "opencode-desktop") {
+								continue
+							}
+							if processName == "opencode" || strings.Contains(processName, "opencode-cli") {
 								wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("发现 OpenCode 进程 (PID %s)，优雅关闭...", pid))
 								// 先尝试 SIGTERM
 								exec.Command("kill", "-TERM", pid).Run()

@@ -14,7 +14,9 @@ const show = ref(false)
 
 const currentModelName = () => {
   const m = props.models.find(m => m.id === props.modelValue)
-  return m ? m.name : t('model.select')
+  if (m) return m.name
+  // 未在列表中也显示当前ID，避免切目录时模型名丢失造成误解
+  return props.modelValue || t('model.select')
 }
 
 // 完全按照 provider 对模型进行分组，与官方保持一致
@@ -33,7 +35,6 @@ const providerGroups = computed(() => {
     groups[pName].push(m)
   })
   
-  // 可以根据需要排序 groups 的 keys，这里保持默认
   return groups
 })
 

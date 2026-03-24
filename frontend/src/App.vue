@@ -30,11 +30,14 @@ const showTerminal = ref(true)
 const workDir = ref(localStorage.getItem('lastWorkDir') || '')
 
 // 监听工作目录变化
-const handleWorkDirChange = (dir) => {
+const handleWorkDirChange = async (dir) => {
   workDir.value = dir
-  // 保存到 localStorage
   localStorage.setItem('lastWorkDir', dir)
-  switchWorkDir(dir)
+  try {
+    await switchWorkDir(dir)
+  } catch (e) {
+    console.error('切换工作目录失败:', e)
+  }
 }
 
 // 面板尺寸
@@ -83,6 +86,8 @@ onMounted(async () => {
       await SetOpenCodeWorkDir(workDir.value)
     } catch (e) {
       console.log('设置工作目录失败:', e)
+      workDir.value = ''
+      localStorage.removeItem('lastWorkDir')
     }
   }
   

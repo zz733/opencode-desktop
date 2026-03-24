@@ -237,12 +237,16 @@ const refreshFileTree = async () => {
 }
 
 const selectFolder = async () => {
-  const dir = await OpenFolder()
-  if (dir) {
-    localWorkDir.value = dir
-    expandedFolders.value.clear()
-    emit('update:workDir', dir)
-    await loadDir()
+  try {
+    const dir = await OpenFolder()
+    if (dir) {
+      localWorkDir.value = dir
+      expandedFolders.value.clear()
+      emit('update:workDir', dir)
+      await loadDir()
+    }
+  } catch (e) {
+    console.error('打开目录失败:', e)
   }
 }
 
