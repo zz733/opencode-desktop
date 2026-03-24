@@ -19,7 +19,7 @@ const props = defineProps({
   connecting: Boolean
 })
 
-const emit = defineEmits(['selectSession', 'send', 'update:currentModel', 'cancel', 'compare', 'revertEdit'])
+const emit = defineEmits(['selectSession', 'send', 'update:currentModel', 'cancel', 'compare', 'revertEdit', 'workDirChange'])
 
 const { fileEdits, revertEdit } = useFileEdits()
 
@@ -30,6 +30,11 @@ const attachedImages = ref([]) // 存储待发送的图片
 const fileInput = ref(null) // 文件输入框引用
 const contextFileInput = ref(null) // 上下文文件输入框引用
 const textareaRef = ref(null) // textarea 引用
+
+const showContextOptions = ref(false) // 控制 # 号菜单的显示
+
+// 引入后端 API
+import { OpenFolder } from '../../wailsjs/go/main/App'
 
 // 合并消息和编辑记录，按时间排序
 const combinedItems = computed(() => {
@@ -129,7 +134,22 @@ const handleAttachImage = () => {
 
 // 点击附加文件上下文按钮
 const handleAttachContext = () => {
+  showContextOptions.value = false
   contextFileInput.value?.click()
+}
+
+// 选择目录作为工作目录或上下文
+const handleSelectDirectory = async () => {
+  showContextOptions.value = false
+  try {
+    const dir = await OpenFolder()
+    if (dir) {
+      // 通过发出事件通知父组件切换工作目录
+      emit('workDirChange', dir)
+    }
+  } catch (e) {
+    console.error('选择目录失败:', e)
+  }
 }
 
 // 上下文文件选择
@@ -337,9 +357,29 @@ watch(() => fileEdits.value.length, () => {
         <!-- 底部工具栏：在输入框内 -->
         <div class="input-toolbar">
           <div class="toolbar-left">
-            <button class="toolbar-btn" title="Add context (#)" @click="handleAttachContext">
-              <span style="font-size: 16px; font-weight: 500;">#</span>
-            </button>
+            <div class="context-menu-wrapper">
+              <button class="toolbar-btn" title="Add context (#)" @click="showContextOptions = !showContextOptions">
+                <span style="font-size: 16px; font-weight: 500;">#</span>
+              </button>
+              
+              <!-- 上下文选项菜单 -->
+              <div v-if="showContextOptions" class="context-dropdown">
+                <div class="context-menu-item" @click="handleAttachContext">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                  </svg>
+                  选择文件
+                </div>
+                <div class="context-menu-item" @click="handleSelectDirectory">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                  选择目录
+                </div>
+              </div>
+            </div>
+            
             <button class="toolbar-btn" title="Attach image" @click="handleAttachImage">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -379,7 +419,7 @@ watch(() => fileEdits.value.length, () => {
       </div>
     </div>
     
-    <div v-if="showSessionList" class="backdrop" @click="showSessionList = false"></div>
+    <div v-if="showSessionList || showContextOptions" class="backdrop" @click="showSessionList = false; showContextOptions = false"></div>
   </div>
 </template>
 
@@ -705,6 +745,48 @@ watch(() => fileEdits.value.length, () => {
 .toolbar-btn:hover {
   color: var(--text-primary);
   background: var(--bg-hover);
+}
+
+.context-menu-wrapper {
+  position: relative;
+}
+
+.context-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  padding: 4px;
+  z-index: 100;
+  min-width: 120px;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.context-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.context-menu-item svg {
+  color: var(--text-muted);
+}
+
+.context-menu-item:hover svg {
+  color: var(--text-primary);
 }
 
 .backdrop {

@@ -284,6 +284,7 @@ const startDrag = (type, e) => {
             @update:currentModel="setModel"
             @compare="handleCompare"
             @revertEdit="handleRevertEdit"
+            @workDirChange="handleWorkDirChange"
           />
         </div>
       </template>
