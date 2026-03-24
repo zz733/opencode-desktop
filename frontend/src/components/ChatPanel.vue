@@ -28,6 +28,7 @@ const messagesContainer = ref(null)
 const showSessionList = ref(false)
 const attachedImages = ref([]) // 存储待发送的图片
 const fileInput = ref(null) // 文件输入框引用
+const contextFileInput = ref(null) // 上下文文件输入框引用
 const textareaRef = ref(null) // textarea 引用
 
 // 合并消息和编辑记录，按时间排序
@@ -124,6 +125,30 @@ const removeImage = (id) => {
 // 点击附加图片按钮
 const handleAttachImage = () => {
   fileInput.value?.click()
+}
+
+// 点击附加文件上下文按钮
+const handleAttachContext = () => {
+  contextFileInput.value?.click()
+}
+
+// 上下文文件选择
+const handleContextFileSelect = (e) => {
+  const files = e.target.files
+  if (!files || files.length === 0) return
+  
+  const file = files[0]
+  const reader = new FileReader()
+  reader.onload = (event) => {
+    const content = event.target.result
+    const prefix = inputText.value ? inputText.value + '\n\n' : ''
+    inputText.value = prefix + `\`\`\`${file.name}\n${content}\n\`\`\`\n`
+    adjustTextareaHeight()
+  }
+  reader.readAsText(file)
+  
+  // 清空 input，允许重复选择
+  e.target.value = ''
 }
 
 // 文件选择
@@ -294,17 +319,27 @@ watch(() => fileEdits.value.length, () => {
         
         <!-- 隐藏的文件输入框 -->
         <input 
-          ref="fileInput"
-          type="file"
-          accept="image/*"
+          type="file" 
+          ref="fileInput" 
+          style="display: none" 
           multiple
-          style="display: none"
+          accept="image/*"
           @change="handleFileSelect"
+        />
+
+        <input 
+          type="file" 
+          ref="contextFileInput" 
+          style="display: none" 
+          @change="handleContextFileSelect"
         />
         
         <!-- 底部工具栏：在输入框内 -->
         <div class="input-toolbar">
           <div class="toolbar-left">
+            <button class="toolbar-btn" title="Add context (#)" @click="handleAttachContext">
+              <span style="font-size: 16px; font-weight: 500;">#</span>
+            </button>
             <button class="toolbar-btn" title="Attach image" @click="handleAttachImage">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>

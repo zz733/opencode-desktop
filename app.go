@@ -54,7 +54,8 @@ func NewApp() *App {
 	return app
 }
 
-// startup is called when the app starts
+// startup is called when the app starts. The context is saved
+// so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
@@ -1459,3 +1460,14 @@ func (a *App) GetRemoteControlInfo() (map[string]interface{}, error) {
 		"url":    fmt.Sprintf("http://localhost:%d", a.httpServer.GetPort()),
 	}, nil
 }
+
+// shutdown is called when the app exits
+func (a *App) shutdown(ctx context.Context) {
+if a.openCode != nil {
+a.openCode.StopAll()
+}
+if a.httpServer != nil {
+a.httpServer.Stop()
+}
+}
+
