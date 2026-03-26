@@ -711,12 +711,14 @@ watch(() => fileEdits.value.length, () => {
 }
 
 .btn-cancel {
-  background: var(--bg-hover);
-  color: var(--red);
+  background: rgba(232, 17, 35, 0.1); /* 浅红色背景 */
+  color: #e81123; /* 红色图标 */
+  border: 1px solid rgba(232, 17, 35, 0.2);
 }
 
 .btn-cancel:hover {
-  background: var(--bg-active);
+  background: rgba(232, 17, 35, 0.2); /* 悬停时加深 */
+  color: #ff4d4f; /* 悬停时图标颜色变亮 */
 }
 
 .input-toolbar {

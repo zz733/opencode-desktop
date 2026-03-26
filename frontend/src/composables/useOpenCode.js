@@ -841,12 +841,22 @@ async function cancelMessage() {
   if (!sending.value || !currentSession.value) return
   
   try {
-    // 先立刻停止前端状态，确保用户有立即的反馈
+    // 强制前端状态复位
     sending.value = false
+    
+    // 如果最后一条是正在生成的消息，加上取消提示
+    const last = messages.value[messages.value.length - 1]
+    if (last && last.role === 'assistant') {
+      if (!last.content) {
+        last.content = '*(已取消)*'
+      } else {
+        last.content += '\n\n*(已取消)*'
+      }
+    }
+    
     await CancelSession(currentSession.value.id)
   } catch (e) {
     console.error('取消失败:', e)
-    sending.value = false
   }
 }
 

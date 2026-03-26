@@ -28,19 +28,17 @@ func main() {
 
 	if runtime.GOOS == "darwin" {
 		AppMenu.Append(menu.AppMenu())
-
-		fileMenu := AppMenu.AddSubmenu("File")
-		fileMenu.AddText(getOpenDirectoryText(), keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
+		
+		// 在 Mac 的系统菜单栏创建一个名为 "文件" 的菜单，并放入 "打开目录"
+		fileMenu := AppMenu.AddSubmenu("文件")
+		fileMenu.AddText("打开目录 / Open Directory", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
 			app.OpenFolder()
 		})
 
 		AppMenu.Append(menu.EditMenu())
 		AppMenu.Append(menu.WindowMenu())
 	} else {
-		fileMenu := AppMenu.AddSubmenu("File")
-		fileMenu.AddText(getOpenDirectoryText(), keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
-			app.OpenFolder()
-		})
+		// Windows 的菜单逻辑在 TitleBar.vue 中实现
 	}
 
 	// Create application with options

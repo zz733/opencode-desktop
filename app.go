@@ -45,7 +45,7 @@ func NewApp() *App {
 			Transport: transport,
 		},
 		apiClient: &http.Client{
-			Timeout:   30 * time.Second, // 普通 API 请求 30 秒超时
+			Timeout: 30 * time.Second, // 普通 API 请求 30 秒超时
 		},
 	}
 	app.termMgr = NewTerminalManager(app)
@@ -193,8 +193,8 @@ func (a *App) SetOpenCodeWorkDir(dir string) error {
 	if err := a.fileMgr.SetRootDir(dir); err != nil {
 		return err
 	}
-	// 不自动重启，让 autoConnect 处理连接
-	return nil
+	// 切换目录时自动启动 opencode 进程
+	return a.openCode.StartForDir(dir)
 }
 
 // --- 文件管理 ---
@@ -433,14 +433,23 @@ func (a *App) OpenFolder() (string, error) {
 	if dir != "" {
 		a.writeOpenFolderLog(fmt.Sprintf("OpenFolder selected: %s", dir))
 		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("已选择目录: %s", dir))
+		fmt.Printf("DEBUG: OpenFolder selected: %s\n", dir)
+
 		if err := a.SetOpenCodeWorkDir(dir); err != nil {
 			a.writeOpenFolderLog(fmt.Sprintf("OpenFolder set dir error: %v", err))
 			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("设置目录失败: %v", err))
+			fmt.Printf("DEBUG: SetOpenCodeWorkDir error: %v\n", err)
 			return "", err
 		}
+
 		// 更新 app 的 serverURL
 		a.serverURL = fmt.Sprintf("http://localhost:%d", a.openCode.GetCurrentPort())
 		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("服务器地址已更新: %s", a.serverURL))
+		fmt.Printf("DEBUG: serverURL updated: %s\n", a.serverURL)
+
+		// 发送事件通知前端目录已更改
+		runtime.EventsEmit(a.ctx, "directory-selected", dir)
+		fmt.Printf("DEBUG: directory-selected event emitted: %s\n", dir)
 	} else {
 		a.writeOpenFolderLog("OpenFolder cancelled")
 		runtime.EventsEmit(a.ctx, "output-log", "目录选择已取消")
@@ -1467,11 +1476,10 @@ func (a *App) GetRemoteControlInfo() (map[string]interface{}, error) {
 
 // shutdown is called when the app exits
 func (a *App) shutdown(ctx context.Context) {
-if a.openCode != nil {
-a.openCode.StopAll()
+	if a.openCode != nil {
+		a.openCode.StopAll()
+	}
+	if a.httpServer != nil {
+		a.httpServer.Stop()
+	}
 }
-if a.httpServer != nil {
-a.httpServer.Stop()
-}
-}
-

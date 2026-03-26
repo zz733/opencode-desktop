@@ -87,6 +87,14 @@ func (m *OpenCodeManager) getAvailablePort(preferred int) int {
 					return p
 				}
 			}
+		} else {
+			// 如果是我们自己记录的实例，但端口仍然被占用，说明实例可能已经崩溃但没清理
+			// 这种情况下也尝试清理并复用
+			if m.cleanupPortProcesses(p) {
+				if check(p) {
+					return p
+				}
+			}
 		}
 	}
 	return preferred
@@ -259,17 +267,59 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 	if dir == "" {
 		return fmt.Errorf("目录不能为空")
 	}
+
+	// 0. 在启动新实例前，停止其他所有实例，确保只有一个 opencode 进程在运行
+	// 这样可以解决多进程占用内存过高的问题
+	m.mu.Lock()
+	for d, inst := range m.instances {
+		if d != dir && inst.running {
+			wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("正在停止非当前目录的实例: %s", d))
+			if inst.cmd != nil && inst.cmd.Process != nil {
+				inst.cmd.Process.Kill()
+				inst.cmd.Wait()
+			}
+			inst.running = false
+			delete(m.instances, d)
+		}
+	}
+	m.mu.Unlock()
+
 	preferredPort := m.getPortForDir(dir)
 	port := preferredPort
 
-	// 如果该目录实例已在运行，复用之
+	// 1. 检查内部实例状态：如果该目录实例已在运行，复用之
 	m.mu.Lock()
 	if inst, ok := m.instances[dir]; ok && inst.running {
 		m.mu.Unlock()
-		wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("目录 %s 已在运行 (端口 %d)", dir, port))
+		wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("目录 %s 已在运行 (内部记录复用，端口 %d)", dir, port))
 		return nil
 	}
 	m.mu.Unlock()
+
+	// 2. 检查系统真实进程状态：如果指定端口已经被 OpenCode 进程占用，并且是正确的目录，也应该复用而不是杀掉重建
+	// 如果检查端口连接成功，说明端口被占用
+	if m.CheckConnectionForPort(port) {
+		// 这里进一步确认占用该端口的是否是 opencode 进程
+		if m.isPortUsedByOpenCode(port) {
+			wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("发现端口 %d 已有 OpenCode 进程运行，直接复用", port))
+
+			// 补充内部状态（因为可能应用重启了，但底层进程还在）
+			m.mu.Lock()
+			m.instances[dir] = &OpenCodeInstance{
+				cmd:     nil, // 由于不是当前进程启动的，无法拿到 *exec.Cmd 控制权，但标记为运行中
+				workDir: dir,
+				port:    port,
+				running: true,
+			}
+			if m.currentDir == dir {
+				m.app.serverURL = fmt.Sprintf("http://localhost:%d", port)
+			}
+			m.mu.Unlock()
+
+			wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "connected")
+			return nil
+		}
+	}
 
 	// 获取可用端口（内部会自动清理非本程序管理的僵尸进程）
 	port = m.getAvailablePort(preferredPort)
@@ -357,6 +407,60 @@ func (m *OpenCodeManager) waitForReadyOnPort(port int) {
 	wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "timeout")
 }
 
+// isPortUsedByOpenCode 检查占用端口的进程是否是 OpenCode 进程
+func (m *OpenCodeManager) isPortUsedByOpenCode(port int) bool {
+	if goruntime.GOOS == "windows" {
+		netstatCmd := exec.Command("netstat", "-ano")
+		output, err := netstatCmd.Output()
+		if err != nil {
+			return false
+		}
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			if strings.Contains(line, fmt.Sprintf(":%d ", port)) && strings.Contains(line, "LISTENING") {
+				fields := strings.Fields(line)
+				if len(fields) >= 5 {
+					pid := fields[len(fields)-1]
+					if pid != "0" {
+						tasklistCmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %s", pid), "/FO", "CSV", "/NH")
+						if taskOutput, taskErr := tasklistCmd.Output(); taskErr == nil {
+							taskInfo := strings.ToLower(string(taskOutput))
+							// 排除桌面端本身
+							if strings.Contains(taskInfo, "opencode-desktop") {
+								return false
+							}
+							return strings.Contains(taskInfo, "opencode")
+						}
+					}
+				}
+			}
+		}
+	} else {
+		checkCmd := exec.Command("bash", "-c", fmt.Sprintf("lsof -ti:%d", port))
+		if output, err := checkCmd.Output(); err == nil && len(output) > 0 {
+			pids := strings.TrimSpace(string(output))
+			if pids != "" {
+				for _, pid := range strings.Split(pids, "\n") {
+					pid = strings.TrimSpace(pid)
+					if pid != "" {
+						psCmd := exec.Command("ps", "-p", pid, "-o", "command=")
+						if psOutput, psErr := psCmd.Output(); psErr == nil {
+							commandLine := strings.ToLower(strings.TrimSpace(string(psOutput)))
+							if strings.Contains(commandLine, "opencode-desktop") {
+								return false
+							}
+							if strings.Contains(commandLine, "opencode") {
+								return true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 // cleanupPortProcesses 清理占用指定端口的 OpenCode 进程，如果清理了进程则返回 true
 func (m *OpenCodeManager) cleanupPortProcesses(port int) bool {
 	currentPID := fmt.Sprintf("%d", os.Getpid())
@@ -381,21 +485,14 @@ func (m *OpenCodeManager) cleanupPortProcesses(port int) bool {
 						tasklistCmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %s", pid), "/FO", "CSV", "/NH")
 						if taskOutput, taskErr := tasklistCmd.Output(); taskErr == nil {
 							taskInfo := strings.ToLower(string(taskOutput))
+							// 增加对 opencode 进程路径的检查，防止误杀
 							if strings.Contains(taskInfo, "opencode-desktop") {
 								continue
 							}
-							if strings.Contains(taskInfo, "opencode-cli") || strings.Contains(taskInfo, "opencode.exe") {
-								wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("发现 OpenCode 进程占用端口 %d (PID %s)，优雅关闭...", port, pid))
-								// 先尝试优雅关闭
-								exec.Command("taskkill", "/PID", pid).Run()
-								time.Sleep(2 * time.Second)
-
-								// 检查进程是否还在运行
-								checkCmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %s", pid))
-								if checkCmd.Run() == nil {
-									wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("进程 %s 未响应，强制终止", pid))
-									exec.Command("taskkill", "/F", "/PID", pid).Run()
-								}
+							if strings.Contains(taskInfo, "opencode-cli") || strings.Contains(taskInfo, "opencode.exe") || strings.Contains(taskInfo, "opencode") {
+								wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("发现 OpenCode 进程占用端口 %d (PID %s)，强制清理以防泄露...", port, pid))
+								// 直接使用强制关闭，确保端口释放
+								exec.Command("taskkill", "/F", "/PID", pid).Run()
 								killed = true
 							}
 						}
@@ -409,29 +506,21 @@ func (m *OpenCodeManager) cleanupPortProcesses(port int) bool {
 		if output, err := checkCmd.Output(); err == nil && len(output) > 0 {
 			pids := strings.TrimSpace(string(output))
 			if pids != "" {
-				wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("端口 %d 被占用，检查进程...", port))
-
 				// 检查是否是 OpenCode 进程
 				for _, pid := range strings.Split(pids, "\n") {
 					if pid = strings.TrimSpace(pid); pid != "" && pid != currentPID {
-						// 检查进程名称
-						psCmd := exec.Command("ps", "-p", pid, "-o", "comm=")
+						// 检查进程路径或命令行
+						psCmd := exec.Command("ps", "-p", pid, "-o", "command=")
 						if psOutput, psErr := psCmd.Output(); psErr == nil {
-							processName := strings.ToLower(strings.TrimSpace(string(psOutput)))
-							if strings.Contains(processName, "opencode-desktop") {
+							commandLine := strings.ToLower(strings.TrimSpace(string(psOutput)))
+							if strings.Contains(commandLine, "opencode-desktop") {
 								continue
 							}
-							if processName == "opencode" || strings.Contains(processName, "opencode-cli") {
-								wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("发现 OpenCode 进程 (PID %s)，优雅关闭...", pid))
-								// 先尝试 SIGTERM
-								exec.Command("kill", "-TERM", pid).Run()
-								time.Sleep(2 * time.Second)
-
-								// 检查进程是否还在运行
-								if checkCmd := exec.Command("kill", "-0", pid); checkCmd.Run() == nil {
-									wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("进程 %s 未响应 SIGTERM，强制终止", pid))
-									exec.Command("kill", "-KILL", pid).Run()
-								}
+							// 检查是否包含 opencode 路径或命令
+							if strings.Contains(commandLine, "opencode") {
+								wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("发现残留 OpenCode 进程 (PID %s)，强制清理...", pid))
+								// 直接使用 SIGKILL，确保端口立即释放
+								exec.Command("kill", "-9", pid).Run()
 								killed = true
 							}
 						}
@@ -540,6 +629,10 @@ func (m *OpenCodeManager) AutoStart() error {
 
 func (m *OpenCodeManager) Restart() error {
 	dir := m.GetWorkDir()
-	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("切换到目录: %s", dir))
+	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("正在重启目录: %s", dir))
+
+	// 显式停止当前目录的实例，确保重启时会创建新进程
+	m.Stop()
+
 	return m.StartForDir(dir)
 }

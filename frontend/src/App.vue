@@ -76,6 +76,14 @@ const allModels = computed(() => {
 onMounted(async () => {
   initTheme()
   
+  // 监听后端发来的目录选择事件（比如从系统菜单触发的）
+  EventsOn('directory-selected', (dir) => {
+    if (dir && dir !== workDir.value) {
+      console.log('收到后端目录选择事件:', dir)
+      handleWorkDirChange(dir)
+    }
+  })
+  
   // 如果有保存的工作目录，先通过后端设置它（不重启，只设置目录）
   if (workDir.value) {
     try {

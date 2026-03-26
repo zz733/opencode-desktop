@@ -1,5 +1,8 @@
 <script setup>
+import { useI18n } from 'vue-i18n'
 import { WindowMinimise, WindowToggleMaximise, Quit } from '../../wailsjs/runtime/runtime'
+
+const { t } = useI18n()
 
 defineProps({
   isMac: {
@@ -8,15 +11,33 @@ defineProps({
   }
 })
 
+const emit = defineEmits(['update:workDir'])
+
 const minimize = () => WindowMinimise()
 const toggleMaximize = () => WindowToggleMaximise()
 const close = () => Quit()
+
+// 处理打开目录
+const handleOpenDirectory = async () => {
+  try {
+    const { OpenDirectory } = await import('../../wailsjs/go/main/App')
+    const dir = await OpenDirectory()
+    if (dir) {
+      emit('update:workDir', dir)
+    }
+  } catch (e) {
+    console.error('打开目录失败:', e)
+  }
+}
 </script>
 
 <template>
   <div class="titlebar" style="--wails-draggable:drag" :class="{ 'mac-style': isMac }">
-    <!-- 左侧占位 -->
+    <!-- 左侧区域：Windows 下显示菜单，Mac 下占位 -->
     <div class="titlebar-left">
+      <div v-if="!isMac" class="menu-item" @click="handleOpenDirectory">
+        {{ t('nav.openDir') }}
+      </div>
     </div>
     
     <!-- 中间标题 -->
