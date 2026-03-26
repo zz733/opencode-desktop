@@ -335,7 +335,7 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 	wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("启动 OpenCode: %s (端口 %d)", dir, port))
 	wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "starting")
 
-	cmd := exec.Command(path, "serve", "--port", fmt.Sprintf("%d", port), "--print-logs")
+	cmd := exec.Command(path, "serve", "--port", fmt.Sprintf("%d", port))
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	stdout, _ := cmd.StdoutPipe()
@@ -384,7 +384,10 @@ func (m *OpenCodeManager) readOutput(r io.Reader) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		if line := scanner.Text(); line != "" {
-			wailsRuntime.EventsEmit(m.app.ctx, "output-log", line)
+			// 过滤掉包含 "INFO" 的日志，减少日志量，只保留错误或关键日志
+			if !strings.Contains(line, "INFO") && !strings.Contains(line, "service=bus") && !strings.Contains(line, "service=server") {
+				wailsRuntime.EventsEmit(m.app.ctx, "output-log", line)
+			}
 		}
 	}
 }
