@@ -15,13 +15,13 @@ import (
 
 // HTTPServer 远程控制 HTTP 服务器
 type HTTPServer struct {
-	app           *App
-	server        *http.Server
-	token         string
-	port          int
-	active        bool
-	mu            sync.RWMutex
-	sseConns      map[string]chan []byte
+	app            *App
+	server         *http.Server
+	token          string
+	port           int
+	active         bool
+	mu             sync.RWMutex
+	sseConns       map[string]chan []byte
 	currentSession string // 当前会话 ID
 }
 
@@ -162,18 +162,18 @@ func (s *HTTPServer) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// 从 Header 或 URL 参数获取 token
 		var token string
-		
+
 		// 优先从 Authorization Header 获取
 		auth := r.Header.Get("Authorization")
 		if strings.HasPrefix(auth, "Bearer ") {
 			token = strings.TrimPrefix(auth, "Bearer ")
 		}
-		
+
 		// 如果 Header 中没有，尝试从 URL 参数获取（用于 SSE）
 		if token == "" {
 			token = r.URL.Query().Get("token")
 		}
-		
+
 		expectedAuth := "Bearer " + s.token
 		actualAuth := "Bearer " + token
 
@@ -245,7 +245,7 @@ func (s *HTTPServer) handleModels(w http.ResponseWriter, r *http.Request) {
 					if !ok {
 						continue
 					}
-					
+
 					status, _ := modelMap["status"].(string)
 					if status == "deprecated" {
 						continue
@@ -403,25 +403,25 @@ func (s *HTTPServer) handleMessages(w http.ResponseWriter, r *http.Request) {
 		var modelID string
 		var hasImage bool
 		var imageName string
-		
+
 		if strings.HasPrefix(contentType, "multipart/form-data") {
 			// 解析 multipart 表单
 			if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB max
 				http.Error(w, "Failed to parse form", http.StatusBadRequest)
 				return
 			}
-			
+
 			// 获取文本内容
 			content = r.FormValue("content")
 			modelID = r.FormValue("model")
-			
+
 			// 获取图片文件
 			file, header, err := r.FormFile("image")
 			if err == nil {
 				defer file.Close()
 				hasImage = true
 				imageName = header.Filename
-				
+
 				fmt.Printf("📷 收到图片: %s (size: %d bytes)\n", imageName, header.Size)
 			}
 		} else {
@@ -430,7 +430,7 @@ func (s *HTTPServer) handleMessages(w http.ResponseWriter, r *http.Request) {
 				Content string `json:"content"`
 				Model   string `json:"model"`
 			}
-			
+
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, "Invalid request", http.StatusBadRequest)
 				return
@@ -476,7 +476,7 @@ func (s *HTTPServer) handleMessages(w http.ResponseWriter, r *http.Request) {
 					fmt.Printf("✓ 使用现有会话: %s\n", s.currentSession)
 				}
 			}
-			
+
 			// 如果还是没有会话，创建新的
 			if s.currentSession == "" {
 				fmt.Printf("🆕 创建新会话...\n")
@@ -709,18 +709,19 @@ func (s *HTTPServer) BroadcastEvent(eventType string, data interface{}) {
 		return
 	}
 
-	fmt.Printf("📡 广播事件到 %d 个连接: %s\n", connCount, eventType)
+	// 频繁打印会导致性能问题，注释掉
+	// fmt.Printf("📡 广播事件到 %d 个连接: %s\n", connCount, eventType)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for connID, ch := range s.sseConns {
+	for _, ch := range s.sseConns {
 		select {
 		case ch <- eventJSON:
 			// 成功发送
 		default:
 			// 通道已满，跳过
-			fmt.Printf("⚠️  连接 %s 的通道已满，跳过事件\n", connID)
+			// fmt.Printf("⚠️  连接 %s 的通道已满，跳过事件\n", connID)
 		}
 	}
 }
@@ -751,7 +752,7 @@ func generateToken() string {
 // forwardOpenCodeEvents 转发 OpenCode 事件到手机端
 func (s *HTTPServer) forwardOpenCodeEvents() {
 	fmt.Println("开始监听 OpenCode 事件...")
-	
+
 	// 确保 OpenCode 已连接
 	for i := 0; i < 10; i++ {
 		if s.app.openCode.CheckConnection() {
@@ -760,17 +761,17 @@ func (s *HTTPServer) forwardOpenCodeEvents() {
 		fmt.Printf("OpenCode 未连接，等待连接... (%d/10)\n", i+1)
 		time.Sleep(2 * time.Second)
 	}
-	
+
 	if !s.app.openCode.CheckConnection() {
 		fmt.Println("⚠️  OpenCode 连接超时，但继续运行")
 	}
-	
+
 	// 订阅 OpenCode 事件
 	if err := s.app.SubscribeEvents(); err != nil {
 		fmt.Printf("订阅 OpenCode 事件失败: %v\n", err)
 		return
 	}
-	
+
 	fmt.Println("✓ 已订阅 OpenCode 事件")
 	fmt.Println("事件转发已在 app.go startup 中配置")
 }

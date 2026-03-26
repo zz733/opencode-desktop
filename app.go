@@ -71,13 +71,15 @@ func (a *App) startup(ctx context.Context) {
 	// 监听 OpenCode 的 server-event 并转发到远程控制客户端
 	runtime.EventsOn(ctx, "server-event", func(data ...interface{}) {
 		if a.httpServer != nil && len(data) > 0 {
-			fmt.Printf("📨 收到 OpenCode 事件，转发到手机端: %v\n", data[0])
-
 			// 解析事件，更新当前会话
 			if dataStr, ok := data[0].(string); ok {
 				var event map[string]interface{}
 				if err := json.Unmarshal([]byte(dataStr), &event); err == nil {
 					eventType, _ := event["type"].(string)
+					
+					// 只打印事件类型，不打印完整数据，避免大量数据造成卡顿
+					// fmt.Printf("📨 收到 OpenCode 事件: %s\n", eventType)
+					
 					// 当会话创建或更新时，更新当前会话 ID
 					if eventType == "session.created" || eventType == "session.updated" {
 						if props, ok := event["properties"].(map[string]interface{}); ok {

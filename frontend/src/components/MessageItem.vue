@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
@@ -35,14 +35,44 @@ const filteredContent = computed(() => {
     .trim()
 })
 
-// 渲染 markdown 内容
-const renderedContent = computed(() => {
-  if (!filteredContent.value) return ''
-  try {
-    return marked(filteredContent.value)
-  } catch (e) {
-    return filteredContent.value
+// 使用节流渲染 markdown 内容以提升性能，避免高频更新卡顿
+const renderedContent = ref('')
+let renderTimeout = null
+let lastRenderTime = 0
+
+watch(() => filteredContent.value, (newVal) => {
+  if (!newVal) {
+    renderedContent.value = ''
+    return
   }
+  
+  const now = Date.now()
+  const timeSinceLastRender = now - lastRenderTime
+  
+  const doRender = () => {
+    try {
+      renderedContent.value = marked(newVal)
+    } catch (e) {
+      renderedContent.value = newVal
+    }
+    lastRenderTime = Date.now()
+    renderTimeout = null
+  }
+  
+  if (timeSinceLastRender > 250) {
+    // 距离上次渲染超过 250ms，立即渲染
+    doRender()
+    if (renderTimeout) {
+      clearTimeout(renderTimeout)
+    }
+  } else if (!renderTimeout) {
+    // 否则延迟渲染，确保最后一次更新一定会被执行
+    renderTimeout = setTimeout(doRender, 250)
+  }
+}, { immediate: true })
+
+onUnmounted(() => {
+  if (renderTimeout) clearTimeout(renderTimeout)
 })
 
 // 工具图标映射 - 根据状态返回不同图标

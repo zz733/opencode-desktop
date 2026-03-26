@@ -23,6 +23,9 @@ function log(message) {
   console.log(message)
   const timestamp = new Date().toLocaleTimeString()
   outputLogs.value.push(`[${timestamp}] ${message}`)
+  if (outputLogs.value.length > 200) {
+    outputLogs.value = outputLogs.value.slice(outputLogs.value.length - 200)
+  }
   EventsEmit('output-log', message)
 }
 
@@ -32,6 +35,9 @@ EventsOn('output-log', (message) => {
   // 避免重复添加（简单判断，如果需要在前端显示后端发回的前端日志，可能需要更复杂的去重）
   // 这里假设 EventsOn 收到的都是后端主动发送的系统日志
   outputLogs.value.push(`[${timestamp}] ${message}`)
+  if (outputLogs.value.length > 200) {
+    outputLogs.value = outputLogs.value.slice(outputLogs.value.length - 200)
+  }
 })
 
 // 监听 Antigravity 模型变化事件
@@ -645,7 +651,7 @@ function setupEventListeners() {
   eventListenersSetup = true
   
   EventsOn('server-event', (data) => {
-    console.log('收到 server-event:', data)
+    // console.log('收到 server-event:', data) // 注释掉高频日志以提升性能
     try {
       const event = JSON.parse(data)
       handleEvent(event)
@@ -659,7 +665,7 @@ function setupEventListeners() {
 let currentAssistantMessageId = null
 
 function handleEvent(event) {
-  console.log('处理事件:', event.type, JSON.stringify(event.properties || {}).substring(0, 300))
+  // console.log('处理事件:', event.type) // 注释掉高频日志
   
   // 如果已经不在发送状态，忽略后续更新，确保界面立即停止
   if (!sending.value && event.type !== 'session.error' && event.type !== 'error') {
@@ -670,7 +676,6 @@ function handleEvent(event) {
     const part = event.properties?.part
     
     if (!part) {
-      console.log('事件没有 part 数据')
       return
     }
     
@@ -678,7 +683,6 @@ function handleEvent(event) {
     if (part.type === 'text' && part.text) {
       const text = part.text
       if (text.includes('[Please respond in') || text.includes('[Current active file:')) {
-        console.log('跳过用户消息回显')
         return
       }
     }
@@ -688,7 +692,6 @@ function handleEvent(event) {
     
     // 如果最后一条不是 assistant 消息，或者消息 ID 不匹配，可能需要创建新消息
     if (!last || last.role !== 'assistant') {
-      console.log('没有待更新的 assistant 消息，创建新消息')
       messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {} })
       last = messages.value[messages.value.length - 1]
     }
@@ -697,10 +700,8 @@ function handleEvent(event) {
       const text = part.text || ''
       // 移除开头的换行符
       last.content = text.replace(/^\n+/, '')
-      console.log('更新 assistant 消息:', last.content.substring(0, 100))
     } else if (part.type === 'reasoning' && part.text) {
       last.reasoning = part.text
-      console.log('更新 reasoning:', part.text.substring(0, 50))
     } else if (part.type === 'tool') {
       if (!last.tools) last.tools = {}
       const toolInfo = {
@@ -711,26 +712,22 @@ function handleEvent(event) {
         output: part.state?.output || null
       }
       last.tools[part.id] = toolInfo
-      console.log('更新 tool:', part.tool)
     }
   }
   
   if (event.type === 'message.updated') {
     const info = event.properties?.info
-    console.log('message.updated - role:', info?.role, 'completed:', info?.time?.completed)
     // 不在这里停止 sending，等待 session.status === 'idle'
   }
   
   if (event.type === 'session.status') {
     const status = event.properties?.status
-    console.log('session.status:', status)
     
     // status 是对象 {type: "idle"} 或 {type: "busy"}
     const statusType = status?.type || status
     
     // 只在 session 状态变为 idle 时停止 sending（表示所有工具都执行完毕）
     if (statusType === 'idle') {
-      console.log('session 变为 idle')
       sending.value = false
       currentAssistantMessageId = null
     }
@@ -738,7 +735,6 @@ function handleEvent(event) {
   
   // session.idle 事件也表示完成
   if (event.type === 'session.idle') {
-    console.log('收到 session.idle 事件')
     sending.value = false
     currentAssistantMessageId = null
   }

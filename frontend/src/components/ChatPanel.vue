@@ -206,48 +206,40 @@ const handleRevert = async (editId) => {
   }
 }
 
-watch(() => props.messages.length, () => {
-  nextTick(() => {
+// 节流滚动逻辑，避免频繁引发重排导致卡顿
+let scrollTimeout = null
+const scrollToBottomThrottled = () => {
+  if (scrollTimeout) return
+  scrollTimeout = setTimeout(() => {
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
-  })
+    scrollTimeout = null
+  }, 150)
+}
+
+watch(() => props.messages.length, () => {
+  nextTick(scrollToBottomThrottled)
 })
 
 // 监听消息内容变化，自动滚动
 watch(() => props.messages[props.messages.length - 1]?.content, () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
+  nextTick(scrollToBottomThrottled)
 })
 
 // 监听思考内容变化，自动滚动
 watch(() => props.messages[props.messages.length - 1]?.reasoning, () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
+  nextTick(scrollToBottomThrottled)
 })
 
 // 监听工具调用变化，自动滚动
 watch(() => props.messages[props.messages.length - 1]?.tools, () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
+  nextTick(scrollToBottomThrottled)
 }, { deep: true })
 
 // 监听文件编辑变化，自动滚动
 watch(() => fileEdits.value.length, () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
+  nextTick(scrollToBottomThrottled)
 })
 </script>
 
