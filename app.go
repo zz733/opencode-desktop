@@ -9,10 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"strings"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -39,13 +39,14 @@ func NewApp() *App {
 	transport.MaxIdleConnsPerHost = 0
 
 	app := &App{
-		serverURL: "http://localhost:4096",
+		serverURL: "http://127.0.0.1:4096",
 		sseClient: &http.Client{
 			Timeout:   0, // no timeout for SSE
 			Transport: transport,
 		},
 		apiClient: &http.Client{
-			Timeout: 30 * time.Second, // 普通 API 请求 30 秒超时
+			Timeout:   30 * time.Second, // 普通 API 请求 30 秒超时
+			Transport: transport,
 		},
 	}
 	app.termMgr = NewTerminalManager(app)
@@ -69,17 +70,17 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	// 监听 OpenCode 的 server-event 并转发到远程控制客户端
-	runtime.EventsOn(ctx, "server-event", func(data ...interface{}) {
+	wails_runtime.EventsOn(ctx, "server-event", func(data ...interface{}) {
 		if a.httpServer != nil && len(data) > 0 {
 			// 解析事件，更新当前会话
 			if dataStr, ok := data[0].(string); ok {
 				var event map[string]interface{}
 				if err := json.Unmarshal([]byte(dataStr), &event); err == nil {
 					eventType, _ := event["type"].(string)
-					
+
 					// 只打印事件类型，不打印完整数据，避免大量数据造成卡顿
 					// fmt.Printf("📨 收到 OpenCode 事件: %s\n", eventType)
-					
+
 					// 当会话创建或更新时，更新当前会话 ID
 					if eventType == "session.created" || eventType == "session.updated" {
 						if props, ok := event["properties"].(map[string]interface{}); ok {
@@ -119,7 +120,7 @@ func (a *App) startup(ctx context.Context) {
 			fmt.Println("========================================")
 
 			// 发送事件到前端
-			runtime.EventsEmit(ctx, "remote-control-started", info)
+			wails_runtime.EventsEmit(ctx, "remote-control-started", info)
 		}
 	}()
 }
@@ -401,21 +402,23 @@ func (a *App) writeOpenFolderLog(message string) {
 }
 
 func (a *App) chooseDirectory(title string) (string, error) {
-	if _, err := exec.LookPath("osascript"); err == nil {
-		safeTitle := strings.ReplaceAll(title, `"`, `\"`)
-		script := fmt.Sprintf(`set selectedFolder to choose folder with prompt "%s"%sPOSIX path of selectedFolder`, safeTitle, "\n")
-		output, cmdErr := exec.Command("osascript", "-e", script).CombinedOutput()
-		result := strings.TrimSpace(string(output))
-		if cmdErr != nil {
-			text := strings.ToLower(result + " " + cmdErr.Error())
-			if strings.Contains(text, "user canceled") || strings.Contains(text, "cancelled") {
-				return "", nil
-			}
-			return "", fmt.Errorf("选择目录失败: %v %s", cmdErr, result)
-		}
-		return strings.TrimSpace(result), nil
+	// 优先使用 Wails 的标准对话框，这样更符合应用风格
+	dir, err := wails_runtime.OpenDirectoryDialog(a.ctx, wails_runtime.OpenDialogOptions{
+		Title: title,
+	})
+	if err != nil {
+		return "", err
 	}
-	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: title})
+
+	// 如果 Wails 对话框失败或返回空，且在 Mac 上，可以尝试 osascript 兜底
+	if dir == "" && runtime.GOOS == "darwin" {
+		if _, err := exec.LookPath("osascript"); err == nil {
+			// 这里是一个备选方案，只有当 wails_runtime.OpenDirectoryDialog 真的无法使用时才启用
+			// 目前我们优先信任 wails_runtime.OpenDirectoryDialog
+		}
+	}
+
+	return dir, nil
 }
 
 // OpenFolder 打开文件夹选择对话框并设置为工作目录
@@ -424,37 +427,40 @@ func (a *App) OpenFolder() (string, error) {
 		return "", fmt.Errorf("应用尚未初始化完成")
 	}
 	a.writeOpenFolderLog("OpenFolder begin")
-	runtime.EventsEmit(a.ctx, "output-log", "开始打开目录选择对话框")
+	wails_runtime.EventsEmit(a.ctx, "output-log", "开始打开目录选择对话框")
 
 	dir, err := a.chooseDirectory("选择工作目录")
 	if err != nil {
 		a.writeOpenFolderLog(fmt.Sprintf("OpenFolder dialog error: %v", err))
-		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("目录对话框错误: %v", err))
+		wails_runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("目录对话框错误: %v", err))
 		return "", err
 	}
 	if dir != "" {
+		// 规范化目录路径
+		dir = filepath.Clean(dir)
+
 		a.writeOpenFolderLog(fmt.Sprintf("OpenFolder selected: %s", dir))
-		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("已选择目录: %s", dir))
+		wails_runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("已选择目录: %s", dir))
 		fmt.Printf("DEBUG: OpenFolder selected: %s\n", dir)
 
 		if err := a.SetOpenCodeWorkDir(dir); err != nil {
 			a.writeOpenFolderLog(fmt.Sprintf("OpenFolder set dir error: %v", err))
-			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("设置目录失败: %v", err))
+			wails_runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("设置目录失败: %v", err))
 			fmt.Printf("DEBUG: SetOpenCodeWorkDir error: %v\n", err)
 			return "", err
 		}
 
 		// 更新 app 的 serverURL
-		a.serverURL = fmt.Sprintf("http://localhost:%d", a.openCode.GetCurrentPort())
-		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("服务器地址已更新: %s", a.serverURL))
+		a.serverURL = fmt.Sprintf("http://127.0.0.1:%d", a.openCode.GetCurrentPort())
+		wails_runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("服务器地址已更新: %s", a.serverURL))
 		fmt.Printf("DEBUG: serverURL updated: %s\n", a.serverURL)
 
 		// 发送事件通知前端目录已更改
-		runtime.EventsEmit(a.ctx, "directory-selected", dir)
+		wails_runtime.EventsEmit(a.ctx, "directory-selected", dir)
 		fmt.Printf("DEBUG: directory-selected event emitted: %s\n", dir)
 	} else {
 		a.writeOpenFolderLog("OpenFolder cancelled")
-		runtime.EventsEmit(a.ctx, "output-log", "目录选择已取消")
+		wails_runtime.EventsEmit(a.ctx, "output-log", "目录选择已取消")
 	}
 	return dir, nil
 }
@@ -498,7 +504,7 @@ func (a *App) OpenInFinder(path string) error {
 
 // CopyToClipboard 复制文本到剪贴板
 func (a *App) CopyToClipboard(text string) error {
-	runtime.ClipboardSetText(a.ctx, text)
+	wails_runtime.ClipboardSetText(a.ctx, text)
 	return nil
 }
 
@@ -894,7 +900,7 @@ func (a *App) StartKiroOAuth(provider string) (string, error) {
 	}
 
 	// Open the URL in the system browser
-	runtime.BrowserOpenURL(a.ctx, url)
+	wails_runtime.BrowserOpenURL(a.ctx, url)
 
 	return url, nil
 }
@@ -1431,7 +1437,7 @@ func (a *App) StartRemoteControl(port int) (map[string]interface{}, error) {
 		"active": true,
 		"port":   a.httpServer.GetPort(),
 		"token":  a.httpServer.GetToken(),
-		"url":    fmt.Sprintf("http://localhost:%d", a.httpServer.GetPort()),
+		"url":    fmt.Sprintf("http://127.0.0.1:%d", a.httpServer.GetPort()),
 	}
 
 	fmt.Printf("✓ 远程控制服务器已启动\n")
@@ -1472,7 +1478,7 @@ func (a *App) GetRemoteControlInfo() (map[string]interface{}, error) {
 		"active": true,
 		"port":   a.httpServer.GetPort(),
 		"token":  a.httpServer.GetToken(),
-		"url":    fmt.Sprintf("http://localhost:%d", a.httpServer.GetPort()),
+		"url":    fmt.Sprintf("http://127.0.0.1:%d", a.httpServer.GetPort()),
 	}, nil
 }
 

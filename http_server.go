@@ -639,7 +639,7 @@ func (s *HTTPServer) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	// 创建事件通道
 	connID := generateToken()
-	eventChan := make(chan []byte, 10)
+	eventChan := make(chan []byte, 1000)
 
 	s.mu.Lock()
 	s.sseConns[connID] = eventChan

@@ -78,9 +78,15 @@ onMounted(async () => {
   
   // 监听后端发来的目录选择事件（比如从系统菜单触发的）
   EventsOn('directory-selected', (dir) => {
-    if (dir && dir !== workDir.value) {
-      console.log('收到后端目录选择事件:', dir)
-      handleWorkDirChange(dir)
+    if (dir) {
+      // 规范化路径进行比较
+      const normalizedDir = dir.replace(/[\\/]+$/, '')
+      const currentNormalized = workDir.value.replace(/[\\/]+$/, '')
+      
+      if (normalizedDir !== currentNormalized) {
+        console.log('收到后端目录选择事件:', dir)
+        handleWorkDirChange(dir)
+      }
     }
   })
   

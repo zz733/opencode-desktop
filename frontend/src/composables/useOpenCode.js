@@ -224,6 +224,15 @@ async function ensureModelForCurrentDir() {
     setModel(mapped)
     return true
   }
+  
+  // 如果当前已经选择了模型，就不用强制重置
+  if (currentModel.value) {
+      if (dir) {
+          dirModelMap.value[dir] = currentModel.value
+          saveDirModelMap()
+      }
+      return true
+  }
 
   try {
     const info = await GetProviders()
@@ -616,27 +625,22 @@ async function sendMessage(text, images = []) {
   const currentLocale = i18n.global.locale.value
   const langName = languageNames[currentLocale] || 'English'
   
-  // 获取 MCP 工具提示
-  let mcpToolsPrompt = ''
-  try {
-    mcpToolsPrompt = await GetMCPToolsPrompt()
-  } catch (e) {
-    console.log('获取 MCP 工具提示失败:', e)
-  }
-  
-  // 构建消息，包含当前文件上下文和 MCP 工具
+  // 构建消息，包含当前文件上下文
   let messageToSend = `[Please respond in ${langName}]`
   if (activeFilePath.value) {
     messageToSend += `\n[Current active file: ${activeFilePath.value}]`
   }
-  if (mcpToolsPrompt) {
-    messageToSend += `\n${mcpToolsPrompt}`
-  }
   messageToSend += `\n\n${text}`
   
   try {
+    const startTime = performance.now()
+    log(`[PERF] 1. 前端开始发送请求... session=${session.id}, model=${currentModel.value}`)
     console.log('calling SendMessageWithModel:', session.id, currentModel.value, 'with', images?.length || 0, 'images')
+    
     await SendMessageWithModel(session.id, messageToSend, currentModel.value, images || [])
+    
+    const elapsed = (performance.now() - startTime).toFixed(2)
+    log(`[PERF] 4. 前端收到 SendMessageWithModel 响应，耗时: ${elapsed}ms`)
   } catch (e) {
     console.error('SendMessageWithModel error:', e)
     messages.value[messages.value.length - 1].content = '❌ 发送失败: ' + e
@@ -659,13 +663,38 @@ function setupEventListeners() {
       console.error('解析事件失败:', e, data)
     }
   })
+
+  // 监听后端重新连接成功事件
+  EventsOn('opencode-reconnected', async () => {
+    log('底层服务已重新连接，正在恢复状态...')
+    // 强制重新连接 SSE
+    await checkConnection()
+    if (connected.value) {
+      // 重新订阅事件（会自动取消旧的订阅，更新为最新端口的连接）
+      await SubscribeEvents()
+      // 重新加载会话列表
+      await loadSessions()
+      // 如果当前有会话，重新加载它的消息，因为之前发送的消息可能失败了
+      if (currentSession.value) {
+        await loadHistory(currentSession.value.id)
+      }
+      // 重置发送状态
+      sending.value = false
+    }
+  })
 }
 
 // 记录当前正在处理的消息 ID，避免重复处理
 let currentAssistantMessageId = null
 
+// 全局记录 part 的类型，以便处理 delta
+const partTypeMap = {}
+
 function handleEvent(event) {
-  // console.log('处理事件:', event.type) // 注释掉高频日志
+  // 记录关键事件耗时
+  if (event.type === 'message.part.updated' || event.type === 'session.status' || event.type === 'message.part.delta') {
+    log(`[PERF] 5. 前端收到 SSE 事件: ${event.type}`)
+  }
   
   // 如果已经不在发送状态，忽略后续更新，确保界面立即停止
   if (!sending.value && event.type !== 'session.error' && event.type !== 'error') {
@@ -677,6 +706,12 @@ function handleEvent(event) {
     
     if (!part) {
       return
+    }
+    
+    // 记录 part 类型
+    if (part.id && part.type) {
+      partTypeMap[part.id] = part.type
+      log(`[SSE-DEBUG] 记录 partType, partID: ${part.id}, type: ${part.type}`)
     }
     
     // 检查是否是用户消息的回显（包含语言提示前缀或文件路径前缀）
@@ -700,7 +735,7 @@ function handleEvent(event) {
       const text = part.text || ''
       // 移除开头的换行符
       last.content = text.replace(/^\n+/, '')
-    } else if (part.type === 'reasoning' && part.text) {
+    } else if (part.type === 'reasoning' && part.text !== undefined) {
       last.reasoning = part.text
     } else if (part.type === 'tool') {
       if (!last.tools) last.tools = {}
@@ -714,10 +749,44 @@ function handleEvent(event) {
       last.tools[part.id] = toolInfo
     }
   }
+
+  if (event.type === 'message.part.delta') {
+    const props = event.properties
+    if (!props) return
+    
+    const partType = partTypeMap[props.partID]
+    log(`[SSE-DEBUG] 收到 delta, partID: ${props.partID}, partType: ${partType}, delta: ${props.delta}`)
+    let last = messages.value[messages.value.length - 1]
+    
+    // 如果还没找到 partType，可能它是 text 或者是 reasoning，我们可以尝试默认处理
+    if (last && last.role === 'assistant') {
+      if (partType === 'text' && props.field === 'text') {
+        last.content = (last.content || '') + props.delta
+      } else if (partType === 'reasoning' && props.field === 'text') {
+        last.reasoning = (last.reasoning || '') + props.delta
+      } else if (!partType && props.field === 'text') {
+        // Fallback 如果还没有收到 updated
+        last.content = (last.content || '') + props.delta
+      }
+    }
+  }
   
   if (event.type === 'message.updated') {
     const info = event.properties?.info
-    // 不在这里停止 sending，等待 session.status === 'idle'
+    // 增加：当 message.updated 并且带有完整的文本内容时，我们用它作为最后的兜底，防止 delta 丢失
+    if (info && info.parts && Array.isArray(info.parts)) {
+      let last = messages.value[messages.value.length - 1]
+      if (last && last.role === 'assistant' && !last.content) {
+         // 如果此时 content 还是空的，尝试从 updated 里恢复
+         for (const part of info.parts) {
+            if (part.type === 'text' && part.text) {
+               last.content = part.text
+            } else if (part.type === 'reasoning' && part.text) {
+               last.reasoning = part.text
+            }
+         }
+      }
+    }
   }
   
   if (event.type === 'session.status') {
@@ -823,6 +892,7 @@ function handleEvent(event) {
 
 // 设置模型并保存到 localStorage
 function setModel(modelId) {
+  if (!modelId) return
   currentModel.value = modelId
   localStorage.setItem('selectedModel', modelId)
   const dir = normalizeDir(currentWorkDir.value)
@@ -830,6 +900,7 @@ function setModel(modelId) {
     dirModelMap.value[dir] = modelId
     saveDirModelMap()
   }
+  log(`模型已切换为: ${modelId}`)
 }
 
 // 取消当前请求

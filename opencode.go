@@ -83,6 +83,7 @@ func (m *OpenCodeManager) getAvailablePort(preferred int) int {
 			// 不是我们当前管理的实例占用的（可能是僵尸进程），清理掉并复用
 			// 只有在真正清理了进程后，才重新检查端口
 			if m.cleanupPortProcesses(p) {
+				time.Sleep(200 * time.Millisecond) // 清理后稍微等待一下
 				if check(p) {
 					return p
 				}
@@ -91,6 +92,7 @@ func (m *OpenCodeManager) getAvailablePort(preferred int) int {
 			// 如果是我们自己记录的实例，但端口仍然被占用，说明实例可能已经崩溃但没清理
 			// 这种情况下也尝试清理并复用
 			if m.cleanupPortProcesses(p) {
+				time.Sleep(200 * time.Millisecond) // 清理后稍微等待一下
 				if check(p) {
 					return p
 				}
@@ -108,7 +110,7 @@ func (m *OpenCodeManager) SetWorkDir(dir string) {
 	if inst, ok := m.instances[dir]; ok && inst.port > 0 {
 		port = inst.port
 	}
-	m.app.serverURL = fmt.Sprintf("http://localhost:%d", port)
+	m.app.serverURL = fmt.Sprintf("http://127.0.0.1:%d", port)
 }
 
 func (m *OpenCodeManager) GetWorkDir() string {
@@ -176,7 +178,7 @@ func (m *OpenCodeManager) CheckConnectionForPort(port int) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	healthURL := fmt.Sprintf("http://localhost:%d/global/health", port)
+	healthURL := fmt.Sprintf("http://127.0.0.1:%d/global/health", port)
 	req, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
 	if err != nil {
 		return false
@@ -200,9 +202,12 @@ func (m *OpenCodeManager) CheckConnectionForPort(port int) bool {
 	} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 		// 如果第一个请求超时，说明该端口响应迟缓（可能是其他服务），直接返回 false
 		return false
+	} else if err != nil {
+		// 如果是 Connection Refused 之类的错误，说明端口没有被监听
+		return false
 	}
 
-	eventURL := fmt.Sprintf("http://localhost:%d/event", port)
+	eventURL := fmt.Sprintf("http://127.0.0.1:%d/event", port)
 	reqEvent, _ := http.NewRequestWithContext(ctx, "GET", eventURL, nil)
 	if resp, err := m.app.apiClient.Do(reqEvent); err == nil {
 		defer resp.Body.Close()
@@ -212,14 +217,13 @@ func (m *OpenCodeManager) CheckConnectionForPort(port int) bool {
 		return false
 	}
 
-	sessionURL := fmt.Sprintf("http://localhost:%d/session", port)
+	sessionURL := fmt.Sprintf("http://127.0.0.1:%d/session", port)
 	reqSession, _ := http.NewRequestWithContext(ctx, "GET", sessionURL, nil)
-	resp, err := m.app.apiClient.Do(reqSession)
-	if err != nil {
-		return false
+	if resp, err := m.app.apiClient.Do(reqSession); err == nil {
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
 	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	return false
 }
 
 func (m *OpenCodeManager) CheckConnection() bool {
@@ -291,10 +295,20 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 	m.mu.Lock()
 	if inst, ok := m.instances[dir]; ok && inst.running {
 		m.mu.Unlock()
-		wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("目录 %s 已在运行 (内部记录复用，端口 %d)", dir, port))
-		return nil
+
+		// 即使记录显示正在运行，也要去检查一下端口是否真的还活着
+		if m.CheckConnectionForPort(port) {
+			wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("目录 %s 已在运行 (内部记录复用，端口 %d)", dir, port))
+			return nil
+		}
+		// 如果端口已经不通了，说明进程已经意外退出了，需要清理记录并重新启动
+		wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("目录 %s 的内部记录虽然是运行中，但端口 %d 无法连接，准备重启", dir, port))
+		m.mu.Lock()
+		delete(m.instances, dir)
+		m.mu.Unlock()
+	} else {
+		m.mu.Unlock()
 	}
-	m.mu.Unlock()
 
 	// 2. 检查系统真实进程状态：如果指定端口已经被 OpenCode 进程占用，并且是正确的目录，也应该复用而不是杀掉重建
 	// 如果检查端口连接成功，说明端口被占用
@@ -312,7 +326,7 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 				running: true,
 			}
 			if m.currentDir == dir {
-				m.app.serverURL = fmt.Sprintf("http://localhost:%d", port)
+				m.app.serverURL = fmt.Sprintf("http://127.0.0.1:%d", port)
 			}
 			m.mu.Unlock()
 
@@ -351,7 +365,7 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 	m.mu.Lock()
 	m.instances[dir] = inst
 	if m.currentDir == dir {
-		m.app.serverURL = fmt.Sprintf("http://localhost:%d", port)
+		m.app.serverURL = fmt.Sprintf("http://127.0.0.1:%d", port)
 	}
 	m.mu.Unlock()
 
@@ -384,12 +398,44 @@ func (m *OpenCodeManager) readOutput(r io.Reader) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		if line := scanner.Text(); line != "" {
-			// 过滤掉包含 "INFO" 的日志，减少日志量，只保留错误或关键日志
-			if !strings.Contains(line, "INFO") && !strings.Contains(line, "service=bus") && !strings.Contains(line, "service=server") {
+			// 更加严格的日志过滤
+			// 1. 移除 ANSI 转义字符以便进行内容判断
+			cleanLine := m.stripAnsi(line)
+
+			// 2. 过滤掉 INFO 日志、业务总线日志、服务器访问日志以及健康检查日志
+			lowerLine := strings.ToLower(cleanLine)
+			isInfo := strings.Contains(lowerLine, "info")
+			isBus := strings.Contains(lowerLine, "service=bus")
+			isServer := strings.Contains(lowerLine, "service=server")
+			isHealth := strings.Contains(lowerLine, "/global/health")
+
+			if !isInfo && !isBus && !isServer && !isHealth {
 				wailsRuntime.EventsEmit(m.app.ctx, "output-log", line)
 			}
 		}
 	}
+}
+
+// stripAnsi 移除字符串中的 ANSI 转义序列
+func (m *OpenCodeManager) stripAnsi(str string) string {
+	// 简单的正则匹配 ANSI 转义序列
+	// 这里使用一个基础的实现，处理常见的颜色代码等
+	var b strings.Builder
+	inSeq := false
+	for i := 0; i < len(str); i++ {
+		if str[i] == '\x1b' {
+			inSeq = true
+			continue
+		}
+		if inSeq {
+			if (str[i] >= 'a' && str[i] <= 'z') || (str[i] >= 'A' && str[i] <= 'Z') {
+				inSeq = false
+			}
+			continue
+		}
+		b.WriteByte(str[i])
+	}
+	return b.String()
 }
 
 func (m *OpenCodeManager) waitForReadyOnPort(port int) {
@@ -403,6 +449,9 @@ func (m *OpenCodeManager) waitForReadyOnPort(port int) {
 		if m.CheckConnectionForPort(port) {
 			wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("服务就绪 (端口 %d)", port))
 			wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "connected")
+
+			// 一旦就绪，触发事件让前端重新订阅 SSE 和刷新会话
+			wailsRuntime.EventsEmit(m.app.ctx, "opencode-reconnected")
 			return
 		}
 	}

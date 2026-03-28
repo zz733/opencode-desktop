@@ -83,6 +83,9 @@ func (a *App) CreateSession() (*Session, error) {
 
 // SendMessage 发送消息（异步，不等待响应）
 func (a *App) SendMessage(sessionID, content string) error {
+	startTime := time.Now()
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("[PERF] 2. 后端接收到前端发送请求 (SendMessage): %v", startTime.Format("15:04:05.000")))
+
 	payload := map[string]interface{}{
 		"parts": []map[string]interface{}{
 			{"type": "text", "text": content},
@@ -98,11 +101,17 @@ func (a *App) SendMessage(sessionID, content string) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("[PERF] 2.1 准备发起 HTTP POST 到底层 opencode 耗时: %v", time.Since(startTime)))
+
+	reqStartTime := time.Now()
 	resp, err := a.apiClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("发送失败: %v", err)
 	}
 	defer resp.Body.Close()
+
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("[PERF] 3. 底层 HTTP 请求 prompt_async 返回，耗时: %v, 状态码: %d", time.Since(reqStartTime), resp.StatusCode))
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("[PERF] 3.1 后端总耗时 (包括 JSON 序列化等): %v", time.Since(startTime)))
 
 	if resp.StatusCode != 204 && resp.StatusCode != 200 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -172,6 +181,9 @@ func (a *App) SaveImageToWorkDir(img ImageData) (string, error) {
 
 // SendMessageWithModel 发送消息并指定模型（支持图片）
 func (a *App) SendMessageWithModel(sessionID, content, model string, images []ImageData) error {
+	startTime := time.Now()
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("[PERF] 2. 后端接收到前端发送请求: %v", startTime.Format("15:04:05.000")))
+
 	// 构建消息内容
 	messageText := content
 
@@ -212,27 +224,48 @@ func (a *App) SendMessageWithModel(sessionID, content, model string, images []Im
 				"providerID": modelParts[0],
 				"modelID":    modelParts[1],
 			}
+		} else {
+			payload["model"] = map[string]string{
+				"providerID": "",
+				"modelID":    model,
+			}
 		}
 	}
 	body, _ := json.Marshal(payload)
 
 	url := fmt.Sprintf("%s/session/%s/prompt_async", a.serverURL, sessionID)
+
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("准备发送请求到 %s, payload: %s", url, string(body)))
+
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("创建请求失败: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := a.apiClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("发送失败: %v", err)
-	}
-	defer resp.Body.Close()
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("[PERF] 2.1 准备发起 HTTP POST 到底层 opencode 耗时: %v", time.Since(startTime)))
 
-	if resp.StatusCode != 204 && resp.StatusCode != 200 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("请求失败 %d: %s", resp.StatusCode, string(bodyBytes))
-	}
+	// 异步发起请求，不阻塞前端，同时延长 Client 的超时时间确保请求能正常投递
+	go func() {
+		client := &http.Client{Timeout: 60 * time.Second}
+		reqStartTime := time.Now()
+		resp, err := client.Do(req)
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("发送失败: %v", err))
+			return
+		}
+		defer resp.Body.Close()
+
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("[PERF] 3. 底层 HTTP 请求 prompt_async 返回，耗时: %v, 状态码: %d", time.Since(reqStartTime), resp.StatusCode))
+
+		if resp.StatusCode != 204 && resp.StatusCode != 200 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("请求失败 %d: %s", resp.StatusCode, string(bodyBytes)))
+		}
+	}()
+
+	runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("[PERF] 3.1 后端 SendMessageWithModel 立即返回，总耗时: %v", time.Since(startTime)))
+
 	return nil
 }
 
@@ -274,7 +307,8 @@ func (a *App) SetActiveFile(sessionID, filePath string) error {
 	}
 	body, _ := json.Marshal(payload)
 
-	url := fmt.Sprintf("%s/session/%s/prompt", a.serverURL, sessionID)
+	// 注入上下文可以继续用同步接口或者也改用异步
+	url := fmt.Sprintf("%s/session/%s/prompt_async", a.serverURL, sessionID)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("创建请求失败: %v", err)
@@ -497,7 +531,33 @@ func (a *App) SubscribeEvents() error {
 				if strings.TrimSpace(line) == "" {
 					if dataBuffer.Len() > 0 {
 						data := dataBuffer.String()
-						runtime.EventsEmit(a.ctx, "server-event", data)
+
+						// 提取事件类型进行日志记录，不打印内容
+						var eventType string
+						if strings.Contains(data, "\"type\":\"") {
+							start := strings.Index(data, "\"type\":\"") + 8
+							end := strings.Index(data[start:], "\"")
+							if end != -1 {
+								eventType = data[start : start+end]
+							}
+						}
+
+						// 记录所有收到的事件类型，用于诊断 22s 延迟
+						if eventType != "" {
+							runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("[SSE-DEBUG] 收到事件类型: %s (%s)", eventType, time.Now().Format("15:04:05.000")))
+						}
+
+						// 过滤高频且前端不需要的事件，提升性能
+						// 目前前端 handleEvent 处理: message.part.updated, message.part.delta, message.updated, session.status, session.error, error
+						// 不要过滤掉 message.updated，因为我们在前端加了基于 message.updated 的兜底容错
+						if !strings.Contains(data, "\"type\":\"session.updated\"") &&
+							!strings.Contains(data, "\"type\":\"session.diff\"") {
+							// 加入耗时打点
+							if strings.Contains(data, "message.part.updated") || strings.Contains(data, "session.status") {
+								// runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("[PERF] 4.5 后端 SSE 解析到关键事件并转发给前端: %s", time.Now().Format("15:04:05.000")))
+							}
+							runtime.EventsEmit(a.ctx, "server-event", data)
+						}
 						dataBuffer.Reset()
 					}
 					continue
@@ -506,11 +566,18 @@ func (a *App) SubscribeEvents() error {
 				// 2. data 行累积数据
 				if strings.HasPrefix(line, "data:") {
 					data := strings.TrimPrefix(line, "data:")
+					// 根据规范，data: 后面可能有一个可选的空格
+					data = strings.TrimPrefix(data, " ")
 					// 如果有多行 data，用换行符连接
 					if dataBuffer.Len() > 0 {
 						dataBuffer.WriteString("\n")
 					}
-					dataBuffer.WriteString(strings.TrimSpace(data))
+					// 注意：这里不要用 TrimSpace，因为这会去掉末尾和开头的换行或空格，
+					// 如果是增量内容，可能会丢失空格，导致拼接后的 JSON 格式错误或内容丢失。
+					// 只需要去掉末尾的 \n 即可
+					data = strings.TrimSuffix(data, "\n")
+					data = strings.TrimSuffix(data, "\r")
+					dataBuffer.WriteString(data)
 				}
 			}
 
