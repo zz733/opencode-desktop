@@ -517,6 +517,7 @@ watch(() => fileEdits.value.length, () => {
 .messages {
   flex: 1;
   overflow-y: auto;
+  padding-bottom: 24px; /* 添加底部内边距，确保最后一行不被遮挡 */
 }
 
 .empty-state {

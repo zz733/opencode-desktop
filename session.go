@@ -353,8 +353,10 @@ func (a *App) GetSessionMessages(sessionID string) ([]Message, error) {
 		var content string
 		for _, part := range ocMsg.Parts {
 			if part.Type == "text" && part.Text != "" {
-				content = part.Text
-				break
+				if content != "" {
+					content += "\n\n"
+				}
+				content += part.Text
 			}
 		}
 

@@ -593,7 +593,7 @@ async function sendMessage(text, images = []) {
     userMessage.images = images
   }
   messages.value.push(userMessage)
-  messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {} })
+  messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {}, textParts: {}, reasoningParts: {}, partsOrder: [] })
   
   // 设置超时检测（30秒无响应则提示）
   let responseReceived = false
@@ -696,9 +696,9 @@ function handleEvent(event) {
     log(`[PERF] 5. 前端收到 SSE 事件: ${event.type}`)
   }
   
-  // 如果已经不在发送状态，忽略后续更新，确保界面立即停止
-  // 允许 message.updated 通过，以便最终兜底逻辑能修复可能的截断
-  if (!sending.value && event.type !== 'session.error' && event.type !== 'error' && event.type !== 'message.updated') {
+  // 如果已经不在发送状态，忽略部分更新，确保界面状态稳定
+  // 允许关键事件通过，以便最终兜底逻辑能修复可能的截断，接收完整的 message.part.updated 和 message.part.delta
+  if (!sending.value && !['session.error', 'error', 'message.updated', 'message.part.updated', 'message.part.delta'].includes(event.type)) {
     return
   }
 
@@ -728,16 +728,56 @@ function handleEvent(event) {
     
     // 如果最后一条不是 assistant 消息，或者消息 ID 不匹配，可能需要创建新消息
     if (!last || last.role !== 'assistant') {
-      messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {} })
+      messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {}, textParts: {}, reasoningParts: {}, partsOrder: [] })
       last = messages.value[messages.value.length - 1]
     }
     
+    if (!last.textParts) last.textParts = {}
+    if (!last.reasoningParts) last.reasoningParts = {}
+    if (!last.partsOrder) last.partsOrder = []
+    
+    if (!last.partsOrder.includes(part.id)) {
+      last.partsOrder.push(part.id)
+    }
+    
     if (part.type === 'text' && part.text !== undefined) {
-      const text = part.text || ''
-      // 移除开头的换行符
-      last.content = text.replace(/^\n+/, '')
+      const currentText = last.textParts[part.id] || ''
+      const newText = part.text || ''
+      // 只有当传来的 text 更长时才覆盖，避免旧的 updated 事件快照覆盖了最新的 delta 累加结果
+      if (newText.length >= currentText.length || currentText === '') {
+        last.textParts[part.id] = newText
+      }
+      
+      if (last.reasoningParts && last.reasoningParts[part.id] !== undefined) {
+        delete last.reasoningParts[part.id]
+      }
+      // 按顺序重建 content
+      last.content = last.partsOrder
+        .filter(id => last.textParts[id] !== undefined)
+        .map(id => last.textParts[id])
+        .join('\n\n')
+        .replace(/^\n+/, '')
     } else if (part.type === 'reasoning' && part.text !== undefined) {
-      last.reasoning = part.text
+      const currentText = last.reasoningParts[part.id] || ''
+      const newText = part.text || ''
+      if (newText.length >= currentText.length || currentText === '') {
+        last.reasoningParts[part.id] = newText
+      }
+      
+      if (last.textParts && last.textParts[part.id] !== undefined) {
+        delete last.textParts[part.id]
+        // 重建 content
+        last.content = last.partsOrder
+          .filter(id => last.textParts[id] !== undefined)
+          .map(id => last.textParts[id])
+          .join('\n\n')
+          .replace(/^\n+/, '')
+      }
+      // 按顺序重建 reasoning
+      last.reasoning = last.partsOrder
+        .filter(id => last.reasoningParts[id] !== undefined)
+        .map(id => last.reasoningParts[id])
+        .join('\n\n')
     } else if (part.type === 'tool') {
       if (!last.tools) last.tools = {}
       const toolInfo = {
@@ -761,38 +801,43 @@ function handleEvent(event) {
     
     // 如果还没找到 partType，可能它是 text 或者是 reasoning，我们可以尝试默认处理
     if (last && last.role === 'assistant') {
+      if (!last.textParts) last.textParts = {}
+      if (!last.reasoningParts) last.reasoningParts = {}
+      if (!last.partsOrder) last.partsOrder = []
+      
+      if (!last.partsOrder.includes(props.partID)) {
+        last.partsOrder.push(props.partID)
+      }
+      
       if (partType === 'text' && props.field === 'text') {
-        last.content = (last.content || '') + props.delta
+        last.textParts[props.partID] = (last.textParts[props.partID] || '') + props.delta
+        last.content = last.partsOrder
+          .filter(id => last.textParts[id] !== undefined)
+          .map(id => last.textParts[id])
+          .join('\n\n')
+          .replace(/^\n+/, '')
       } else if (partType === 'reasoning' && props.field === 'text') {
-        last.reasoning = (last.reasoning || '') + props.delta
+        last.reasoningParts[props.partID] = (last.reasoningParts[props.partID] || '') + props.delta
+        last.reasoning = last.partsOrder
+          .filter(id => last.reasoningParts[id] !== undefined)
+          .map(id => last.reasoningParts[id])
+          .join('\n\n')
       } else if (!partType && props.field === 'text') {
         // Fallback 如果还没有收到 updated
-        last.content = (last.content || '') + props.delta
+        last.textParts[props.partID] = (last.textParts[props.partID] || '') + props.delta
+        last.content = last.partsOrder
+          .filter(id => last.textParts[id] !== undefined)
+          .map(id => last.textParts[id])
+          .join('\n\n')
+          .replace(/^\n+/, '')
       }
     }
   }
   
   if (event.type === 'message.updated') {
-    const info = event.properties?.info
-    // 增加：当 message.updated 并且带有完整的文本内容时，我们用它作为最后的兜底，防止 delta 丢失
-    if (info && info.parts && Array.isArray(info.parts)) {
-      let last = messages.value[messages.value.length - 1]
-      if (last && last.role === 'assistant') {
-         // 即使 content 已经有部分内容，只要 updated 里包含更完整的内容，就替换它，解决截断问题
-         for (const part of info.parts) {
-            if (part.type === 'text' && part.text) {
-               // 如果没有内容，或者新内容比当前内容长，则覆盖
-               if (!last.content || part.text.length > last.content.length) {
-                   last.content = part.text
-               }
-            } else if (part.type === 'reasoning' && part.text) {
-               if (!last.reasoning || part.text.length > last.reasoning.length) {
-                   last.reasoning = part.text
-               }
-            }
-         }
-      }
-    }
+    // message.updated 事件中的 info 并不包含 parts，
+    // 真正的完整内容会在 message.part.updated 中到达。
+    // 因此这里不需要处理 content 的兜底。
   }
   
   if (event.type === 'session.status') {

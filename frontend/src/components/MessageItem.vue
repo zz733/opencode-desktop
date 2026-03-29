@@ -49,11 +49,12 @@ watch(() => filteredContent.value, (newVal) => {
   const now = Date.now()
   const timeSinceLastRender = now - lastRenderTime
   
+  // 始终更新要在 timeout 中执行的内容为最新值
   const doRender = () => {
     try {
-      renderedContent.value = marked(newVal)
+      renderedContent.value = marked(filteredContent.value)
     } catch (e) {
-      renderedContent.value = newVal
+      renderedContent.value = filteredContent.value
     }
     lastRenderTime = Date.now()
     renderTimeout = null
@@ -61,13 +62,17 @@ watch(() => filteredContent.value, (newVal) => {
   
   if (timeSinceLastRender > 250) {
     // 距离上次渲染超过 250ms，立即渲染
-    doRender()
     if (renderTimeout) {
       clearTimeout(renderTimeout)
+      renderTimeout = null
     }
-  } else if (!renderTimeout) {
+    doRender()
+  } else {
     // 否则延迟渲染，确保最后一次更新一定会被执行
-    renderTimeout = setTimeout(doRender, 250)
+    // 如果已经有 timeout，保持原 timeout，当它触发时会读取到最新的 filteredContent.value
+    if (!renderTimeout) {
+      renderTimeout = setTimeout(doRender, 250 - timeSinceLastRender)
+    }
   }
 }, { immediate: true })
 
