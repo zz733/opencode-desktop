@@ -128,7 +128,7 @@ async function fetchModels() {
         fetchedModels.push({
           id: m.id,
           name: m.name,
-          free: false,
+          free: m.free || false,
           builtin: false,
           provider: m.provider,
           category: normalizeProviderLabel(m.provider, m.provider)
@@ -145,7 +145,7 @@ async function fetchModels() {
           const newModel = {
             id: cm.id,
             name: cm.name,
-            free: false,
+            free: cm.free || false,
             builtin: false,
             provider: cm.provider || (cm.id && cm.id.includes('/') ? cm.id.split('/')[0] : ''),
             category: normalizeProviderLabel(cm.provider, cm.provider)
@@ -172,7 +172,7 @@ async function fetchModels() {
         return {
           id: cm.id,
           name: cm.name,
-          free: false,
+          free: cm.free || false,
           builtin: false,
           provider: cm.provider,
           category: normalizeProviderLabel(cm.provider, cm.provider)

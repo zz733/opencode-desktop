@@ -265,6 +265,27 @@ type = "%s"
 		tomlContent += fmt.Sprintf("%s = \"%s\"\n", k, v)
 	}
 
+	// 尝试读取额外的全局配置（如 [speech], [tts] 等），如果存在则追加
+	extPath := filepath.Join(homeDir, ".config", "opencode", "cc_connect_ext.toml")
+	if extData, err := os.ReadFile(extPath); err == nil {
+		tomlContent += "\n\n" + string(extData)
+	} else {
+		// 如果不存在，生成一个模板文件，方便用户后续修改
+		defaultExt := `# 在此配置 cc-connect 的额外全局选项，例如语音消息 [speech] 或语音回复 [tts]
+# 保存此文件后，在 OpenCode 桌面端重新开启机器人即可生效。
+# 
+# [speech]
+# enabled = true
+# provider = "openai"    # 支持 openai, groq, qwen
+# 
+# [speech.openai]
+# api_key = "sk-xxx"
+# base_url = "https://api.openai.com/v1"
+# model = "whisper-1"
+`
+		_ = os.WriteFile(extPath, []byte(defaultExt), 0644)
+	}
+
 	if err := os.WriteFile(tomlPath, []byte(tomlContent), 0644); err != nil {
 		return "", err
 	}

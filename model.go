@@ -88,9 +88,20 @@ func (a *App) GetAllModels() ([]ConfigModel, error) {
 		for modelID, modelData := range provider.Models {
 			// 获取模型名称
 			modelName := modelID
+			isFree := false
+
 			if modelMap, ok := modelData.(map[string]interface{}); ok {
 				if name, ok := modelMap["name"].(string); ok && name != "" {
 					modelName = name
+				}
+
+				// 判断是否免费
+				if costObj, ok := modelMap["cost"].(map[string]interface{}); ok {
+					inputCost, _ := costObj["input"].(float64)
+					outputCost, _ := costObj["output"].(float64)
+					if inputCost == 0 && outputCost == 0 {
+						isFree = true
+					}
 				}
 			}
 
@@ -98,6 +109,7 @@ func (a *App) GetAllModels() ([]ConfigModel, error) {
 				ID:       fmt.Sprintf("%s/%s", provider.ID, modelID),
 				Name:     modelName,
 				Provider: provider.ID,
+				Free:     isFree,
 			})
 		}
 	}
@@ -232,6 +244,7 @@ type ConfigModel struct {
 	Provider   string `json:"provider"`
 	ContextLen int    `json:"contextLen,omitempty"`
 	OutputLen  int    `json:"outputLen,omitempty"`
+	Free       bool   `json:"free,omitempty"`
 }
 
 // GetConfigModels 从 opencode.json 配置文件读取模型列表
