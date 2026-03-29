@@ -190,6 +190,69 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class CCConnectPlatformConfig {
+	    platform: string;
+	    enabled: boolean;
+	    config: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new CCConnectPlatformConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.platform = source["platform"];
+	        this.enabled = source["enabled"];
+	        this.config = source["config"];
+	    }
+	}
+	export class CCConnectConfig {
+	    platforms: Record<string, CCConnectPlatformConfig>;
+	    selectedModel?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CCConnectConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.platforms = this.convertValues(source["platforms"], CCConnectPlatformConfig, true);
+	        this.selectedModel = source["selectedModel"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class CCConnectStatus {
+	    installed: boolean;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CCConnectStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.version = source["version"];
+	    }
+	}
 	export class ConfigInfo {
 	    model: string;
 	

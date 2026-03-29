@@ -13,7 +13,9 @@ import {
   GetAntigravityAuthStatus, InstallAntigravityAuth, UninstallAntigravityAuth, UpdateAntigravityAuth,
   GetUIUXProMaxStatus, InstallUIUXProMax, UninstallUIUXProMax, UpdateUIUXProMax,
   RestartOpenCode,
-  GetRemoteControlInfo
+  GetRemoteControlInfo,
+  LoadCCConnectConfig, SaveCCConnectConfig, StartCCConnectBot, StopCCConnectBot,
+  GetCCConnectStatus, InstallCCConnect, UninstallCCConnect
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL, EventsOn } from '../../wailsjs/runtime/runtime'
 
@@ -146,12 +148,131 @@ const allModels = computed(() => [...dynamicModels.value, ...customModels.value]
 const ohMyOpenCodeStatus = ref({ installed: false, version: '' })
 const antigravityAuthStatus = ref({ installed: false, version: '' })
 const uiuxProMaxStatus = ref({ installed: false, version: '' })
+const ccConnectStatus = ref({ installed: false, version: '' })
 const pluginLoading = ref(false)
 const pluginLoadingName = ref('')
 
 // ========== 远程控制 ==========
 const remoteControlInfo = ref({ active: false, port: 0, token: '', url: '' })
 const remoteControlLoading = ref(false)
+
+// ========== 多端连接 (CC-Connect) ==========
+const ccConnectConfig = ref({ platforms: {} })
+const supportedPlatforms = [
+  { 
+    id: 'dingtalk', name: '钉钉', icon: '🔔',
+    fields: [
+      { key: 'client_id', label: 'Client ID', type: 'text', placeholder: '输入钉钉应用的 Client ID' },
+      { key: 'client_secret', label: 'Client Secret', type: 'password', placeholder: '输入钉钉应用的 Client Secret' }
+    ]
+  },
+  { 
+    id: 'feishu', name: '飞书', icon: '✈️',
+    fields: [
+      { key: 'app_id', label: 'App ID', type: 'text', placeholder: '输入飞书应用的 App ID' },
+      { key: 'app_secret', label: 'App Secret', type: 'password', placeholder: '输入飞书应用的 App Secret' },
+      { key: 'encrypt_key', label: 'Encrypt Key', type: 'password', placeholder: '输入飞书应用的 Encrypt Key (可选)' },
+      { key: 'verification_token', label: 'Verification Token', type: 'password', placeholder: '输入飞书应用的 Verification Token (可选)' }
+    ]
+  },
+  { 
+    id: 'wxwork', name: '企业微信', icon: '💼',
+    fields: [
+      { key: 'corp_id', label: 'Corp ID', type: 'text', placeholder: '输入企业微信的 Corp ID' },
+      { key: 'corp_secret', label: 'Corp Secret', type: 'password', placeholder: '输入企业微信的 Corp Secret' },
+      { key: 'agent_id', label: 'Agent ID', type: 'text', placeholder: '输入企业微信的 Agent ID' },
+      { key: 'token', label: 'Token', type: 'password', placeholder: '输入接收消息的 Token' },
+      { key: 'encoding_aes_key', label: 'EncodingAESKey', type: 'password', placeholder: '输入接收消息的 EncodingAESKey' }
+    ]
+  },
+  { 
+    id: 'qq', name: 'QQ', icon: '🐧',
+    fields: [
+      { key: 'app_id', label: 'App ID', type: 'text', placeholder: '输入 QQ 机器人的 App ID' },
+      { key: 'token', label: 'Token', type: 'password', placeholder: '输入 QQ 机器人的 Token' },
+      { key: 'secret', label: 'Secret', type: 'password', placeholder: '输入 QQ 机器人的 Secret' }
+    ]
+  },
+  { 
+    id: 'wechat', name: '微信', icon: '💬',
+    fields: [
+      { key: 'description', label: '说明', type: 'info', value: '微信通常基于 Web 协议或 UOS 协议，可能只需要扫码登录，暂无需额外配置 API 凭证。' }
+    ]
+  }
+]
+
+const expandedPlatform = ref(null)
+
+function togglePlatformConfig(platformId) {
+  if (expandedPlatform.value === platformId) {
+    expandedPlatform.value = null
+  } else {
+    expandedPlatform.value = platformId
+    // 确保有配置对象
+    if (!ccConnectConfig.value.platforms) {
+      ccConnectConfig.value.platforms = {}
+    }
+    if (!ccConnectConfig.value.platforms[platformId]) {
+      ccConnectConfig.value.platforms[platformId] = {
+        platform: platformId,
+        enabled: false,
+        config: {}
+      }
+    } else if (!ccConnectConfig.value.platforms[platformId].config) {
+      ccConnectConfig.value.platforms[platformId].config = {}
+    }
+  }
+}
+
+async function loadCCConnectConfig() {
+  try {
+    const cfg = await LoadCCConnectConfig()
+    if (cfg && cfg.platforms) {
+      ccConnectConfig.value = cfg
+    } else {
+      ccConnectConfig.value = { platforms: {} }
+    }
+  } catch (e) {
+    console.error('获取多端连接配置失败:', e)
+  }
+}
+
+async function saveCCConnectConfig() {
+  try {
+    await SaveCCConnectConfig(ccConnectConfig.value)
+    console.log('保存成功')
+  } catch (e) {
+    console.error('保存多端连接配置失败:', e)
+  }
+}
+
+async function toggleCCConnectPlatform(platformId) {
+  if (!ccConnectConfig.value.platforms[platformId]) {
+    ccConnectConfig.value.platforms[platformId] = {
+      platform: platformId,
+      enabled: false,
+      config: {}
+    }
+  }
+  
+  const pConfig = ccConnectConfig.value.platforms[platformId]
+  pConfig.enabled = !pConfig.enabled
+  
+  await saveCCConnectConfig()
+  
+  if (pConfig.enabled) {
+    await StartCCConnectBot(platformId)
+  } else {
+    await StopCCConnectBot(platformId)
+  }
+}
+
+async function restartCCConnectPlatform(platformId) {
+  await StopCCConnectBot(platformId)
+  // brief delay
+  await new Promise(resolve => setTimeout(resolve, 500))
+  await StartCCConnectBot(platformId)
+}
 
 async function loadRemoteControlInfo() {
   try {
@@ -167,8 +288,37 @@ async function loadPluginStatus() {
     ohMyOpenCodeStatus.value = await GetOhMyOpenCodeStatus() || { installed: false, version: '' }
     antigravityAuthStatus.value = await GetAntigravityAuthStatus() || { installed: false, version: '' }
     uiuxProMaxStatus.value = await GetUIUXProMaxStatus() || { installed: false, version: '' }
+    ccConnectStatus.value = await GetCCConnectStatus() || { installed: false, version: '' }
   } catch (e) {
     console.error('获取插件状态失败:', e)
+  }
+}
+
+async function installCCConnect() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'cc-connect'
+  try {
+    await InstallCCConnect()
+    await loadPluginStatus()
+  } catch (e) {
+    console.error('安装失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
+  }
+}
+
+async function uninstallCCConnect() {
+  pluginLoading.value = true
+  pluginLoadingName.value = 'cc-connect'
+  try {
+    await UninstallCCConnect()
+    await loadPluginStatus()
+  } catch (e) {
+    console.error('卸载失败:', e)
+  } finally {
+    pluginLoading.value = false
+    pluginLoadingName.value = ''
   }
 }
 
@@ -516,6 +666,7 @@ onMounted(() => {
   loadMCPConfig()
   loadPluginStatus()
   loadRemoteControlInfo()
+  loadCCConnectConfig()
   statusInterval = setInterval(() => {
     refreshStatus()
     loadRemoteControlInfo()
@@ -752,6 +903,7 @@ function copyToClipboard(text) {
       
       <!-- 远程控制 -->
       <div v-if="activeCategory === 'remote'" class="settings-section remote-section">
+        <!-- OpenCode Mobile 远程控制 -->
         <div class="remote-card">
           <div class="remote-header">
             <div class="remote-icon">📱</div>
@@ -805,6 +957,82 @@ function copyToClipboard(text) {
           </div>
         </div>
         
+        <!-- CC-Connect 多端连接 -->
+        <div class="remote-card mt-4">
+          <div class="remote-header">
+            <div class="remote-icon">🌐</div>
+            <div class="remote-info" style="flex: 1;">
+              <div class="remote-title">多端连接 (CC-Connect)</div>
+              <div class="remote-desc">连接微信、钉钉、飞书等平台，随时随地与 AI 助手对话</div>
+            </div>
+            <div class="remote-actions">
+              <button v-if="!ccConnectStatus.installed" class="btn btn-primary btn-sm" @click="installCCConnect" :disabled="pluginLoading">
+                <span v-if="pluginLoading && pluginLoadingName === 'cc-connect'" class="loading-spinner-small"></span>
+                安装插件
+              </button>
+              <button v-else class="btn btn-danger btn-sm" @click="uninstallCCConnect" :disabled="pluginLoading">
+                <span v-if="pluginLoading && pluginLoadingName === 'cc-connect'" class="loading-spinner-small"></span>
+                卸载插件
+              </button>
+            </div>
+          </div>
+          <div class="remote-body" v-if="ccConnectStatus.installed">
+            <div class="cc-platforms-list">
+              <div v-for="p in supportedPlatforms" :key="p.id" class="cc-platform-wrapper">
+                <div class="cc-platform-item" @click="togglePlatformConfig(p.id)">
+                  <div class="cc-platform-info">
+                    <span class="cc-platform-icon">{{ p.icon }}</span>
+                    <span class="cc-platform-name">{{ p.name }}</span>
+                  </div>
+                  <div class="cc-platform-actions" @click.stop>
+                    <button class="btn-icon" @click="togglePlatformConfig(p.id)" :title="expandedPlatform === p.id ? '收起配置' : '展开配置'">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :style="{ transform: expandedPlatform === p.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }">
+                        <path d="M6 9l6 6 6-6"/>
+                      </svg>
+                    </button>
+                    <button v-if="ccConnectConfig?.platforms?.[p.id]?.enabled" class="btn-icon" @click="restartCCConnectPlatform(p.id)" title="重启该平台">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                        <path d="M3 3v5h5"/>
+                      </svg>
+                    </button>
+                    <label class="switch">
+                      <input type="checkbox" 
+                        :checked="ccConnectConfig?.platforms?.[p.id]?.enabled || false" 
+                        @change="toggleCCConnectPlatform(p.id)">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+                
+                <!-- 平台配置表单展开区域 -->
+                <div v-if="expandedPlatform === p.id" class="cc-platform-config-panel">
+                  <div class="config-form">
+                    <div v-for="field in p.fields" :key="field.key" class="config-field">
+                      <template v-if="field.type === 'info'">
+                        <div class="config-info-text">{{ field.value }}</div>
+                      </template>
+                      <template v-else>
+                        <label class="config-label">{{ field.label }}</label>
+                        <input 
+                          :type="field.type" 
+                          class="config-input" 
+                          :placeholder="field.placeholder"
+                          v-model="ccConnectConfig.platforms[p.id].config[field.key]"
+                          @change="saveCCConnectConfig"
+                        />
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="cc-connect-hint mt-3">
+              <small>注: 开启平台后需要配置对应的机器人信息，具体请参考 CC-Connect 文档。</small>
+            </div>
+          </div>
+        </div>
+
         <div class="remote-features">
           <div class="feature-card">
             <div class="feature-icon">💬</div>
@@ -1390,4 +1618,25 @@ input:checked + .slider:before { transform: translateX(16px); }
 .feature-icon { font-size: 32px; margin-bottom: 8px; }
 .feature-name { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
 .feature-desc { font-size: 11px; color: var(--text-secondary); }
+
+.mt-4 { margin-top: 16px; }
+.mt-3 { margin-top: 12px; }
+.cc-platforms-list { display: flex; flex-direction: column; gap: 12px; }
+.cc-platform-wrapper { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; overflow: hidden; transition: all 0.2s ease; }
+.cc-platform-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; cursor: pointer; }
+.cc-platform-item:hover { background: var(--bg-elevated); }
+.cc-platform-info { display: flex; align-items: center; gap: 12px; }
+.cc-platform-icon { font-size: 20px; }
+.cc-platform-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.cc-platform-actions { display: flex; align-items: center; gap: 12px; }
+.btn-icon { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+.btn-icon:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.cc-platform-config-panel { padding: 16px; background: var(--bg-elevated); border-top: 1px solid var(--border-subtle); }
+.config-form { display: flex; flex-direction: column; gap: 12px; }
+.config-field { display: flex; flex-direction: column; gap: 6px; }
+.config-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.config-input { padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-surface); color: var(--text-primary); font-size: 13px; transition: border-color 0.2s; }
+.config-input:focus { outline: none; border-color: var(--primary-color); }
+.config-info-text { font-size: 13px; color: var(--text-secondary); line-height: 1.5; padding: 8px 12px; background: var(--bg-surface); border-radius: 6px; border-left: 3px solid var(--primary-color); }
+.cc-connect-hint { font-size: 12px; color: var(--text-secondary); }
 </style>

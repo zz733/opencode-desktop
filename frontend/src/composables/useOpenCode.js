@@ -3,7 +3,8 @@ import {
   GetServerURL, SetServerURL, CheckConnection,
   GetSessions, CreateSession, SendMessage, SendMessageWithModel, 
   SubscribeEvents, GetOpenCodeStatus, AutoStartOpenCode, InstallOpenCode,
-  CancelSession, GetSessionMessages, GetMCPToolsPrompt, GetProviders, GetConfigModels, RestartOpenCode
+  CancelSession, GetSessionMessages, GetMCPToolsPrompt, GetAllModels, GetConfigModels,
+  GetDefaultModel, SyncCCConnectAgentContext
 } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsEmit } from '../../wailsjs/runtime/runtime'
 import { i18n } from '../i18n'
@@ -23,9 +24,6 @@ function log(message) {
   console.log(message)
   const timestamp = new Date().toLocaleTimeString()
   outputLogs.value.push(`[${timestamp}] ${message}`)
-  if (outputLogs.value.length > 200) {
-    outputLogs.value = outputLogs.value.slice(outputLogs.value.length - 200)
-  }
   EventsEmit('output-log', message)
 }
 
@@ -35,9 +33,6 @@ EventsOn('output-log', (message) => {
   // 避免重复添加（简单判断，如果需要在前端显示后端发回的前端日志，可能需要更复杂的去重）
   // 这里假设 EventsOn 收到的都是后端主动发送的系统日志
   outputLogs.value.push(`[${timestamp}] ${message}`)
-  if (outputLogs.value.length > 200) {
-    outputLogs.value = outputLogs.value.slice(outputLogs.value.length - 200)
-  }
 })
 
 // 监听 Antigravity 模型变化事件
@@ -70,7 +65,8 @@ const currentSession = ref(null)
 const messages = ref([])
 const sending = ref(false)
 // 从 localStorage 读取上次选择的模型
-const currentModel = ref(localStorage.getItem('selectedModel') || '')
+const currentModel = ref(localStorage.getItem('selectedModel') || 'opencode/claude-opus-4-5')
+const syncingCCConnectModel = ref(false)
 const openCodeStatus = ref(null) // 'not-installed', 'installing', 'starting', 'connected'
 const currentWorkDir = ref('') // 当前工作目录
 
@@ -80,21 +76,9 @@ const dynamicModels = ref([])
 // 目录 -> 会话ID 的映射
 const dirSessionMap = ref(JSON.parse(localStorage.getItem('dirSessionMap') || '{}'))
 
-function normalizeDir(dir) {
-  if (!dir) return dir
-  const normalized = dir.replace(/[\\/]+$/, '')
-  return normalized || dir
-}
-
 // 保存映射到 localStorage
 function saveDirSessionMap() {
   localStorage.setItem('dirSessionMap', JSON.stringify(dirSessionMap.value))
-}
-
-// 目录 -> 模型ID 的映射
-const dirModelMap = ref(JSON.parse(localStorage.getItem('dirModelMap') || '{}'))
-function saveDirModelMap() {
-  localStorage.setItem('dirModelMap', JSON.stringify(dirModelMap.value))
 }
 
 const models = [
@@ -111,73 +95,71 @@ const models = [
   { id: 'opencode/gpt-5.1-codex', name: 'GPT 5.1 Codex', free: false, builtin: true },
 ]
 
+function normalizeProviderLabel(providerId, providerName) {
+  const id = (providerId || '').toLowerCase()
+  const name = (providerName || '').toLowerCase()
+  if (id.includes('opencode') || name.includes('opencode') || name.includes('zen')) {
+    return 'OpenCode'
+  }
+  return providerName || providerId || 'Unknown'
+}
+
 // 从后端动态获取模型列表
 async function fetchModels() {
   try {
-    // 1. 先尝试从 OpenCode API 获取
-    let providerInfo = null
-    for (let i = 0; i < 3; i++) {
-      providerInfo = await GetProviders()
-      const connectedProviders = providerInfo?.connected || []
-      if (connectedProviders.length > 0 || i === 2) {
-        break
+    // 获取配置的默认模型，优先使用当前项目配置
+    try {
+      const defaultModel = await GetDefaultModel()
+      if (defaultModel) {
+        log(`从配置文件读取到默认模型: ${defaultModel}`)
+        // 如果当前没有正在发送消息，且读取到了默认模型，则更新当前模型
+        if (!sending.value) {
+          currentModel.value = defaultModel
+        }
       }
-      await new Promise(resolve => setTimeout(resolve, 500))
+    } catch (e) {
+      console.log('读取默认模型失败:', e)
     }
-    
+
     const fetchedModels = []
-    
-    if (providerInfo) {
-      const providers = providerInfo.all || []
-      
-      const connectedProviders = providerInfo.connected || []
-      
-      for (const provider of providers) {
-        if (!provider.models) continue
-        
-        const providerId = provider.id
-        
-        // 只显示已连接的 provider 的模型
-        if (!connectedProviders.includes(providerId)) {
-          continue
-        }
-        
-        // 遍历所有模型
-        for (const [modelId, modelInfo] of Object.entries(provider.models)) {
-          // 过滤掉已弃用的模型
-          if (modelInfo.status === 'deprecated') {
-            continue
-          }
-
-          // 如果模型名称包含 (latest)，去掉这个后缀以保持界面整洁 (参考官方逻辑)
-          let displayName = modelInfo.name || modelId
-          displayName = displayName.replace('(latest)', '').trim()
-
-          // 判断是否免费
-          let isFree = false
-          if (modelInfo.cost) {
-            const { input, output } = modelInfo.cost
-            if (input === 0 && output === 0) {
-              isFree = true
-            }
-          }
-
-          // 只保留基本的 provider 信息，完全交给 UI 按 provider 分类
-          fetchedModels.push({
-            id: `${providerId}/${modelId}`,
-            name: displayName,
-            free: isFree,
-            builtin: false,
-            provider: providerId,
-            category: provider.name || providerId // 使用提供商的名称作为分类依据
-          })
-        }
-      }
+    const apiModels = await GetAllModels()
+    if (apiModels && apiModels.length > 0) {
+      apiModels.forEach(m => {
+        fetchedModels.push({
+          id: m.id,
+          name: m.name,
+          free: false,
+          builtin: false,
+          provider: m.provider,
+          category: normalizeProviderLabel(m.provider, m.provider)
+        })
+      })
     }
     
     if (fetchedModels.length > 0) {
+      // 合并配置文件中的模型（仅覆盖已存在模型名称，不新增不可用模型）
+      const configModels = await GetConfigModels()
+      if (configModels && configModels.length > 0) {
+        log(`从配置文件加载了 ${configModels.length} 个模型`)
+        configModels.forEach(cm => {
+          const newModel = {
+            id: cm.id,
+            name: cm.name,
+            free: false,
+            builtin: false,
+            provider: cm.provider || (cm.id && cm.id.includes('/') ? cm.id.split('/')[0] : ''),
+            category: normalizeProviderLabel(cm.provider, cm.provider)
+          }
+          // 如果已存在，则替换（优先使用本地配置）
+          const existingIndex = fetchedModels.findIndex(m => m.id === cm.id)
+          if (existingIndex >= 0) {
+            fetchedModels[existingIndex] = newModel
+          }
+        })
+      }
+      
       dynamicModels.value = fetchedModels
-      log(`从 API 加载了 ${fetchedModels.length} 个动态模型`)
+      log(`最终合并了 ${fetchedModels.length} 个动态模型`)
       return
     }
     
@@ -193,7 +175,7 @@ async function fetchModels() {
           free: false,
           builtin: false,
           provider: cm.provider,
-          category: cm.provider // 直接使用 provider 作为分类
+          category: normalizeProviderLabel(cm.provider, cm.provider)
         }
       })
       log(`从配置文件加载了 ${configModels.length} 个模型`)
@@ -207,64 +189,21 @@ async function fetchModels() {
 
 // 获取所有模型（内置 + 动态 + 自定义）
 function getAllModels() {
-  const customModels = JSON.parse(localStorage.getItem('customModels') || '[]')
-  // 合并：内置模型 + 动态模型 + 自定义模型
-  // 动态模型放在前面，因为它们是用户已认证可用的
-  return [...dynamicModels.value, ...models, ...customModels]
-}
-
-async function ensureModelForCurrentDir() {
-  const dir = normalizeDir(currentWorkDir.value)
-  const list = getAllModels()
-  const hasModel = (id) => !!list.find(m => `${m.provider || (m.id?.split('/')[0] || '')}/${m.id?.split('/')[1] || m.id}` === id || m.id === id)
-
-  const mapped = dir && dirModelMap.value[dir]
-  if (mapped) {
-    // 先用目录绑定的模型，保证切换目录后模型不变
-    setModel(mapped)
-    return true
+  const allModels = [...dynamicModels.value]
+  const selected = currentModel.value
+  if (selected && !allModels.some(m => m.id === selected)) {
+    const parts = selected.split('/')
+    const provider = parts.length > 1 ? parts[0] : 'custom'
+    allModels.unshift({
+      id: selected,
+      name: parts.length > 1 ? parts[1] : selected,
+      free: false,
+      builtin: false,
+      provider,
+      category: normalizeProviderLabel(provider, provider)
+    })
   }
-  
-  // 如果当前已经选择了模型，就不用强制重置
-  if (currentModel.value) {
-      if (dir) {
-          dirModelMap.value[dir] = currentModel.value
-          saveDirModelMap()
-      }
-      return true
-  }
-
-  try {
-    const info = await GetProviders()
-    const connected = info?.connected || []
-    const def = info?.default || {}
-    for (const pid of connected) {
-      const mid = def[pid]
-      if (!mid) continue
-      const candidate = `${pid}/${mid}`
-      if (hasModel(candidate)) {
-        setModel(candidate)
-        if (dir) {
-          dirModelMap.value[dir] = candidate
-          saveDirModelMap()
-        }
-        return true
-      }
-    }
-  } catch {}
-
-  const cfg = await GetConfigModels().catch(() => null)
-  if (cfg && cfg.length > 0) {
-    const first = cfg[0]
-    const candidate = `${first.provider}/${first.id}`
-    setModel(candidate)
-    if (dir) {
-      dirModelMap.value[dir] = candidate
-      saveDirModelMap()
-    }
-    return true
-  }
-  return false
+  return allModels
 }
 
 // 自动连接（包含检测、安装、启动）
@@ -379,33 +318,11 @@ async function onConnected() {
   // 动态获取模型列表
   log('正在获取可用模型列表...')
   await fetchModels()
-  await ensureModelForCurrentDir()
   
   // 只在首次连接时订阅事件
   log('订阅服务器事件...')
   await SubscribeEvents()
   log('OpenCode 连接成功')
-
-  // 连接后如当前无会话，按目录映射绑定或选择最近
-  if (!currentSession.value) {
-    const dir = normalizeDir(currentWorkDir.value)
-    const mappedId = dir && dirSessionMap.value[dir]
-    if (mappedId) {
-      const found = sessions.value.find(s => s.id === mappedId)
-      if (found) {
-        log(`根据目录映射绑定会话: ${found.id}`)
-        await selectSession(found)
-        return
-      }
-    }
-    if (sessions.value.length > 0) {
-      log('未找到映射，选择最近的会话')
-      await selectSession(sessions.value[0])
-    } else {
-      log('无任何会话，创建新会话')
-      await createSession()
-    }
-  }
 }
 
 // 监听 OpenCode 状态事件
@@ -475,7 +392,10 @@ async function loadSessions() {
   try {
     sessions.value = await GetSessions()
     log(`已加载 ${sessions.value.length} 个会话`)
-    // 不在这里自动选择，交由 onConnected / switchWorkDir 基于映射或用户操作选择
+    // 自动选择最近的会话或创建新会话
+    if (sessions.value.length > 0) {
+      selectSession(sessions.value[0])
+    }
   } catch (e) {
     log(`加载会话失败: ${e}`)
   }
@@ -484,12 +404,6 @@ async function loadSessions() {
 async function selectSession(session) {
   currentSession.value = session
   messages.value = []
-  // 绑定当前目录到所选会话
-  if (session?.id && currentWorkDir.value) {
-    const dir = normalizeDir(currentWorkDir.value)
-    dirSessionMap.value[dir] = session.id
-    saveDirSessionMap()
-  }
   
   // 加载历史消息
   if (session?.id) {
@@ -578,13 +492,6 @@ async function sendMessage(text, images = []) {
       return
     }
   }
-  if (!currentModel.value) {
-    const ok = await ensureModelForCurrentDir()
-    if (!ok) {
-      messages.value.push({ role: 'assistant', content: '❌ 当前目录未配置可用模型，请在设置中连接 Provider 或在 opencode.json 指定 model。', reasoning: '', tools: {} })
-      return
-    }
-  }
   
   sending.value = true
   // 界面显示原始消息（包含图片）
@@ -593,7 +500,7 @@ async function sendMessage(text, images = []) {
     userMessage.images = images
   }
   messages.value.push(userMessage)
-  messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {}, textParts: {}, reasoningParts: {}, partsOrder: [] })
+  messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {} })
   
   // 设置超时检测（30秒无响应则提示）
   let responseReceived = false
@@ -625,22 +532,27 @@ async function sendMessage(text, images = []) {
   const currentLocale = i18n.global.locale.value
   const langName = languageNames[currentLocale] || 'English'
   
-  // 构建消息，包含当前文件上下文
+  // 获取 MCP 工具提示
+  let mcpToolsPrompt = ''
+  try {
+    mcpToolsPrompt = await GetMCPToolsPrompt()
+  } catch (e) {
+    console.log('获取 MCP 工具提示失败:', e)
+  }
+  
+  // 构建消息，包含当前文件上下文和 MCP 工具
   let messageToSend = `[Please respond in ${langName}]`
   if (activeFilePath.value) {
     messageToSend += `\n[Current active file: ${activeFilePath.value}]`
   }
+  if (mcpToolsPrompt) {
+    messageToSend += `\n${mcpToolsPrompt}`
+  }
   messageToSend += `\n\n${text}`
   
   try {
-    const startTime = performance.now()
-    log(`[PERF] 1. 前端开始发送请求... session=${session.id}, model=${currentModel.value}`)
     console.log('calling SendMessageWithModel:', session.id, currentModel.value, 'with', images?.length || 0, 'images')
-    
     await SendMessageWithModel(session.id, messageToSend, currentModel.value, images || [])
-    
-    const elapsed = (performance.now() - startTime).toFixed(2)
-    log(`[PERF] 4. 前端收到 SendMessageWithModel 响应，耗时: ${elapsed}ms`)
   } catch (e) {
     console.error('SendMessageWithModel error:', e)
     messages.value[messages.value.length - 1].content = '❌ 发送失败: ' + e
@@ -655,7 +567,7 @@ function setupEventListeners() {
   eventListenersSetup = true
   
   EventsOn('server-event', (data) => {
-    // console.log('收到 server-event:', data) // 注释掉高频日志以提升性能
+    console.log('收到 server-event:', data)
     try {
       const event = JSON.parse(data)
       handleEvent(event)
@@ -663,62 +575,27 @@ function setupEventListeners() {
       console.error('解析事件失败:', e, data)
     }
   })
-
-  // 监听后端重新连接成功事件
-  EventsOn('opencode-reconnected', async () => {
-    log('底层服务已重新连接，正在恢复状态...')
-    // 强制重新连接 SSE
-    await checkConnection()
-    if (connected.value) {
-      // 重新订阅事件（会自动取消旧的订阅，更新为最新端口的连接）
-      await SubscribeEvents()
-      // 重新加载会话列表
-      await loadSessions()
-      // 如果当前有会话，重新加载它的消息，因为之前发送的消息可能失败了
-      if (currentSession.value) {
-        await loadHistory(currentSession.value.id)
-      }
-      // 重置发送状态
-      sending.value = false
-    }
-  })
 }
 
 // 记录当前正在处理的消息 ID，避免重复处理
 let currentAssistantMessageId = null
 
-// 全局记录 part 的类型，以便处理 delta
-const partTypeMap = {}
-
 function handleEvent(event) {
-  // 记录关键事件耗时
-  if (event.type === 'message.part.updated' || event.type === 'session.status' || event.type === 'message.part.delta') {
-    log(`[PERF] 5. 前端收到 SSE 事件: ${event.type}`)
-  }
+  console.log('处理事件:', event.type, JSON.stringify(event.properties || {}).substring(0, 300))
   
-  // 如果已经不在发送状态，忽略部分更新，确保界面状态稳定
-  // 允许关键事件通过，以便最终兜底逻辑能修复可能的截断，接收完整的 message.part.updated 和 message.part.delta
-  if (!sending.value && !['session.error', 'error', 'message.updated', 'message.part.updated', 'message.part.delta'].includes(event.type)) {
-    return
-  }
-
   if (event.type === 'message.part.updated') {
     const part = event.properties?.part
     
     if (!part) {
+      console.log('事件没有 part 数据')
       return
-    }
-    
-    // 记录 part 类型
-    if (part.id && part.type) {
-      partTypeMap[part.id] = part.type
-      log(`[SSE-DEBUG] 记录 partType, partID: ${part.id}, type: ${part.type}`)
     }
     
     // 检查是否是用户消息的回显（包含语言提示前缀或文件路径前缀）
     if (part.type === 'text' && part.text) {
       const text = part.text
       if (text.includes('[Please respond in') || text.includes('[Current active file:')) {
+        console.log('跳过用户消息回显')
         return
       }
     }
@@ -728,56 +605,19 @@ function handleEvent(event) {
     
     // 如果最后一条不是 assistant 消息，或者消息 ID 不匹配，可能需要创建新消息
     if (!last || last.role !== 'assistant') {
-      messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {}, textParts: {}, reasoningParts: {}, partsOrder: [] })
+      console.log('没有待更新的 assistant 消息，创建新消息')
+      messages.value.push({ role: 'assistant', content: '', reasoning: '', tools: {} })
       last = messages.value[messages.value.length - 1]
     }
     
-    if (!last.textParts) last.textParts = {}
-    if (!last.reasoningParts) last.reasoningParts = {}
-    if (!last.partsOrder) last.partsOrder = []
-    
-    if (!last.partsOrder.includes(part.id)) {
-      last.partsOrder.push(part.id)
-    }
-    
     if (part.type === 'text' && part.text !== undefined) {
-      const currentText = last.textParts[part.id] || ''
-      const newText = part.text || ''
-      // 只有当传来的 text 更长时才覆盖，避免旧的 updated 事件快照覆盖了最新的 delta 累加结果
-      if (newText.length >= currentText.length || currentText === '') {
-        last.textParts[part.id] = newText
-      }
-      
-      if (last.reasoningParts && last.reasoningParts[part.id] !== undefined) {
-        delete last.reasoningParts[part.id]
-      }
-      // 按顺序重建 content
-      last.content = last.partsOrder
-        .filter(id => last.textParts[id] !== undefined)
-        .map(id => last.textParts[id])
-        .join('\n\n')
-        .replace(/^\n+/, '')
-    } else if (part.type === 'reasoning' && part.text !== undefined) {
-      const currentText = last.reasoningParts[part.id] || ''
-      const newText = part.text || ''
-      if (newText.length >= currentText.length || currentText === '') {
-        last.reasoningParts[part.id] = newText
-      }
-      
-      if (last.textParts && last.textParts[part.id] !== undefined) {
-        delete last.textParts[part.id]
-        // 重建 content
-        last.content = last.partsOrder
-          .filter(id => last.textParts[id] !== undefined)
-          .map(id => last.textParts[id])
-          .join('\n\n')
-          .replace(/^\n+/, '')
-      }
-      // 按顺序重建 reasoning
-      last.reasoning = last.partsOrder
-        .filter(id => last.reasoningParts[id] !== undefined)
-        .map(id => last.reasoningParts[id])
-        .join('\n\n')
+      const text = part.text || ''
+      // 移除开头的换行符
+      last.content = text.replace(/^\n+/, '')
+      console.log('更新 assistant 消息:', last.content.substring(0, 100))
+    } else if (part.type === 'reasoning' && part.text) {
+      last.reasoning = part.text
+      console.log('更新 reasoning:', part.text.substring(0, 50))
     } else if (part.type === 'tool') {
       if (!last.tools) last.tools = {}
       const toolInfo = {
@@ -788,66 +628,26 @@ function handleEvent(event) {
         output: part.state?.output || null
       }
       last.tools[part.id] = toolInfo
-    }
-  }
-
-  if (event.type === 'message.part.delta') {
-    const props = event.properties
-    if (!props) return
-    
-    const partType = partTypeMap[props.partID]
-    log(`[SSE-DEBUG] 收到 delta, partID: ${props.partID}, partType: ${partType}, delta: ${props.delta}`)
-    let last = messages.value[messages.value.length - 1]
-    
-    // 如果还没找到 partType，可能它是 text 或者是 reasoning，我们可以尝试默认处理
-    if (last && last.role === 'assistant') {
-      if (!last.textParts) last.textParts = {}
-      if (!last.reasoningParts) last.reasoningParts = {}
-      if (!last.partsOrder) last.partsOrder = []
-      
-      if (!last.partsOrder.includes(props.partID)) {
-        last.partsOrder.push(props.partID)
-      }
-      
-      if (partType === 'text' && props.field === 'text') {
-        last.textParts[props.partID] = (last.textParts[props.partID] || '') + props.delta
-        last.content = last.partsOrder
-          .filter(id => last.textParts[id] !== undefined)
-          .map(id => last.textParts[id])
-          .join('\n\n')
-          .replace(/^\n+/, '')
-      } else if (partType === 'reasoning' && props.field === 'text') {
-        last.reasoningParts[props.partID] = (last.reasoningParts[props.partID] || '') + props.delta
-        last.reasoning = last.partsOrder
-          .filter(id => last.reasoningParts[id] !== undefined)
-          .map(id => last.reasoningParts[id])
-          .join('\n\n')
-      } else if (!partType && props.field === 'text') {
-        // Fallback 如果还没有收到 updated
-        last.textParts[props.partID] = (last.textParts[props.partID] || '') + props.delta
-        last.content = last.partsOrder
-          .filter(id => last.textParts[id] !== undefined)
-          .map(id => last.textParts[id])
-          .join('\n\n')
-          .replace(/^\n+/, '')
-      }
+      console.log('更新 tool:', part.tool)
     }
   }
   
   if (event.type === 'message.updated') {
-    // message.updated 事件中的 info 并不包含 parts，
-    // 真正的完整内容会在 message.part.updated 中到达。
-    // 因此这里不需要处理 content 的兜底。
+    const info = event.properties?.info
+    console.log('message.updated - role:', info?.role, 'completed:', info?.time?.completed)
+    // 不在这里停止 sending，等待 session.status === 'idle'
   }
   
   if (event.type === 'session.status') {
     const status = event.properties?.status
+    console.log('session.status:', status)
     
     // status 是对象 {type: "idle"} 或 {type: "busy"}
     const statusType = status?.type || status
     
     // 只在 session 状态变为 idle 时停止 sending（表示所有工具都执行完毕）
     if (statusType === 'idle') {
+      console.log('session 变为 idle')
       sending.value = false
       currentAssistantMessageId = null
     }
@@ -855,6 +655,7 @@ function handleEvent(event) {
   
   // session.idle 事件也表示完成
   if (event.type === 'session.idle') {
+    console.log('收到 session.idle 事件')
     sending.value = false
     currentAssistantMessageId = null
   }
@@ -942,16 +743,23 @@ function handleEvent(event) {
 }
 
 // 设置模型并保存到 localStorage
-function setModel(modelId) {
-  if (!modelId) return
+async function setModel(modelId) {
+  if (!modelId || modelId === currentModel.value) {
+    return
+  }
+  if (syncingCCConnectModel.value) {
+    return
+  }
   currentModel.value = modelId
   localStorage.setItem('selectedModel', modelId)
-  const dir = normalizeDir(currentWorkDir.value)
-  if (dir) {
-    dirModelMap.value[dir] = modelId
-    saveDirModelMap()
+  try {
+    syncingCCConnectModel.value = true
+    await SyncCCConnectAgentContext(modelId)
+  } catch (e) {
+    console.error('同步 cc-connect 模型失败:', e)
+  } finally {
+    syncingCCConnectModel.value = false
   }
-  log(`模型已切换为: ${modelId}`)
 }
 
 // 取消当前请求
@@ -959,93 +767,45 @@ async function cancelMessage() {
   if (!sending.value || !currentSession.value) return
   
   try {
-    // 强制前端状态复位
-    sending.value = false
-    
-    // 如果最后一条是正在生成的消息，加上取消提示
-    const last = messages.value[messages.value.length - 1]
-    if (last && last.role === 'assistant') {
-      if (!last.content) {
-        last.content = '*(已取消)*'
-      } else {
-        last.content += '\n\n*(已取消)*'
-      }
-    }
-    
     await CancelSession(currentSession.value.id)
+    sending.value = false
   } catch (e) {
     console.error('取消失败:', e)
+    // 即使取消失败也停止 sending 状态
+    sending.value = false
   }
 }
 
 // 切换工作目录时切换或创建会话
 async function switchWorkDir(dir) {
   if (!dir) return
-  const targetDir = normalizeDir(dir)
   
   // 即使是同一个目录，也需要确保连接正常
-  const isSameDir = targetDir === normalizeDir(currentWorkDir.value)
-  currentWorkDir.value = targetDir
+  const isSameDir = dir === currentWorkDir.value
+  currentWorkDir.value = dir
   
   if (!isSameDir) {
-    log(`工作目录已切换到: ${targetDir}`)
+    log(`工作目录已切换到: ${dir}`)
     
     // 重置连接状态，等待新目录的 OpenCode 实例就绪
     connecting.value = true
     connected.value = false
     messages.value = []
-    currentSession.value = null
-    // 立即应用该目录上次选择的模型（若存在），避免视觉上“模型改变”
-    const quickMapped = dirModelMap.value[targetDir]
-    if (quickMapped) {
-      setModel(quickMapped)
-    }
-
-    try {
-      log('检查并启动新目录的 OpenCode（不重启已在运行的实例）...')
-      await AutoStartOpenCode()
-    } catch (e) {
-      log(`启动 OpenCode 失败: ${e}`)
-      connecting.value = false
-      throw e
-    }
-  } else {
-    try {
-      const initialStatus = await GetOpenCodeStatus()
-      if (!initialStatus.connected) {
-        log('当前目录未连接，尝试自动启动 OpenCode...')
-        await AutoStartOpenCode()
-      }
-    } catch (e) {
-      log(`自动启动 OpenCode 失败: ${e}`)
-    }
   }
   
   // 轮询等待连接
   let retries = 0
-  const maxRetries = 24 // 最多等 ~12s（前10次快速 300ms，其后 800ms）
+  const maxRetries = 30
   
   while (retries < maxRetries) {
     try {
       const status = await GetOpenCodeStatus()
       log(`检查连接状态: connected=${status.connected}, port=${status.port}, workDir=${status.workDir}`)
-      const statusWorkDir = normalizeDir(status.workDir)
       
-      if (status.connected && statusWorkDir === targetDir) {
+      if (status.connected && status.workDir === dir) {
         connected.value = true
         connecting.value = false
-        log(`已连接到 ${targetDir} 的 OpenCode (端口 ${status.port})`)
-
-        // 切换目录后刷新模型（异步进行，避免阻塞会话恢复）
-        ;(async () => {
-          try {
-            log('异步刷新当前目录的模型列表...')
-            await fetchModels()
-            await ensureModelForCurrentDir()
-          } catch (e) {
-            log(`刷新模型失败: ${e}`)
-          }
-        })()
+        log(`已连接到 ${dir} 的 OpenCode (端口 ${status.port})`)
         
         // 重新加载会话列表
         await loadSessions()
@@ -1054,32 +814,31 @@ async function switchWorkDir(dir) {
         log('重新订阅事件...')
         await SubscribeEvents()
         
+        // 重新获取模型列表（包含从新目录配置中读取默认模型）
+        log('正在重新获取可用模型列表及默认配置...')
+        await fetchModels()
+        
         // 检查该目录是否有绑定的会话
-        const sessionId = dirSessionMap.value[targetDir]
+        const sessionId = dirSessionMap.value[dir]
         if (sessionId) {
           const existingSession = sessions.value.find(s => s.id === sessionId)
           if (existingSession) {
-            log(`切换到目录 ${targetDir} 的已有会话: ${existingSession.id}`)
+            log(`切换到目录 ${dir} 的已有会话: ${existingSession.id}`)
             selectSession(existingSession)
             return
           }
         }
         
-        if (sessions.value.length > 0) {
-          log(`目录 ${targetDir} 未发现映射，绑定最近会话: ${sessions.value[0].id}`)
-          await selectSession(sessions.value[0])
-        } else {
-          log(`为目录 ${targetDir} 创建新会话`)
-          await createSession()
-        }
+        // 没有绑定的会话，创建新会话
+        log(`为目录 ${dir} 创建新会话`)
+        await createSession()
         return
       }
     } catch (e) {
       log(`连接检查出错: ${e}`)
     }
     retries++
-    const delay = retries < 10 ? 300 : 800
-    await new Promise(r => setTimeout(r, delay))
+    await new Promise(r => setTimeout(r, 1000))
   }
   
   connecting.value = false

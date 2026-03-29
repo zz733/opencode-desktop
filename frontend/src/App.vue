@@ -34,6 +34,9 @@ const handleWorkDirChange = async (dir) => {
   workDir.value = dir
   localStorage.setItem('lastWorkDir', dir)
   try {
+    const { SetWorkDir, SetOpenCodeWorkDir } = await import('../wailsjs/go/main/App')
+    await SetWorkDir(dir)
+    await SetOpenCodeWorkDir(dir)
     await switchWorkDir(dir)
   } catch (e) {
     console.error('切换工作目录失败:', e)
@@ -61,16 +64,13 @@ const editorAreaRef = ref(null)
 // OpenCode
 const {
   connected, connecting, sessions, currentSession, messages,
-  sending, currentModel, models, dynamicModels, getAllModels, fetchModels, autoConnect,
+  sending, currentModel, getAllModels, fetchModels, autoConnect,
   selectSession, createSession, sendMessage, setModel, cancelMessage,
   switchWorkDir, setActiveFile
 } = useOpenCode()
 
-// 动态模型列表（响应动态模型更新）
-// 直接依赖 dynamicModels.value 以确保响应式更新
 const allModels = computed(() => {
-  const customModels = JSON.parse(localStorage.getItem('customModels') || '[]')
-  return [...dynamicModels.value, ...models, ...customModels]
+  return getAllModels()
 })
 
 onMounted(async () => {

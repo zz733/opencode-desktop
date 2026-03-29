@@ -22,13 +22,9 @@ const currentModelName = () => {
 // 完全按照 provider 对模型进行分组，与官方保持一致
 const providerGroups = computed(() => {
   const groups = {}
-  
-  // 过滤掉所有未设置 provider 或被标记为 builtin 的杂项
-  const validModels = props.models.filter(m => !m.builtin && m.provider)
-  
-  validModels.forEach(m => {
-    // 使用 category (我们在 useOpenCode 里设置的 provider.name) 或 provider ID
-    const pName = m.category || m.provider
+
+  props.models.forEach(m => {
+    const pName = m.category || m.provider || (m.id && m.id.includes('/') ? m.id.split('/')[0] : t('model.select'))
     if (!groups[pName]) {
       groups[pName] = []
     }

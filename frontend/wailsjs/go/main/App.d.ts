@@ -10,6 +10,8 @@ export function AddTag(arg1:main.Tag):Promise<void>;
 
 export function AuthenticateKiro():Promise<void>;
 
+export function AutoStartCCConnect():Promise<void>;
+
 export function AutoStartOpenCode():Promise<void>;
 
 export function BatchAddKiroTags(arg1:Array<string>,arg2:Array<string>):Promise<void>;
@@ -72,11 +74,17 @@ export function GetAntigravityAuthStatus():Promise<main.AntigravityAuthStatus>;
 
 export function GetAppConfig():Promise<main.AppConfig>;
 
+export function GetCCConnectConfigPath():Promise<string>;
+
+export function GetCCConnectStatus():Promise<main.CCConnectStatus>;
+
 export function GetConfig():Promise<main.ConfigInfo>;
 
 export function GetConfigModels():Promise<Array<main.ConfigModel>>;
 
 export function GetConfigPaths():Promise<main.ConfigPaths>;
+
+export function GetDefaultModel():Promise<string>;
 
 export function GetGitStatus(arg1:string):Promise<main.GitStatus>;
 
@@ -150,6 +158,8 @@ export function ImportKiroAccounts(arg1:string,arg2:string):Promise<void>;
 
 export function InstallAntigravityAuth():Promise<void>;
 
+export function InstallCCConnect():Promise<void>;
+
 export function InstallKiroAuth():Promise<void>;
 
 export function InstallOhMyOpenCode():Promise<void>;
@@ -159,6 +169,8 @@ export function InstallOpenCode():Promise<void>;
 export function InstallUIUXProMax():Promise<void>;
 
 export function ListDir(arg1:string):Promise<Array<main.FileInfo>>;
+
+export function LoadCCConnectConfig():Promise<main.CCConnectConfig>;
 
 export function LogToTerminal(arg1:string):Promise<void>;
 
@@ -194,6 +206,8 @@ export function RestartOpenCode():Promise<void>;
 
 export function RunFile(arg1:string):Promise<string>;
 
+export function SaveCCConnectConfig(arg1:main.CCConnectConfig):Promise<void>;
+
 export function SaveImageToWorkDir(arg1:main.ImageData):Promise<string>;
 
 export function SaveMCPConfig(arg1:main.MCPConfig):Promise<void>;
@@ -212,11 +226,15 @@ export function SetServerURL(arg1:string):Promise<void>;
 
 export function SetWorkDir(arg1:string):Promise<void>;
 
+export function StartCCConnectBot(arg1:string):Promise<void>;
+
 export function StartKiroOAuth(arg1:string):Promise<string>;
 
 export function StartOpenCode():Promise<void>;
 
 export function StartRemoteControl(arg1:number):Promise<Record<string, any>>;
+
+export function StopCCConnectBot(arg1:string):Promise<void>;
 
 export function StopOpenCode():Promise<void>;
 
@@ -226,9 +244,13 @@ export function SubscribeEvents():Promise<void>;
 
 export function SwitchKiroAccount(arg1:string):Promise<void>;
 
+export function SyncCCConnectAgentContext(arg1:string):Promise<void>;
+
 export function ToggleMCPServer(arg1:string,arg2:boolean):Promise<void>;
 
 export function UninstallAntigravityAuth():Promise<void>;
+
+export function UninstallCCConnect():Promise<void>;
 
 export function UninstallKiroAuth():Promise<void>;
 

@@ -103,6 +103,10 @@ func (a *App) startup(ctx context.Context) {
 	// 自动启动远程控制服务
 	go func() {
 		time.Sleep(2 * time.Second) // 等待应用完全启动
+		
+		// 自动启动已启用的 CC-Connect 平台
+		a.AutoStartCCConnect()
+		
 		info, err := a.StartRemoteControl(8080)
 		if err != nil {
 			fmt.Printf("⚠️  远程控制启动失败: %v\n", err)
@@ -196,8 +200,13 @@ func (a *App) SetOpenCodeWorkDir(dir string) error {
 	if err := a.fileMgr.SetRootDir(dir); err != nil {
 		return err
 	}
-	// 切换目录时自动启动 opencode 进程
-	return a.openCode.StartForDir(dir)
+	if err := a.openCode.StartForDir(dir); err != nil {
+		return err
+	}
+	if err := a.SyncCCConnectAgentContext(""); err != nil {
+		wails_runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("⚠️ 同步 cc-connect 工作目录失败: %v", err))
+	}
+	return nil
 }
 
 // --- 文件管理 ---

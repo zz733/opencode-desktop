@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -26,6 +28,10 @@ type ProviderResponse struct {
 // GetAllModels 从 OpenCode API 获取所有模型列表
 // 只返回 Kiro 模型和 Antigravity/Gemini 模型，与桌面端保持一致
 func (a *App) GetAllModels() ([]ConfigModel, error) {
+	if cliModels, err := a.getModelsFromCLI(); err == nil && len(cliModels) > 0 {
+		return cliModels, nil
+	}
+
 	var models []ConfigModel
 
 	// 调用 OpenCode /provider API
@@ -66,10 +72,14 @@ func (a *App) GetAllModels() ([]ConfigModel, error) {
 	for _, c := range providerResp.Connected {
 		connectedMap[c] = true
 	}
+	configuredMap := a.getConfiguredProviderMap()
 
-	// 遍历每个 provider，只添加已连接的提供商的模型
+	// 遍历每个 provider，添加「已连接」或「已在配置文件中声明」的提供商模型
 	for _, provider := range providerResp.All {
-		if provider.Models == nil || !connectedMap[provider.ID] {
+		if provider.Models == nil {
+			continue
+		}
+		if !connectedMap[provider.ID] && !configuredMap[provider.ID] {
 			continue
 		}
 
@@ -101,6 +111,118 @@ func (a *App) GetAllModels() ([]ConfigModel, error) {
 	}
 
 	return models, nil
+}
+
+func (a *App) getModelsFromCLI() ([]ConfigModel, error) {
+	workDir := strings.TrimSpace(a.openCode.GetWorkDir())
+	if workDir == "" {
+		workDir, _ = os.Getwd()
+	}
+
+	cmd := exec.Command("opencode", "models")
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(string(out), "\n")
+	seen := make(map[string]bool)
+	models := make([]ConfigModel, 0, len(lines))
+	for _, line := range lines {
+		id := strings.TrimSpace(line)
+		if id == "" || !strings.Contains(id, "/") {
+			continue
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		parts := strings.SplitN(id, "/", 2)
+		providerID := parts[0]
+		modelName := parts[1]
+		models = append(models, ConfigModel{
+			ID:       id,
+			Name:     modelName,
+			Provider: providerID,
+		})
+	}
+	return models, nil
+}
+
+func (a *App) getConfiguredProviderMap() map[string]bool {
+	result := make(map[string]bool)
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		a.collectProvidersFromConfig(filepath.Join(homeDir, ".config", "opencode", "opencode.json"), result)
+	}
+	workDir := strings.TrimSpace(a.openCode.GetWorkDir())
+	if workDir != "" {
+		a.collectProvidersFromConfig(filepath.Join(workDir, "opencode.json"), result)
+	}
+	return result
+}
+
+func (a *App) collectProvidersFromConfig(configPath string, target map[string]bool) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return
+	}
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return
+	}
+	provider, ok := config["provider"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	for providerID := range provider {
+		target[providerID] = true
+	}
+}
+
+// GetDefaultModel 从 opencode.json 读取默认配置的模型，优先使用项目配置
+func (a *App) GetDefaultModel() (string, error) {
+	// 1. 先读取项目级配置 {workDir}/opencode.json
+	workDir := a.openCode.GetWorkDir()
+	if workDir != "" {
+		projectConfigPath := filepath.Join(workDir, "opencode.json")
+		if defaultModel, err := a.readDefaultModelFromConfig(projectConfigPath); err == nil && defaultModel != "" {
+			return defaultModel, nil
+		}
+	}
+
+	// 2. 再读取用户级配置 ~/.config/opencode/opencode.json
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		userConfigPath := filepath.Join(homeDir, ".config", "opencode", "opencode.json")
+		if defaultModel, err := a.readDefaultModelFromConfig(userConfigPath); err == nil && defaultModel != "" {
+			return defaultModel, nil
+		}
+	}
+
+	return "", nil
+}
+
+// readDefaultModelFromConfig 从单个配置文件读取默认模型
+func (a *App) readDefaultModelFromConfig(configPath string) (string, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return "", err
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return "", err
+	}
+
+	if model, ok := config["model"].(string); ok {
+		return model, nil
+	}
+
+	return "", nil
 }
 
 // ConfigModel 配置文件中的模型信息

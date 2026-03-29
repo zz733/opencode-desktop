@@ -18,6 +18,10 @@ export function AuthenticateKiro() {
   return window['go']['main']['App']['AuthenticateKiro']();
 }
 
+export function AutoStartCCConnect() {
+  return window['go']['main']['App']['AutoStartCCConnect']();
+}
+
 export function AutoStartOpenCode() {
   return window['go']['main']['App']['AutoStartOpenCode']();
 }
@@ -142,6 +146,14 @@ export function GetAppConfig() {
   return window['go']['main']['App']['GetAppConfig']();
 }
 
+export function GetCCConnectConfigPath() {
+  return window['go']['main']['App']['GetCCConnectConfigPath']();
+}
+
+export function GetCCConnectStatus() {
+  return window['go']['main']['App']['GetCCConnectStatus']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
@@ -152,6 +164,10 @@ export function GetConfigModels() {
 
 export function GetConfigPaths() {
   return window['go']['main']['App']['GetConfigPaths']();
+}
+
+export function GetDefaultModel() {
+  return window['go']['main']['App']['GetDefaultModel']();
 }
 
 export function GetGitStatus(arg1) {
@@ -298,6 +314,10 @@ export function InstallAntigravityAuth() {
   return window['go']['main']['App']['InstallAntigravityAuth']();
 }
 
+export function InstallCCConnect() {
+  return window['go']['main']['App']['InstallCCConnect']();
+}
+
 export function InstallKiroAuth() {
   return window['go']['main']['App']['InstallKiroAuth']();
 }
@@ -316,6 +336,10 @@ export function InstallUIUXProMax() {
 
 export function ListDir(arg1) {
   return window['go']['main']['App']['ListDir'](arg1);
+}
+
+export function LoadCCConnectConfig() {
+  return window['go']['main']['App']['LoadCCConnectConfig']();
 }
 
 export function LogToTerminal(arg1) {
@@ -386,6 +410,10 @@ export function RunFile(arg1) {
   return window['go']['main']['App']['RunFile'](arg1);
 }
 
+export function SaveCCConnectConfig(arg1) {
+  return window['go']['main']['App']['SaveCCConnectConfig'](arg1);
+}
+
 export function SaveImageToWorkDir(arg1) {
   return window['go']['main']['App']['SaveImageToWorkDir'](arg1);
 }
@@ -422,6 +450,10 @@ export function SetWorkDir(arg1) {
   return window['go']['main']['App']['SetWorkDir'](arg1);
 }
 
+export function StartCCConnectBot(arg1) {
+  return window['go']['main']['App']['StartCCConnectBot'](arg1);
+}
+
 export function StartKiroOAuth(arg1) {
   return window['go']['main']['App']['StartKiroOAuth'](arg1);
 }
@@ -432,6 +464,10 @@ export function StartOpenCode() {
 
 export function StartRemoteControl(arg1) {
   return window['go']['main']['App']['StartRemoteControl'](arg1);
+}
+
+export function StopCCConnectBot(arg1) {
+  return window['go']['main']['App']['StopCCConnectBot'](arg1);
 }
 
 export function StopOpenCode() {
@@ -450,12 +486,20 @@ export function SwitchKiroAccount(arg1) {
   return window['go']['main']['App']['SwitchKiroAccount'](arg1);
 }
 
+export function SyncCCConnectAgentContext(arg1) {
+  return window['go']['main']['App']['SyncCCConnectAgentContext'](arg1);
+}
+
 export function ToggleMCPServer(arg1, arg2) {
   return window['go']['main']['App']['ToggleMCPServer'](arg1, arg2);
 }
 
 export function UninstallAntigravityAuth() {
   return window['go']['main']['App']['UninstallAntigravityAuth']();
+}
+
+export function UninstallCCConnect() {
+  return window['go']['main']['App']['UninstallCCConnect']();
 }
 
 export function UninstallKiroAuth() {
