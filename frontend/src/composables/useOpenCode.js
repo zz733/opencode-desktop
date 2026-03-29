@@ -697,7 +697,8 @@ function handleEvent(event) {
   }
   
   // 如果已经不在发送状态，忽略后续更新，确保界面立即停止
-  if (!sending.value && event.type !== 'session.error' && event.type !== 'error') {
+  // 允许 message.updated 通过，以便最终兜底逻辑能修复可能的截断
+  if (!sending.value && event.type !== 'session.error' && event.type !== 'error' && event.type !== 'message.updated') {
     return
   }
 
@@ -776,13 +777,18 @@ function handleEvent(event) {
     // 增加：当 message.updated 并且带有完整的文本内容时，我们用它作为最后的兜底，防止 delta 丢失
     if (info && info.parts && Array.isArray(info.parts)) {
       let last = messages.value[messages.value.length - 1]
-      if (last && last.role === 'assistant' && !last.content) {
-         // 如果此时 content 还是空的，尝试从 updated 里恢复
+      if (last && last.role === 'assistant') {
+         // 即使 content 已经有部分内容，只要 updated 里包含更完整的内容，就替换它，解决截断问题
          for (const part of info.parts) {
             if (part.type === 'text' && part.text) {
-               last.content = part.text
+               // 如果没有内容，或者新内容比当前内容长，则覆盖
+               if (!last.content || part.text.length > last.content.length) {
+                   last.content = part.text
+               }
             } else if (part.type === 'reasoning' && part.text) {
-               last.reasoning = part.text
+               if (!last.reasoning || part.text.length > last.reasoning.length) {
+                   last.reasoning = part.text
+               }
             }
          }
       }
