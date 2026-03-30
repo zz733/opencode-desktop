@@ -316,6 +316,17 @@ func (a *App) StartCCConnectBot(platform string) error {
 		return fmt.Errorf("平台未配置或未启用")
 	}
 
+	if platform == "wechat" {
+		if a.ccBridgeMgr == nil {
+			return fmt.Errorf("Go 桥接管理器未初始化")
+		}
+		if err := a.ccBridgeMgr.Start(platform, pConfig, config.SelectedModel); err != nil {
+			return err
+		}
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("🤖 成功启动 %s Go 桥接", platform))
+		return nil
+	}
+
 	// 检查全局是否安装了 cc-connect
 	if _, err := exec.LookPath("cc-connect"); err != nil {
 		return fmt.Errorf("cc-connect 插件未安装，请先在界面上安装")
@@ -413,6 +424,16 @@ func (a *App) SyncCCConnectAgentContext(modelID string) error {
 func (a *App) StopCCConnectBot(platform string) error {
 	ccConnectProcesses.Lock()
 	defer ccConnectProcesses.Unlock()
+
+	if platform == "wechat" {
+		if a.ccBridgeMgr != nil {
+			if err := a.ccBridgeMgr.Stop(platform); err != nil {
+				return err
+			}
+		}
+		runtime.EventsEmit(a.ctx, "output-log", fmt.Sprintf("已停止 %s Go 桥接", platform))
+		return nil
+	}
 
 	if cmd, exists := ccConnectProcesses.m[platform]; exists {
 		if cmd.Process != nil {

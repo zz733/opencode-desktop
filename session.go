@@ -66,19 +66,46 @@ func (a *App) GetSessions() ([]Session, error) {
 
 // CreateSession 创建新会话
 func (a *App) CreateSession() (*Session, error) {
-	resp, err := a.apiClient.Post(a.serverURL+"/session", "application/json", bytes.NewBuffer([]byte("{}")))
+	// 获取当前工作目录，确保每次创建会话都在当前选择的目录下
+	workDir := a.openCode.GetWorkDir()
+	
+	reqBody := map[string]string{}
+	if workDir != "" {
+		reqBody["working_dir"] = workDir
+	}
+	
+	jsonData, _ := json.Marshal(reqBody)
+	resp, err := a.apiClient.Post(a.serverURL+"/session", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("创建会话失败: %v", err)
 	}
 	defer resp.Body.Close()
 
-	var result struct {
+	// 读取原始响应
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %v", err)
+	}
+
+	// 尝试解析为带有 info 字段的格式
+	var resultWithInfo struct {
 		Info Session `json:"info"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+	if err := json.Unmarshal(body, &resultWithInfo); err == nil && resultWithInfo.Info.ID != "" {
+		return &resultWithInfo.Info, nil
 	}
-	return &result.Info, nil
+
+	// 尝试直接解析为 Session 对象
+	var session Session
+	if err := json.Unmarshal(body, &session); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %v, 原始响应: %s", err, string(body))
+	}
+	
+	if session.ID == "" {
+		return nil, fmt.Errorf("未获取到会话ID, 原始响应: %s", string(body))
+	}
+
+	return &session, nil
 }
 
 // SendMessage 发送消息（异步，不等待响应）

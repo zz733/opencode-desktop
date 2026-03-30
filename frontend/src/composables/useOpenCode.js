@@ -237,7 +237,7 @@ async function autoConnect() {
     // 重新检查状态
     const newStatus = await GetOpenCodeStatus()
     
-    if (newStatus.connected) {
+    if (newStatus.running && newStatus.connected) {
       // 已连接，直接使用
       log('OpenCode 服务已在运行，直接连接')
       await onConnected()
@@ -802,7 +802,7 @@ async function switchWorkDir(dir) {
       const status = await GetOpenCodeStatus()
       log(`检查连接状态: connected=${status.connected}, port=${status.port}, workDir=${status.workDir}`)
       
-      if (status.connected && status.workDir === dir) {
+      if (status.running && status.connected && status.workDir === dir) {
         connected.value = true
         connecting.value = false
         log(`已连接到 ${dir} 的 OpenCode (端口 ${status.port})`)

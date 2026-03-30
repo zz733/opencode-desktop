@@ -310,30 +310,9 @@ func (m *OpenCodeManager) StartForDir(dir string) error {
 		m.mu.Unlock()
 	}
 
-	// 2. 检查系统真实进程状态：如果指定端口已经被 OpenCode 进程占用，并且是正确的目录，也应该复用而不是杀掉重建
-	// 如果检查端口连接成功，说明端口被占用
-	if m.CheckConnectionForPort(port) {
-		// 这里进一步确认占用该端口的是否是 opencode 进程
-		if m.isPortUsedByOpenCode(port) {
-			wailsRuntime.EventsEmit(m.app.ctx, "output-log", fmt.Sprintf("发现端口 %d 已有 OpenCode 进程运行，直接复用", port))
-
-			// 补充内部状态（因为可能应用重启了，但底层进程还在）
-			m.mu.Lock()
-			m.instances[dir] = &OpenCodeInstance{
-				cmd:     nil, // 由于不是当前进程启动的，无法拿到 *exec.Cmd 控制权，但标记为运行中
-				workDir: dir,
-				port:    port,
-				running: true,
-			}
-			if m.currentDir == dir {
-				m.app.serverURL = fmt.Sprintf("http://127.0.0.1:%d", port)
-			}
-			m.mu.Unlock()
-
-			wailsRuntime.EventsEmit(m.app.ctx, "opencode-status", "connected")
-			return nil
-		}
-	}
+	// 2. 如果指定端口已经被 OpenCode 进程占用，由于无法跨平台准确判断其工作目录，
+	// 为了避免“切换目录后仍然使用旧目录会话”的 Bug，我们不再盲目复用未知进程。
+	// 下面的 getAvailablePort 会自动清理僵尸进程。
 
 	// 获取可用端口（内部会自动清理非本程序管理的僵尸进程）
 	port = m.getAvailablePort(preferredPort)

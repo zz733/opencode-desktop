@@ -271,6 +271,7 @@ export namespace main {
 	    provider: string;
 	    contextLen?: number;
 	    outputLen?: number;
+	    free?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConfigModel(source);
@@ -283,6 +284,7 @@ export namespace main {
 	        this.provider = source["provider"];
 	        this.contextLen = source["contextLen"];
 	        this.outputLen = source["outputLen"];
+	        this.free = source["free"];
 	    }
 	}
 	

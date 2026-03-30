@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"strings"
 	"time"
 )
@@ -29,6 +29,7 @@ type App struct {
 	accountMgr    *AccountManager // Kiro Account Manager
 	configMgr     *ConfigManager  // Configuration Manager
 	httpServer    *HTTPServer     // Remote Control HTTP Server
+	ccBridgeMgr   *CCBridgeManager
 }
 
 // NewApp creates a new App application struct
@@ -52,6 +53,7 @@ func NewApp() *App {
 	app.termMgr = NewTerminalManager(app)
 	app.openCode = NewOpenCodeManager(app)
 	app.fileMgr = NewFileManager(app)
+	app.ccBridgeMgr = NewCCBridgeManager(app)
 
 	// Initialize Kiro Account Manager
 	app.initAccountManager()
@@ -103,10 +105,10 @@ func (a *App) startup(ctx context.Context) {
 	// 自动启动远程控制服务
 	go func() {
 		time.Sleep(2 * time.Second) // 等待应用完全启动
-		
+
 		// 自动启动已启用的 CC-Connect 平台
 		a.AutoStartCCConnect()
-		
+
 		info, err := a.StartRemoteControl(8080)
 		if err != nil {
 			fmt.Printf("⚠️  远程控制启动失败: %v\n", err)
