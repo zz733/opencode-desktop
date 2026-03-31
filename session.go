@@ -44,8 +44,10 @@ type OpenCodeMessage struct {
 		Role      string `json:"role"`
 	} `json:"info"`
 	Parts []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type  string                 `json:"type"`
+		Text  string                 `json:"text,omitempty"`
+		Tool  string                 `json:"tool,omitempty"`
+		State map[string]interface{} `json:"state,omitempty"`
 	} `json:"parts"`
 }
 
@@ -68,12 +70,12 @@ func (a *App) GetSessions() ([]Session, error) {
 func (a *App) CreateSession() (*Session, error) {
 	// 获取当前工作目录，确保每次创建会话都在当前选择的目录下
 	workDir := a.openCode.GetWorkDir()
-	
+
 	reqBody := map[string]string{}
 	if workDir != "" {
 		reqBody["working_dir"] = workDir
 	}
-	
+
 	jsonData, _ := json.Marshal(reqBody)
 	resp, err := a.apiClient.Post(a.serverURL+"/session", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -100,7 +102,7 @@ func (a *App) CreateSession() (*Session, error) {
 	if err := json.Unmarshal(body, &session); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %v, 原始响应: %s", err, string(body))
 	}
-	
+
 	if session.ID == "" {
 		return nil, fmt.Errorf("未获取到会话ID, 原始响应: %s", string(body))
 	}
@@ -376,14 +378,76 @@ func (a *App) GetSessionMessages(sessionID string) ([]Message, error) {
 	// 转换为简单格式
 	var messages []Message
 	for _, ocMsg := range ocMessages {
-		// 提取文本内容
+		// 提取内容（包括思考过程和工具调用）
 		var content string
 		for _, part := range ocMsg.Parts {
-			if part.Type == "text" && part.Text != "" {
+			switch part.Type {
+			case "text":
+				if part.Text != "" {
+					if content != "" {
+						content += "\n\n"
+					}
+					content += part.Text
+				}
+			case "reasoning":
+				if part.Text != "" {
+					if content != "" {
+						content += "\n\n"
+					}
+					content += "> 💭 [思考过程]\n"
+					lines := strings.Split(part.Text, "\n")
+					for i, line := range lines {
+						content += "> " + line
+						if i < len(lines)-1 {
+							content += "\n"
+						}
+					}
+				}
+			case "tool":
+				toolName := part.Tool
+				state := part.State
+				var input, output interface{}
+				if state != nil {
+					input = state["input"]
+					output = state["output"]
+					if output == nil {
+						if metadata, ok := state["metadata"].(map[string]interface{}); ok {
+							output = metadata["output"]
+						}
+					}
+				}
+
 				if content != "" {
 					content += "\n\n"
 				}
-				content += part.Text
+				content += fmt.Sprintf("> 🛠️ [工具调用: %s]\n", toolName)
+				if input != nil {
+					if inputStr, ok := input.(string); ok && inputStr != "" {
+						content += fmt.Sprintf("> 输入: %s\n", inputStr)
+					} else {
+						inputJson, _ := json.Marshal(input)
+						if string(inputJson) != "{}" && string(inputJson) != "null" {
+							content += fmt.Sprintf("> 输入: %s\n", string(inputJson))
+						}
+					}
+				}
+				if output != nil {
+					if outputStr, ok := output.(string); ok && outputStr != "" {
+						content += "> 输出:\n"
+						lines := strings.Split(outputStr, "\n")
+						for i, line := range lines {
+							content += "> " + line
+							if i < len(lines)-1 {
+								content += "\n"
+							}
+						}
+					} else {
+						outputJson, _ := json.Marshal(output)
+						if string(outputJson) != "null" {
+							content += fmt.Sprintf("> 输出: %s", string(outputJson))
+						}
+					}
+				}
 			}
 		}
 

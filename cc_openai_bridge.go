@@ -662,9 +662,24 @@ func (b *CCOpenAIBridge) matchSessionEvent(sessionID string, event bridgeEvent) 
 }
 
 func (b *CCOpenAIBridge) collectResponse(ctx context.Context, sessionID string, sub *bridgeSubscription) (string, error) {
-	var totalEmittedText strings.Builder
-	lastTextPerPart := make(map[string]string)
-	assistantMessageID := ""
+	var partIDs []string
+	partTexts := make(map[string]string)
+	assistantMessageIDs := make(map[string]bool)
+
+	buildFinal := func() (string, error) {
+		var total strings.Builder
+		for _, id := range partIDs {
+			total.WriteString(partTexts[id])
+			if !strings.HasSuffix(partTexts[id], "\n") {
+				total.WriteString("\n")
+			}
+		}
+		answer := total.String()
+		if strings.TrimSpace(answer) != "" {
+			return answer, nil
+		}
+		return b.fetchLatestAssistantMessage(sessionID)
+	}
 
 	for {
 		select {
@@ -676,47 +691,47 @@ func (b *CCOpenAIBridge) collectResponse(ctx context.Context, sessionID string, 
 			}
 		case event, ok := <-sub.events:
 			if !ok {
-				answer := totalEmittedText.String()
-				if strings.TrimSpace(answer) != "" {
-					return answer, nil
-				}
-				return b.fetchLatestAssistantMessage(sessionID)
+				return buildFinal()
 			}
 			switch event.Type {
 			case "message.created", "message.updated":
-				if msg, ok := event.Properties["message"].(map[string]interface{}); ok {
+				var msg map[string]interface{}
+				var ok bool
+				if msg, ok = event.Properties["info"].(map[string]interface{}); !ok {
+					msg, ok = event.Properties["message"].(map[string]interface{})
+				}
+				if ok {
 					if role, _ := msg["role"].(string); role == "assistant" {
 						if id, _ := msg["id"].(string); id != "" {
-							assistantMessageID = id
-							b.emitLog(fmt.Sprintf("[SSE Stream] Found assistant message ID: %s", id))
+							assistantMessageIDs[id] = true
+							b.emitLog(fmt.Sprintf("[SSE] Found assistant message ID: %s", id))
 						}
 					}
 				}
 			case "message.part.updated":
-				current, partID, msgID := extractEventTextAndID(event)
+				current, partID, msgID, partType := extractEventTextAndID(event)
 				eventJson, _ := json.Marshal(event)
-				b.emitLog(fmt.Sprintf("[SSE] %s (partID: %s, msgID: %s, text: %q)", string(eventJson), partID, msgID, current))
+				b.emitLog(fmt.Sprintf("[SSE] %s (partID: %s, msgID: %s, type: %s, text: %q)", string(eventJson), partID, msgID, partType, current))
 
-				if assistantMessageID == "" || msgID != assistantMessageID {
+				if !assistantMessageIDs[msgID] {
 					continue
 				}
 
 				if current == "" && partID == "" {
 					continue
 				}
-				lastPartText := lastTextPerPart[partID]
-				delta := diffText(lastPartText, current)
-				if delta != "" {
-					totalEmittedText.WriteString(delta)
+
+				if _, exists := partTexts[partID]; !exists {
+					partIDs = append(partIDs, partID)
 				}
-				lastTextPerPart[partID] = current
+				partTexts[partID] = current
 			case "session.error":
 				return "", fmt.Errorf("%s", extractEventError(event))
 			case "session.idle":
-				return b.finalizeAssistantText(sessionID, totalEmittedText.String())
+				return buildFinal()
 			case "session.status":
 				if extractEventStatus(event) == "idle" {
-					return b.finalizeAssistantText(sessionID, totalEmittedText.String())
+					return buildFinal()
 				}
 			}
 		}
@@ -784,7 +799,7 @@ func (b *CCOpenAIBridge) writeStreamingResponse(w http.ResponseWriter, requestID
 
 	lastTextPerPart := make(map[string]string)
 	var totalEmittedText strings.Builder
-	assistantMessageID := ""
+	assistantMessageIDs := make(map[string]bool)
 	for {
 		select {
 		case err := <-sub.errs:
@@ -797,20 +812,25 @@ func (b *CCOpenAIBridge) writeStreamingResponse(w http.ResponseWriter, requestID
 			}
 			switch event.Type {
 			case "message.created", "message.updated":
-				if msg, ok := event.Properties["message"].(map[string]interface{}); ok {
+				var msg map[string]interface{}
+				var ok bool
+				if msg, ok = event.Properties["info"].(map[string]interface{}); !ok {
+					msg, ok = event.Properties["message"].(map[string]interface{})
+				}
+				if ok {
 					if role, _ := msg["role"].(string); role == "assistant" {
 						if id, _ := msg["id"].(string); id != "" {
-							assistantMessageID = id
+							assistantMessageIDs[id] = true
 							b.emitLog(fmt.Sprintf("[SSE Stream] Found assistant message ID: %s", id))
 						}
 					}
 				}
 			case "message.part.updated":
-				current, partID, msgID := extractEventTextAndID(event)
+				current, partID, msgID, partType := extractEventTextAndID(event)
 				eventJson, _ := json.Marshal(event)
-				b.emitLog(fmt.Sprintf("[SSE Stream] %s (partID: %s, msgID: %s, text: %q)", string(eventJson), partID, msgID, current))
+				b.emitLog(fmt.Sprintf("[SSE Stream] %s (partID: %s, msgID: %s, type: %s, text: %q)", string(eventJson), partID, msgID, partType, current))
 
-				if assistantMessageID == "" || msgID != assistantMessageID {
+				if !assistantMessageIDs[msgID] {
 					continue
 				}
 
@@ -935,23 +955,88 @@ func writeSSEDone(w http.ResponseWriter, flusher http.Flusher) error {
 }
 
 func extractEventText(event bridgeEvent) string {
-	text, _, _ := extractEventTextAndID(event)
+	text, _, _, _ := extractEventTextAndID(event)
 	return text
 }
 
-func extractEventTextAndID(event bridgeEvent) (string, string, string) {
+func extractEventTextAndID(event bridgeEvent) (string, string, string, string) {
 	part, ok := event.Properties["part"].(map[string]interface{})
 	if !ok {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	partType, _ := part["type"].(string)
-	if partType != "text" {
-		return "", "", ""
-	}
-	text, _ := part["text"].(string)
 	id, _ := part["id"].(string)
 	msgID, _ := part["messageID"].(string)
-	return text, id, msgID
+
+	switch partType {
+	case "text":
+		text, _ := part["text"].(string)
+		return text, id, msgID, partType
+	case "reasoning":
+		text, _ := part["text"].(string)
+		if text != "" {
+			var sb strings.Builder
+			sb.WriteString("\n> 💭 [思考过程]\n")
+			lines := strings.Split(text, "\n")
+			for i, line := range lines {
+				sb.WriteString("> " + line)
+				if i < len(lines)-1 {
+					sb.WriteString("\n")
+				}
+			}
+			return sb.String(), id, msgID, partType
+		}
+		return "", id, msgID, partType
+	case "tool":
+		toolName, _ := part["tool"].(string)
+		state, _ := part["state"].(map[string]interface{})
+		input, _ := state["input"]
+		output, _ := state["output"]
+		if output == nil {
+			if metadata, ok := state["metadata"].(map[string]interface{}); ok {
+				output = metadata["output"]
+			}
+		}
+
+		var sb strings.Builder
+		if toolName != "" {
+			sb.WriteString(fmt.Sprintf("\n> 🛠️ [工具调用: %s]\n", toolName))
+			if input != nil {
+				if inputStr, ok := input.(string); ok {
+					if inputStr != "" {
+						sb.WriteString(fmt.Sprintf("> 输入: %s\n", inputStr))
+					}
+				} else {
+					inputJson, _ := json.Marshal(input)
+					if string(inputJson) != "{}" && string(inputJson) != "null" && string(inputJson) != "\"\"" {
+						sb.WriteString(fmt.Sprintf("> 输入: %s\n", string(inputJson)))
+					}
+				}
+			}
+			if output != nil {
+				if outputStr, ok := output.(string); ok {
+					if outputStr != "" {
+						sb.WriteString("\n> 输出:\n")
+						lines := strings.Split(outputStr, "\n")
+						for i, line := range lines {
+							sb.WriteString("> " + line)
+							if i < len(lines)-1 {
+								sb.WriteString("\n")
+							}
+						}
+					}
+				} else {
+					outputJson, _ := json.Marshal(output)
+					if string(outputJson) != "null" && string(outputJson) != "\"\"" {
+						sb.WriteString(fmt.Sprintf("\n> 输出: %s", string(outputJson)))
+					}
+				}
+			}
+			return sb.String(), id, msgID, partType
+		}
+	}
+
+	return "", id, msgID, partType
 }
 
 func extractEventStatus(event bridgeEvent) string {
